@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Card, Button, Badge, Modal, Spinner } from 'react-bootstrap';
-import { useAuth } from '../contexts/AuthContext';
-import { Post, IndividualCardItem, CardForCart } from '../types';
+import { useAuth } from '../../contexts/AuthContext';
+import { Post, IndividualCardItem, CardForCart } from '../../types';
 import { toast } from 'react-toastify';
 import '../../styles/individual-card.css';
 

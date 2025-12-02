@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Navbar as BootstrapNavbar, Nav, Container, Dropdown } from 'react-bootstrap';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { useCart } from '../contexts/CartContext';
-import { TCGButton } from './ButtonComponents';
-import ProfileButton from './ProfileButton';
+import { useAuth } from '../../contexts/AuthContext';
+import { useCart } from '../../contexts/CartContext';
+import { TCGButton } from '../common/ButtonComponents';
+import ProfileButton from '../common/ProfileButton';
 
 const Navbar: React.FC = () => {
   const { currentUser, userProfile, logout } = useAuth();

@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Alert, Spinner, Button } from 'react-bootstrap';
 import IndividualCard from './IndividualCard';
-import { useAuth } from '../contexts/AuthContext';
-import { useCart } from '../contexts/CartContext';
-import { Post, IndividualCardItem, CardForCart } from '../types';
-import axios from 'axios';
+import { useAuth } from '../../contexts/AuthContext';
+import { useCart } from '../../contexts/CartContext';
+import { Post, IndividualCardItem, CardForCart } from '../../types';
+import axios from '../../utils/axiosInterceptor';
 import { toast } from 'react-toastify';
 
 interface IndividualCardsGridProps {
