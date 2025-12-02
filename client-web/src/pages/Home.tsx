@@ -419,9 +419,9 @@ const Home: React.FC = () => {
               <div className="sidebar-header">
                 <h3>หมวดหมู่ทั้งหมด</h3>
               </div>
-              <div className="sidebar-categories">
-                {/* Display first 4 categories as buttons */}
-                {categories.slice(0, 4).map(cat => (
+              <div className="sidebar-categories scrollable-categories">
+                {/* Display all categories as scrollable buttons */}
+                {categories.map(cat => (
                   <button
                     key={cat}
                     className={`sidebar-category-item ${category === cat ? 'active' : ''}`}
@@ -435,28 +435,6 @@ const Home: React.FC = () => {
                     {category === cat && <span className="category-check">✓</span>}
                   </button>
                 ))}
-                
-                {/* Dropdown for remaining categories */}
-                {categories.length > 4 && (
-                  <div className="category-dropdown-wrapper">
-                    <Form.Select
-                      className="category-dropdown"
-                      value={categories.slice(4).includes(category as Category) ? category : ''}
-                      onChange={(e: ChangeEvent<HTMLSelectElement>) => {
-                        const selectedCat = e.target.value;
-                        setCategory(selectedCat || '');
-                        setCurrentPage(1);
-                      }}
-                    >
-                      <option value="">เลือกหมวดหมู่อื่นๆ...</option>
-                      {categories.slice(4).map(cat => (
-                        <option key={cat} value={cat}>
-                          {cat}
-                        </option>
-                      ))}
-                    </Form.Select>
-                  </div>
-                )}
               </div>
               
               {/* Quick Links */}
