@@ -4,7 +4,7 @@
  */
 
 import axios from '../utils/axiosInterceptor';
-import { Post, Offer, OfferData, UserProfile, CartItem, AuctionBid } from '../types';
+import { Post, UserProfile, CartItem, AuctionBid } from '../types';
 
 // Get API base URL
 const getApiBaseUrl = (): string => {
@@ -213,13 +213,25 @@ export const cartAPI = {
   getCartItems: async (): Promise<CartItem[]> => {
     try {
       const response = await axios.get('/api/cart');
-      return response.data;
+      // Ensure response.data is an array
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      // If response.data is an object with items array
+      if (response.data && Array.isArray(response.data.items)) {
+        return response.data.items;
+      }
+      // If response.data is an object with data array
+      if (response.data && Array.isArray(response.data.data)) {
+        return response.data.data;
+      }
+      // Default to empty array if structure is unexpected
+      return [];
     } catch (error: any) {
       console.error('Error fetching cart items:', error);
-      if (error.code === 'ECONNREFUSED' || error.message?.includes('Network Error')) {
-        return [];
-      }
-      throw error;
+      // For all errors (network or API errors), return empty array
+      // This allows the UI to show empty cart state instead of error
+      return [];
     }
   },
 
@@ -258,89 +270,6 @@ export const cartAPI = {
   },
 };
 
-// ==================== OFFERS API ====================
-export const offersAPI = {
-  // Create offer
-  createOffer: async (postId: string, offerData: OfferData): Promise<{ success: boolean; message: string; offer?: Offer }> => {
-    try {
-      const response = await axios.post(`/api/offers/${postId}`, offerData);
-      return {
-        success: true,
-        message: response.data.message || 'ส่งข้อเสนอเรียบร้อย',
-        offer: response.data.offer,
-      };
-    } catch (error: any) {
-      console.error('Error creating offer:', error);
-      const message = error.response?.data?.message || 'ไม่สามารถส่งข้อเสนอได้';
-      return { success: false, message };
-    }
-  },
-
-  // Get offers for a post
-  getOffersForPost: async (postId: string): Promise<Offer[]> => {
-    try {
-      const response = await axios.get(`/api/offers/post/${postId}`);
-      return response.data;
-    } catch (error: any) {
-      console.error('Error fetching offers for post:', error);
-      if (error.code === 'ECONNREFUSED' || error.message?.includes('Network Error')) {
-        return [];
-      }
-      throw error;
-    }
-  },
-
-  // Get my offers
-  getMyOffers: async (): Promise<Offer[]> => {
-    try {
-      const response = await axios.get('/api/offers/my-offers');
-      return response.data;
-    } catch (error: any) {
-      console.error('Error fetching my offers:', error);
-      if (error.code === 'ECONNREFUSED' || error.message?.includes('Network Error')) {
-        return [];
-      }
-      throw error;
-    }
-  },
-
-  // Get offers for my posts
-  getOffersForMyPosts: async (): Promise<Offer[]> => {
-    try {
-      const response = await axios.get('/api/offers/my-posts');
-      return response.data;
-    } catch (error: any) {
-      console.error('Error fetching offers for my posts:', error);
-      if (error.code === 'ECONNREFUSED' || error.message?.includes('Network Error')) {
-        return [];
-      }
-      throw error;
-    }
-  },
-
-  // Update offer status
-  updateOfferStatus: async (offerId: string, status: 'pending' | 'accepted' | 'rejected' | 'cancelled'): Promise<{ success: boolean; message: string }> => {
-    try {
-      const response = await axios.put(`/api/offers/${offerId}`, { status });
-      return { success: true, message: response.data.message || 'อัพเดทสถานะเรียบร้อย' };
-    } catch (error: any) {
-      console.error('Error updating offer status:', error);
-      const message = error.response?.data?.message || 'ไม่สามารถอัพเดทสถานะได้';
-      return { success: false, message };
-    }
-  },
-
-  // Delete offer
-  deleteOffer: async (offerId: string): Promise<{ success: boolean; message: string }> => {
-    try {
-      await axios.delete(`/api/offers/${offerId}`);
-      return { success: true, message: 'ลบข้อเสนอเรียบร้อย' };
-    } catch (error: any) {
-      console.error('Error deleting offer:', error);
-      return { success: false, message: 'ไม่สามารถลบข้อเสนอได้' };
-    }
-  },
-};
 
 // ==================== SELLER API ====================
 export const sellerAPI = {
@@ -452,7 +381,6 @@ export default {
   posts: postsAPI,
   auction: auctionAPI,
   cart: cartAPI,
-  offers: offersAPI,
   seller: sellerAPI,
   admin: adminAPI,
   chat: chatAPI,

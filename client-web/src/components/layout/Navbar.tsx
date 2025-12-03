@@ -57,15 +57,6 @@ const Navbar: React.FC = () => {
                 <Nav.Link as={Link} to="/create-post" onClick={() => setExpanded(false)}>
                   ขายการ์ด
                 </Nav.Link>
-                <Nav.Link as={Link} to="/my-posts" onClick={() => setExpanded(false)}>
-                  รับซื้อการ์ด
-                </Nav.Link>
-                <Nav.Link as={Link} to="/cart" onClick={() => setExpanded(false)}>
-                  🛒 ตะกร้า {getCartCount() > 0 && `(${getCartCount()})`}
-                </Nav.Link>
-                <Nav.Link as={Link} to="/offers" onClick={() => setExpanded(false)}>
-                  💰 ข้อเสนอ
-                </Nav.Link>
               </>
             )}
             {userProfile?.isAdmin && (
@@ -75,7 +66,25 @@ const Navbar: React.FC = () => {
             )}
           </Nav>
           
-          <Nav>
+          <Nav className="navbar-right-icons">
+            {currentUser && (
+              <Nav.Link 
+                as={Link} 
+                to="/cart" 
+                onClick={() => setExpanded(false)}
+                className="navbar-cart-icon"
+                title="ตะกร้า"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
+                  <line x1="3" y1="6" x2="21" y2="6"></line>
+                  <path d="M16 10a4 4 0 0 1-8 0"></path>
+                </svg>
+                {getCartCount() > 0 && (
+                  <span className="cart-badge">{getCartCount()}</span>
+                )}
+              </Nav.Link>
+            )}
             {currentUser ? (
               <Dropdown align="end">
                 <Dropdown.Toggle as={ProfileButton} />
@@ -88,9 +97,6 @@ const Navbar: React.FC = () => {
                   </Dropdown.Item>
                   <Dropdown.Item as={Link} to="/cart" onClick={() => setExpanded(false)}>
                     🛒 ตะกร้า {getCartCount() > 0 && `(${getCartCount()})`}
-                  </Dropdown.Item>
-                  <Dropdown.Item as={Link} to="/offers" onClick={() => setExpanded(false)}>
-                    💰 ข้อเสนอ
                   </Dropdown.Item>
                   {userProfile?.isAdmin && (
                     <Dropdown.Item as={Link} to="/admin" onClick={() => setExpanded(false)}>

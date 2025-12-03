@@ -3,19 +3,17 @@ import { Container, Row, Col, Card, Button, Alert, Spinner, Badge, Modal, Form }
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
-import { useOffer } from '../contexts/OfferContext';
 import IndividualCardsGrid from '../components/common/IndividualCardsGrid';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import '../styles/auction-bids.css';
-import { Post, Message, AuctionBid, OfferData, DetectedCard, FirestoreTimestamp, IndividualCardItem } from '../types';
+import { Post, Message, AuctionBid, DetectedCard, FirestoreTimestamp, IndividualCardItem } from '../types';
 
 const PostDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { currentUser, userProfile } = useAuth();
   const { addToCart, isInCart } = useCart();
-  const { createOffer } = useOffer();
   const [post, setPost] = useState<Post | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -27,16 +25,6 @@ const PostDetail: React.FC = () => {
   const [likingPost, setLikingPost] = useState<boolean>(false);
   const [markingSold, setMarkingSold] = useState<boolean>(false);
   const [addingToCart, setAddingToCart] = useState<boolean>(false);
-  const [showOfferModal, setShowOfferModal] = useState<boolean>(false);
-  const [offerData, setOfferData] = useState<OfferData>({
-    cardTitle: '',
-    cardDescription: '',
-    cardImages: [],
-    cardCondition: 'ดี',
-    offerPrice: '',
-    message: ''
-  });
-  const [uploadingImages, setUploadingImages] = useState<boolean>(false);
   const [showSoldModal, setShowSoldModal] = useState<boolean>(false);
   const [showBidModal, setShowBidModal] = useState<boolean>(false);
   const [bidAmount, setBidAmount] = useState<string>('');
@@ -220,109 +208,6 @@ const PostDetail: React.FC = () => {
     }
   };
 
-  const handleMakeOffer = (): void => {
-    if (!currentUser) {
-      navigate('/login');
-      return;
-    }
-
-    if (!post || currentUser.uid === post.sellerId) {
-      toast.error('ไม่สามารถเสนอสินค้าให้โพสต์ของตัวเองได้');
-      return;
-    }
-
-    if (post.status === 'sold') {
-      toast.error('โพสต์นี้ถูกขายแล้ว');
-      return;
-    }
-
-    setOfferData({
-      cardTitle: '',
-      cardDescription: '',
-      cardImages: [],
-      cardCondition: 'ดี',
-      offerPrice: '',
-      message: ''
-    });
-    setShowOfferModal(true);
-  };
-
-  const handleImageUpload = async (files: FileList | null): Promise<void> => {
-    if (!files || files.length === 0) return;
-
-    setUploadingImages(true);
-    try {
-      const formData = new FormData();
-      Array.from(files).forEach(file => {
-        formData.append('images', file);
-      });
-
-      const response = await axios.post('/api/upload/offer-images', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      });
-
-      const newImages = response.data.imageUrls || [];
-      setOfferData(prev => ({
-        ...prev,
-        cardImages: [...prev.cardImages, ...newImages]
-      }));
-
-      toast.success(`อัปโหลดรูปภาพสำเร็จ ${newImages.length} รูป`);
-    } catch (error) {
-      console.error('Error uploading images:', error);
-      toast.error('เกิดข้อผิดพลาดในการอัปโหลดรูปภาพ');
-    } finally {
-      setUploadingImages(false);
-    }
-  };
-
-  const handleRemoveImage = (index: number): void => {
-    setOfferData(prev => ({
-      ...prev,
-      cardImages: prev.cardImages.filter((_, i) => i !== index)
-    }));
-  };
-
-  const handleSubmitOffer = async (): Promise<void> => {
-    if (!post) return;
-
-    if (!offerData.cardTitle.trim()) {
-      toast.error('กรุณากรอกชื่อการ์ด');
-      return;
-    }
-
-    if (!offerData.offerPrice || parseFloat(offerData.offerPrice) <= 0) {
-      toast.error('กรุณากรอกราคาที่เสนอ');
-      return;
-    }
-
-    if (parseFloat(offerData.offerPrice) > post.maxPrice) {
-      toast.error(`ราคาที่เสนอต้องไม่เกิน ${formatPrice(post.maxPrice)}`);
-      return;
-    }
-
-    try {
-      const result = await createOffer(post.id, offerData);
-      if (result.success) {
-        toast.success(result.message);
-        setShowOfferModal(false);
-        setOfferData({
-          cardTitle: '',
-          cardDescription: '',
-          cardImages: [],
-          cardCondition: 'ดี',
-          offerPrice: '',
-          message: ''
-        });
-      } else {
-        toast.error(result.message);
-      }
-    } catch (error) {
-      toast.error('เกิดข้อผิดพลาดในการส่งข้อเสนอ');
-    }
-  };
 
   const handleMarkAsSold = async (): Promise<void> => {
     setMarkingSold(true);
@@ -832,13 +717,6 @@ const PostDetail: React.FC = () => {
                                   >
                                     ✅ จบการประมูล
                                   </Button>
-                                  <Button
-                                    as={Link as any}
-                                    to="/offers"
-                                    className="btn-tcg-outline btn-tcg-lg w-100 mb-3"
-                                  >
-                                    📊 ดูการประมูล ({post.bidCount || 0})
-                                  </Button>
                                 </>
                               ) : (
                                 <Button
@@ -895,31 +773,22 @@ const PostDetail: React.FC = () => {
                               '🤍 เพิ่มรายการโปรด'
                             )}
                           </Button>
-                          {post.postType === 'buying' ? (
-                            <Button
-                              className="btn-tcg-outline btn-tcg-lg w-100 mb-3"
-                              onClick={handleMakeOffer}
-                            >
-                              💰 เสนอสินค้า
-                            </Button>
-                          ) : (
-                            <Button
-                              className="btn-tcg-outline btn-tcg-lg w-100 mb-3"
-                              onClick={handleAddToCart}
-                              disabled={addingToCart || isInCart(post.id)}
-                            >
-                              {addingToCart ? (
-                                <>
-                                  <Spinner size="sm" className="me-2" />
-                                  กำลังเพิ่ม...
-                                </>
-                              ) : isInCart(post.id) ? (
-                                '🛒 อยู่ในตะกร้าแล้ว'
-                              ) : (
-                                '🛒 เพิ่มในตะกร้า'
-                              )}
-                            </Button>
-                          )}
+                          <Button
+                            className="btn-tcg-outline btn-tcg-lg w-100 mb-3"
+                            onClick={handleAddToCart}
+                            disabled={addingToCart || isInCart(post.id)}
+                          >
+                            {addingToCart ? (
+                              <>
+                                <Spinner size="sm" className="me-2" />
+                                กำลังเพิ่ม...
+                              </>
+                            ) : isInCart(post.id) ? (
+                              '🛒 อยู่ในตะกร้าแล้ว'
+                            ) : (
+                              '🛒 เพิ่มในตะกร้า'
+                            )}
+                          </Button>
                           {post.postType === 'auction' && (
                             <div className="auction-actions">
                               <Button
@@ -1148,138 +1017,6 @@ const PostDetail: React.FC = () => {
           </Modal.Footer>
         </Modal>
 
-        {/* Offer Modal */}
-        <Modal show={showOfferModal} onHide={() => setShowOfferModal(false)} centered size="lg">
-          <Modal.Header closeButton>
-            <Modal.Title>💰 เสนอสินค้าให้ {post?.title}</Modal.Title>
-          </Modal.Header>
-          <Modal.Body>
-            <Form>
-              <Form.Group className="mb-3">
-                <Form.Label>ชื่อการ์ดที่เสนอ *</Form.Label>
-                <Form.Control
-                  type="text"
-                  value={offerData.cardTitle}
-                  onChange={(e) => setOfferData({...offerData, cardTitle: e.target.value})}
-                  placeholder="เช่น Charizard, Blue-Eyes White Dragon..."
-                />
-              </Form.Group>
-              
-              <Form.Group className="mb-3">
-                <Form.Label>รายละเอียดการ์ด</Form.Label>
-                <Form.Control
-                  as="textarea"
-                  rows={3}
-                  value={offerData.cardDescription}
-                  onChange={(e) => setOfferData({...offerData, cardDescription: e.target.value})}
-                  placeholder="อธิบายสภาพและรายละเอียดการ์ด..."
-                />
-              </Form.Group>
-              
-              <Form.Group className="mb-3">
-                <Form.Label>รูปภาพการ์ด (สูงสุด 5 รูป)</Form.Label>
-                <div className="image-upload-section">
-                  <input
-                    type="file"
-                    multiple
-                    accept="image/*"
-                    onChange={(e) => handleImageUpload(e.target.files)}
-                    className="image-upload-input"
-                    id="offer-image-upload-detail"
-                    disabled={uploadingImages || offerData.cardImages.length >= 5}
-                  />
-                  <label 
-                    htmlFor="offer-image-upload-detail" 
-                    className={`image-upload-label ${uploadingImages ? 'uploading' : ''}`}
-                  >
-                    {uploadingImages ? (
-                      <>
-                        <Spinner size="sm" className="me-2" />
-                        กำลังอัปโหลด...
-                      </>
-                    ) : (
-                      '📷 เพิ่มรูปภาพ'
-                    )}
-                  </label>
-                  {offerData.cardImages.length > 0 && (
-                    <div className="uploaded-images">
-                      {offerData.cardImages.map((image, index) => (
-                        <div key={index} className="uploaded-image-item">
-                          <img src={image} alt={`Card ${index + 1}`} />
-                          <button
-                            type="button"
-                            className="remove-image-btn"
-                            onClick={() => handleRemoveImage(index)}
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <Form.Text className="text-muted">
-                    รูปภาพจะช่วยให้ผู้ขายเห็นสภาพการ์ดได้ชัดเจนขึ้น
-                  </Form.Text>
-                </div>
-              </Form.Group>
-              
-              <Row>
-                <Col md={6}>
-                  <Form.Group className="mb-3">
-                    <Form.Label>สภาพการ์ด</Form.Label>
-                    <Form.Select
-                      value={offerData.cardCondition}
-                      onChange={(e) => setOfferData({...offerData, cardCondition: e.target.value})}
-                    >
-                      <option value="ดีมาก">ดีมาก</option>
-                      <option value="ดี">ดี</option>
-                      <option value="ปานกลาง">ปานกลาง</option>
-                      <option value="พอใช้">พอใช้</option>
-                    </Form.Select>
-                  </Form.Group>
-                </Col>
-                <Col md={6}>
-                  <Form.Group className="mb-3">
-                    <Form.Label>ราคาที่เสนอ (บาท) *</Form.Label>
-                    <Form.Control
-                      type="number"
-                      value={offerData.offerPrice}
-                      onChange={(e) => setOfferData({...offerData, offerPrice: e.target.value})}
-                      placeholder={`สูงสุด ${formatPrice(post?.maxPrice || 0)}`}
-                      max={post?.maxPrice}
-                    />
-                  </Form.Group>
-                </Col>
-              </Row>
-              
-              <Form.Group className="mb-3">
-                <Form.Label>ข้อความเพิ่มเติม</Form.Label>
-                <Form.Control
-                  as="textarea"
-                  rows={2}
-                  value={offerData.message}
-                  onChange={(e) => setOfferData({...offerData, message: e.target.value})}
-                  placeholder="ข้อความถึงผู้ขาย..."
-                />
-              </Form.Group>
-              
-              <Alert variant="info">
-                <strong>ข้อมูลโพสต์:</strong><br/>
-                • ราคาสูงสุด: {formatPrice(post?.maxPrice || 0)}<br/>
-                • หมวดหมู่: {post?.category}<br/>
-                • ผู้ขาย: {post?.sellerName}
-              </Alert>
-            </Form>
-          </Modal.Body>
-          <Modal.Footer>
-            <Button variant="secondary" onClick={() => setShowOfferModal(false)}>
-              ยกเลิก
-            </Button>
-            <Button className="btn-tcg-primary" onClick={handleSubmitOffer}>
-              ส่งข้อเสนอ
-            </Button>
-          </Modal.Footer>
-        </Modal>
       </Container>
     </div>
   );

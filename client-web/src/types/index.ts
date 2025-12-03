@@ -20,7 +20,7 @@ export interface FirestoreTimestamp {
   nanoseconds?: number;
 }
 
-export type PostType = 'sale' | 'auction' | 'buying';
+export type PostType = 'sale' | 'auction';
 export type SaleType = 'deck' | 'individual';
 export type PostStatus = 'active' | 'sold' | 'inactive' | 'pending' | 'rejected';
 
@@ -60,16 +60,6 @@ export interface Post {
   game?: string;
 }
 
-// Offer Types
-export interface OfferData {
-  cardTitle: string;
-  cardDescription: string;
-  cardImages: string[];
-  cardCondition: string;
-  offerPrice: string;
-  message: string;
-}
-
 // Sort Types
 export type SortBy = 'newest' | 'priceAsc' | 'priceDesc';
 
@@ -90,24 +80,6 @@ export interface CartItem {
   postId: string;
   post: Post;
   addedAt?: Date | FirestoreTimestamp | string;
-}
-
-// Offer Types (extended)
-export interface Offer {
-  id: string;
-  postId: string;
-  buyerId: string;
-  buyerName: string;
-  sellerId: string;
-  cardTitle: string;
-  cardDescription?: string;
-  cardImages?: string[];
-  cardCondition: string;
-  offerPrice: number;
-  message?: string;
-  status: 'pending' | 'accepted' | 'rejected' | 'cancelled';
-  createdAt: Date | FirestoreTimestamp | string;
-  updatedAt?: Date | FirestoreTimestamp | string;
 }
 
 // Context Types
@@ -136,20 +108,6 @@ export interface CartContextType {
   fetchCartItems: () => Promise<void>;
 }
 
-export interface OfferContextType {
-  offers: Offer[];
-  myOffers: Offer[];
-  loading: boolean;
-  error: string | null;
-  createOffer: (postId: string, offerData: OfferData) => Promise<{ success: boolean; message: string; offer?: Offer }>;
-  updateOfferStatus: (offerId: string, status: Offer['status']) => Promise<{ success: boolean; message: string }>;
-  deleteOffer: (offerId: string) => Promise<{ success: boolean; message: string }>;
-  fetchOffersForPost: (postId: string) => Promise<Offer[]>;
-  fetchMyOffers: () => Promise<void>;
-  getOffersForMyPosts: () => Promise<Offer[]>;
-  formatPrice: (price: number) => string;
-  formatDate: (dateString: Date | string | any) => string;
-}
 
 // SocketContext removed - now using Facebook Messenger
 
@@ -204,12 +162,6 @@ export interface CardForCart {
   originalPost: Post;
 }
 
-// Extended Offer interface for Offers page
-export interface ExtendedOffer extends Offer {
-  postTitle?: string;
-  offererName?: string;
-  postOwnerName?: string;
-}
 
 // Seller Types
 export interface Seller {

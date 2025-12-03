@@ -6,7 +6,6 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 
 import { AuthProvider } from './contexts/AuthContext';
 import { CartProvider } from './contexts/CartContext';
-import { OfferProvider } from './contexts/OfferContext';
 import Navbar from './components/layout/Navbar';
 import Home from './pages/Home';
 import Login from './pages/Login';
@@ -18,7 +17,6 @@ import CardBuying from './pages/MyPosts';
 import AdminDashboard from './pages/AdminDashboard';
 import SellerProfile from './pages/SellerProfile';
 import Cart from './pages/Cart';
-import Offers from './pages/Offers';
 import ProtectedRoute from './components/layout/ProtectedRoute';
 
 // Error Boundary Component
@@ -72,7 +70,6 @@ const App: React.FC = () => {
     <ErrorBoundary>
       <AuthProvider>
         <CartProvider>
-          <OfferProvider>
               <Router>
                 <div className="App">
                   <Navbar />
@@ -104,11 +101,6 @@ const App: React.FC = () => {
                           <Cart />
                         </ProtectedRoute>
                       } />
-                      <Route path="/offers" element={
-                        <ProtectedRoute>
-                          <Offers />
-                        </ProtectedRoute>
-                      } />
                     </Routes>
                   </main>
                   <ToastContainer
@@ -124,7 +116,6 @@ const App: React.FC = () => {
                   />
                 </div>
               </Router>
-          </OfferProvider>
         </CartProvider>
       </AuthProvider>
     </ErrorBoundary>

@@ -302,8 +302,8 @@ const Profile: React.FC = () => {
       <>
         {/* Profile Header */}
         <div className="profile-header mb-4">
-          <div className="d-flex align-items-center">
-            <div className="profile-image-container me-3">
+          <div className="d-flex align-items-center flex-wrap">
+            <div className="profile-image-container me-4">
               <img
                 src={previewImage || formData.profileImage || userProfile?.profileImage || '/default-avatar.png'}
                 alt="Profile"
@@ -330,16 +330,6 @@ const Profile: React.FC = () => {
                   </div>
                 </div>
               )}
-            </div>
-            <div className="flex-grow-1">
-              <h4 className="profile-name mb-1">
-                {getDisplayName()}
-              </h4>
-              <p className="text-muted mb-0">
-                เป็นสมาชิกเมื่อ {formatDate(userProfile?.createdAt)}
-              </p>
-            </div>
-            <div className="upload-section">
               <input
                 type="file"
                 accept="image/*"
@@ -348,12 +338,47 @@ const Profile: React.FC = () => {
                 id="profile-image-upload"
                 disabled={loading}
               />
-              <label htmlFor="profile-image-upload" className={`upload-btn ${loading ? 'disabled' : ''}`}>
-                {loading ? 'กำลังอัปโหลด...' : 'อัปโหลดรูปโปรไฟล์'}
+              <label 
+                htmlFor="profile-image-upload" 
+                className="profile-image-upload-label"
+                title="คลิกเพื่ออัปโหลดรูปโปรไฟล์"
+              >
+                📷
               </label>
-              <small className="d-block text-muted mt-1">
-                รองรับไฟล์ JPG, PNG ขนาดไม่เกิน 5MB
-              </small>
+            </div>
+            <div className="flex-grow-1">
+              <h4 className="profile-name mb-2">
+                {getDisplayName()}
+              </h4>
+              <p className="text-muted mb-3" style={{ fontSize: '0.9375rem' }}>
+                <span style={{ marginRight: '0.5rem' }}>📅</span>
+                เป็นสมาชิกเมื่อ {formatDate(userProfile?.createdAt)}
+              </p>
+              <div className="upload-section">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleProfileImageUpload}
+                  className="d-none"
+                  id="profile-image-upload-btn"
+                  disabled={loading}
+                />
+                <label htmlFor="profile-image-upload-btn" className={`upload-btn ${loading ? 'disabled' : ''}`}>
+                  {loading ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-2" role="status" />
+                      กำลังอัปโหลด...
+                    </>
+                  ) : (
+                    <>
+                      📤 อัปโหลดรูปโปรไฟล์
+                    </>
+                  )}
+                </label>
+                <small className="d-block text-muted mt-2" style={{ fontSize: '0.8125rem' }}>
+                  รองรับไฟล์ JPG, PNG ขนาดไม่เกิน 5MB
+                </small>
+              </div>
             </div>
           </div>
         </div>
@@ -361,10 +386,10 @@ const Profile: React.FC = () => {
       {/* Personal Information Section */}
       <Card className="mb-4">
         <Card.Header>
-          <h5 className="mb-0">ข้อมูลส่วนตัว</h5>
+          <h5 className="mb-0">📝 ข้อมูลส่วนตัว</h5>
         </Card.Header>
         <Card.Body>
-          <div className="profile-field mb-3">
+          <div className="profile-field">
             <label className="profile-field-label">ชื่อ - นามสกุล</label>
             <div className="profile-field-input-group">
               <input
@@ -373,18 +398,26 @@ const Profile: React.FC = () => {
                 value={formData.displayName}
                 onChange={(e) => setFormData({...formData, displayName: e.target.value})}
                 onBlur={() => handleFieldSave('displayName', formData.displayName)}
-                disabled={editingField !== 'displayName'}
+                placeholder="กรอกชื่อ - นามสกุล"
+                disabled={editingField !== 'displayName' && editingField !== null}
               />
               <button
                 className="profile-field-edit-btn"
-                onClick={() => setEditingField('displayName')}
+                onClick={() => {
+                  if (editingField === 'displayName') {
+                    setEditingField(null);
+                  } else {
+                    setEditingField('displayName');
+                  }
+                }}
+                title={editingField === 'displayName' ? 'บันทึก' : 'แก้ไข'}
               >
-                ✏️
+                {editingField === 'displayName' ? '💾' : '✏️'}
               </button>
             </div>
           </div>
 
-          <div className="profile-field mb-3">
+          <div className="profile-field">
             <label className="profile-field-label">หมายเลขโทรศัพท์มือถือ</label>
             <div className="profile-field-input-group">
               <input
@@ -393,19 +426,26 @@ const Profile: React.FC = () => {
                 value={formData.phone}
                 onChange={(e) => setFormData({...formData, phone: e.target.value})}
                 onBlur={() => handleFieldSave('phone', formData.phone)}
-                placeholder="หมายเลขโทรศัพท์มือถือ"
-                disabled={editingField !== 'phone'}
+                placeholder="กรอกหมายเลขโทรศัพท์มือถือ"
+                disabled={editingField !== 'phone' && editingField !== null}
               />
               <button
                 className="profile-field-edit-btn"
-                onClick={() => setEditingField('phone')}
+                onClick={() => {
+                  if (editingField === 'phone') {
+                    setEditingField(null);
+                  } else {
+                    setEditingField('phone');
+                  }
+                }}
+                title={editingField === 'phone' ? 'บันทึก' : 'แก้ไข'}
               >
-                ✏️
+                {editingField === 'phone' ? '💾' : '✏️'}
               </button>
             </div>
           </div>
 
-          <div className="profile-field mb-3">
+          <div className="profile-field">
             <label className="profile-field-label">อีเมล</label>
             <div className="profile-field-input-group">
               <input
@@ -413,7 +453,48 @@ const Profile: React.FC = () => {
                 className="profile-field-input"
                 value={currentUser?.email || ''}
                 disabled
+                placeholder="อีเมล"
               />
+              <span className="text-muted" style={{ fontSize: '0.875rem', paddingRight: '0.5rem' }}>
+                🔒
+              </span>
+            </div>
+            <small className="text-muted" style={{ fontSize: '0.8125rem', marginTop: '0.5rem', display: 'block' }}>
+              อีเมลไม่สามารถแก้ไขได้
+            </small>
+          </div>
+
+          <div className="profile-field">
+            <label className="profile-field-label">ที่อยู่</label>
+            <div className="profile-field-input-group">
+              <textarea
+                className="profile-field-input"
+                value={formData.address}
+                onChange={(e) => setFormData({...formData, address: e.target.value})}
+                onBlur={() => handleFieldSave('address', formData.address)}
+                placeholder="กรอกที่อยู่"
+                disabled={editingField !== 'address' && editingField !== null}
+                rows={3}
+                style={{ 
+                  resize: 'vertical',
+                  minHeight: '80px',
+                  fontFamily: 'inherit'
+                }}
+              />
+              <button
+                className="profile-field-edit-btn"
+                onClick={() => {
+                  if (editingField === 'address') {
+                    setEditingField(null);
+                  } else {
+                    setEditingField('address');
+                  }
+                }}
+                title={editingField === 'address' ? 'บันทึก' : 'แก้ไข'}
+                style={{ alignSelf: 'flex-start', marginTop: '0.5rem' }}
+              >
+                {editingField === 'address' ? '💾' : '✏️'}
+              </button>
             </div>
           </div>
         </Card.Body>
@@ -425,40 +506,46 @@ const Profile: React.FC = () => {
   const renderSecurityInfo = (): JSX.Element => (
     <Card>
       <Card.Header>
-        <h5 className="mb-0">ข้อมูลความปลอดภัย</h5>
+        <h5 className="mb-0">🔒 ข้อมูลความปลอดภัย</h5>
       </Card.Header>
       <Card.Body>
-        <div className="profile-field mb-3">
+        <div className="profile-field">
           <label className="profile-field-label">รหัสผ่าน</label>
           <div className="profile-field-input-group">
             <input
               type="password"
               className="profile-field-input"
-              value="••••••"
+              value="••••••••••"
               disabled
+              placeholder="รหัสผ่าน"
             />
             <button
               className="profile-field-edit-btn"
               onClick={() => setShowPasswordModal(true)}
+              title="เปลี่ยนรหัสผ่าน"
             >
-              ✏️
+              🔑
             </button>
           </div>
+          <small className="text-muted" style={{ fontSize: '0.8125rem', marginTop: '0.5rem', display: 'block' }}>
+            คลิกปุ่ม 🔑 เพื่อเปลี่ยนรหัสผ่าน
+          </small>
         </div>
       </Card.Body>
     </Card>
   );
 
   const renderLikedItems = (): JSX.Element => (
-    <Card>
-      <Card.Header>
-        <h5 className="mb-0">รายการที่ถูกใจ</h5>
-      </Card.Header>
+      <Card>
+        <Card.Header>
+          <h5 className="mb-0">❤️ รายการที่ถูกใจ</h5>
+        </Card.Header>
       <Card.Body>
         {likedItems.length === 0 ? (
-          <div className="text-center py-4">
-            <h5>ยังไม่มีรายการที่ถูกใจ</h5>
-            <p className="text-muted">เริ่มต้นกดถูกใจการ์ดที่คุณสนใจ</p>
+          <div className="profile-empty-state">
+            <div className="profile-empty-state-icon">❤️</div>
+            <h5 className="profile-empty-state-title">ยังไม่มีรายการที่ถูกใจ</h5>
+            <p className="profile-empty-state-description">เริ่มต้นกดถูกใจการ์ดที่คุณสนใจ</p>
           </div>
         ) : (
           <Row>
@@ -509,20 +596,22 @@ const Profile: React.FC = () => {
   );
 
   const renderAuctions = (): JSX.Element => (
-    <Card>
-      <Card.Header>
-        <h5 className="mb-0">การประมูลของฉัน</h5>
-      </Card.Header>
+      <Card>
+        <Card.Header>
+          <h5 className="mb-0">🔨 การประมูลของฉัน</h5>
+        </Card.Header>
       <Card.Body>
         {auctions.length === 0 ? (
-          <div className="text-center py-4">
-            <h5>ยังไม่มีการประมูล</h5>
-            <p className="text-muted">เริ่มต้นสร้างการประมูลการ์ดของคุณ</p>
+          <div className="profile-empty-state">
+            <div className="profile-empty-state-icon">🔨</div>
+            <h5 className="profile-empty-state-title">ยังไม่มีการประมูล</h5>
+            <p className="profile-empty-state-description">เริ่มต้นสร้างการประมูลการ์ดของคุณ</p>
           </div>
         ) : (
-          <div className="text-center py-4">
-            <h5>ฟีเจอร์การประมูล</h5>
-            <p className="text-muted">จะเปิดใช้งานเร็วๆ นี้</p>
+          <div className="profile-empty-state">
+            <div className="profile-empty-state-icon">⏳</div>
+            <h5 className="profile-empty-state-title">ฟีเจอร์การประมูล</h5>
+            <p className="profile-empty-state-description">จะเปิดใช้งานเร็วๆ นี้</p>
           </div>
         )}
       </Card.Body>
@@ -530,20 +619,22 @@ const Profile: React.FC = () => {
   );
 
   const renderWatchlist = (): JSX.Element => (
-    <Card>
-      <Card.Header>
-        <h5 className="mb-0">รายการตั้งรับ</h5>
-      </Card.Header>
+      <Card>
+        <Card.Header>
+          <h5 className="mb-0">👀 รายการตั้งรับ</h5>
+        </Card.Header>
       <Card.Body>
         {watchlist.length === 0 ? (
-          <div className="text-center py-4">
-            <h5>ยังไม่มีรายการตั้งรับ</h5>
-            <p className="text-muted">เพิ่มการ์ดที่คุณสนใจลงในรายการตั้งรับ</p>
+          <div className="profile-empty-state">
+            <div className="profile-empty-state-icon">👀</div>
+            <h5 className="profile-empty-state-title">ยังไม่มีรายการตั้งรับ</h5>
+            <p className="profile-empty-state-description">เพิ่มการ์ดที่คุณสนใจลงในรายการตั้งรับ</p>
           </div>
         ) : (
-          <div className="text-center py-4">
-            <h5>ฟีเจอร์รายการตั้งรับ</h5>
-            <p className="text-muted">จะเปิดใช้งานเร็วๆ นี้</p>
+          <div className="profile-empty-state">
+            <div className="profile-empty-state-icon">⏳</div>
+            <h5 className="profile-empty-state-title">ฟีเจอร์รายการตั้งรับ</h5>
+            <p className="profile-empty-state-description">จะเปิดใช้งานเร็วๆ นี้</p>
           </div>
         )}
       </Card.Body>
@@ -551,20 +642,22 @@ const Profile: React.FC = () => {
   );
 
   const renderOrders = (): JSX.Element => (
-    <Card>
-      <Card.Header>
-        <h5 className="mb-0">รายการคำสั่งซื้อ</h5>
-      </Card.Header>
+      <Card>
+        <Card.Header>
+          <h5 className="mb-0">📋 รายการคำสั่งซื้อ</h5>
+        </Card.Header>
       <Card.Body>
         {orders.length === 0 ? (
-          <div className="text-center py-4">
-            <h5>ยังไม่มีคำสั่งซื้อ</h5>
-            <p className="text-muted">เริ่มต้นซื้อการ์ดที่คุณต้องการ</p>
+          <div className="profile-empty-state">
+            <div className="profile-empty-state-icon">📋</div>
+            <h5 className="profile-empty-state-title">ยังไม่มีคำสั่งซื้อ</h5>
+            <p className="profile-empty-state-description">เริ่มต้นซื้อการ์ดที่คุณต้องการ</p>
           </div>
         ) : (
-          <div className="text-center py-4">
-            <h5>ฟีเจอร์คำสั่งซื้อ</h5>
-            <p className="text-muted">จะเปิดใช้งานเร็วๆ นี้</p>
+          <div className="profile-empty-state">
+            <div className="profile-empty-state-icon">⏳</div>
+            <h5 className="profile-empty-state-title">ฟีเจอร์คำสั่งซื้อ</h5>
+            <p className="profile-empty-state-description">จะเปิดใช้งานเร็วๆ นี้</p>
           </div>
         )}
       </Card.Body>
@@ -572,15 +665,16 @@ const Profile: React.FC = () => {
   );
 
   const renderMyPosts = (): JSX.Element => (
-    <Card>
-      <Card.Header>
-        <h5 className="mb-0">รายการของฉัน</h5>
-      </Card.Header>
+      <Card>
+        <Card.Header>
+          <h5 className="mb-0">📝 รายการของฉัน</h5>
+        </Card.Header>
       <Card.Body>
         {myPosts.length === 0 ? (
-          <div className="text-center py-4">
-            <h5>ยังไม่มีโพสต์</h5>
-            <p className="text-muted">เริ่มต้นสร้างโพสต์การ์ดของคุณ</p>
+          <div className="profile-empty-state">
+            <div className="profile-empty-state-icon">📝</div>
+            <h5 className="profile-empty-state-title">ยังไม่มีโพสต์</h5>
+            <p className="profile-empty-state-description">เริ่มต้นสร้างโพสต์การ์ดของคุณ</p>
           </div>
         ) : (
           <Row>

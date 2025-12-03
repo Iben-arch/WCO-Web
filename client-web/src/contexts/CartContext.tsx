@@ -40,15 +40,14 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       setLoading(true);
       setError(null);
       const items = await cartAPI.getCartItems();
-      setCartItems(items);
+      // Ensure items is an array
+      setCartItems(Array.isArray(items) ? items : []);
     } catch (error: any) {
       console.error('Error fetching cart items:', error);
-      // Only set error if it's not a network error (server might be down)
-      if (error.response) {
-        setError('เกิดข้อผิดพลาดในการโหลดตะกร้า');
-      }
-      // On network errors, just set empty cart
+      // For all errors, just set empty cart instead of showing error
+      // This provides better UX - empty cart is better than error message
       setCartItems([]);
+      setError(null); // Clear error to show empty state instead
     } finally {
       setLoading(false);
     }

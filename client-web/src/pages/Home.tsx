@@ -5,7 +5,6 @@ import axios from 'axios';
 import { toast } from 'react-toastify';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
-import { useOffer } from '../contexts/OfferContext';
 import { 
   TCGButton, 
   SearchButton, 
@@ -16,7 +15,7 @@ import {
   QuickActionButtons,
   ButtonWithBadge
 } from '../components/common/ButtonComponents';
-import { Post, OfferData, SortBy, Category, FirestoreTimestamp } from '../types';
+import { Post, SortBy, Category, FirestoreTimestamp } from '../types';
 
 const categories: Category[] = [
   'Pokemon',
@@ -33,7 +32,6 @@ const categories: Category[] = [
 const Home: React.FC = () => {
   const { currentUser } = useAuth();
   const { addToCart, isInCart } = useCart();
-  const { createOffer } = useOffer();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,17 +44,10 @@ const Home: React.FC = () => {
   const [likingPost, setLikingPost] = useState<string | null>(null);
   const [markingSold, setMarkingSold] = useState<string | null>(null);
   const [addingToCart, setAddingToCart] = useState<string | null>(null);
-  const [showOfferModal, setShowOfferModal] = useState<boolean>(false);
-  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
-  const [offerData, setOfferData] = useState<OfferData>({
-    cardTitle: '',
-    cardDescription: '',
-    cardImages: [],
-    cardCondition: 'ดี',
-    offerPrice: '',
-    message: ''
-  });
-  const [uploadingImages, setUploadingImages] = useState<boolean>(false);
+  const [showImageSearchModal, setShowImageSearchModal] = useState<boolean>(false);
+  const [selectedSearchImages, setSelectedSearchImages] = useState<File[]>([]);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
 
   useEffect(() => {
     fetchPosts();
@@ -143,6 +134,14 @@ const Home: React.FC = () => {
     fetchPosts();
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      setCurrentPage(1);
+      fetchPosts();
+    }
+  };
+
   const handleCategoryChange = (e: ChangeEvent<HTMLSelectElement>): void => {
     setCategory(e.target.value);
     setCurrentPage(1);
@@ -196,111 +195,73 @@ const Home: React.FC = () => {
     }
   };
 
-  const handleMakeOffer = (post: Post): void => {
-    if (!currentUser) {
-      toast.error('กรุณาเข้าสู่ระบบก่อน');
-      return;
-    }
 
-    if (currentUser.uid === post.sellerId) {
-      toast.error('ไม่สามารถเสนอสินค้าให้โพสต์ของตัวเองได้');
-      return;
+  // Image Search Modal Handlers
+  const handleImageSearchFileSelect = (e: ChangeEvent<HTMLInputElement>): void => {
+    if (e.target.files && e.target.files.length > 0) {
+      const files = Array.from(e.target.files);
+      // Clean up old URLs
+      imagePreviewUrls.forEach(url => URL.revokeObjectURL(url));
+      // Create new URLs
+      const newUrls = files.map(file => URL.createObjectURL(file));
+      setImagePreviewUrls(newUrls);
+      setSelectedSearchImages(files);
     }
-
-    if (post.status === 'sold') {
-      toast.error('โพสต์นี้ถูกขายแล้ว');
-      return;
-    }
-
-    setSelectedPost(post);
-    setOfferData({
-      cardTitle: '',
-      cardDescription: '',
-      cardImages: [],
-      cardCondition: 'ดี',
-      offerPrice: '',
-      message: ''
-    });
-    setShowOfferModal(true);
+    // Reset input to allow selecting the same file again
+    e.target.value = '';
   };
 
-  const handleImageUpload = async (files: FileList | null): Promise<void> => {
-    if (!files || files.length === 0) return;
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>): void => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
 
-    setUploadingImages(true);
-    try {
-      const formData = new FormData();
-      Array.from(files).forEach(file => {
-        formData.append('images', file);
-      });
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>): void => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
 
-      const response = await axios.post('/api/upload/offer-images', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      });
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>): void => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
 
-      const newImages: string[] = response.data.imageUrls || [];
-      setOfferData(prev => ({
-        ...prev,
-        cardImages: [...prev.cardImages, ...newImages]
-      }));
-
-      toast.success(`อัปโหลดรูปภาพสำเร็จ ${newImages.length} รูป`);
-    } catch (error) {
-      console.error('Error uploading images:', error);
-      toast.error('เกิดข้อผิดพลาดในการอัปโหลดรูปภาพ');
-    } finally {
-      setUploadingImages(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const files = Array.from(e.dataTransfer.files);
+      // Clean up old URLs
+      imagePreviewUrls.forEach(url => URL.revokeObjectURL(url));
+      // Create new URLs
+      const newUrls = files.map(file => URL.createObjectURL(file));
+      setImagePreviewUrls(newUrls);
+      setSelectedSearchImages(files);
     }
   };
 
-  const handleRemoveImage = (index: number): void => {
-    setOfferData(prev => ({
-      ...prev,
-      cardImages: prev.cardImages.filter((_, i) => i !== index)
-    }));
+  const handleImageSearch = (): void => {
+    if (selectedSearchImages.length === 0) {
+      toast.error('กรุณาเลือกรูปภาพ');
+      return;
+    }
+    // TODO: Implement image search functionality
+    toast.info('กำลังค้นหาด้วยรูปภาพ...');
+    // Clean up URLs
+    imagePreviewUrls.forEach(url => URL.revokeObjectURL(url));
+    setShowImageSearchModal(false);
+    setSelectedSearchImages([]);
+    setImagePreviewUrls([]);
   };
 
-  const handleSubmitOffer = async (): Promise<void> => {
-    if (!selectedPost) return;
-
-    if (!offerData.cardTitle.trim()) {
-      toast.error('กรุณากรอกชื่อการ์ด');
-      return;
-    }
-
-    if (!offerData.offerPrice || parseFloat(offerData.offerPrice) <= 0) {
-      toast.error('กรุณากรอกราคาที่เสนอ');
-      return;
-    }
-
-    if (selectedPost.maxPrice && parseFloat(offerData.offerPrice) > selectedPost.maxPrice) {
-      toast.error(`ราคาที่เสนอต้องไม่เกิน ${formatPrice(selectedPost.maxPrice)}`);
-      return;
-    }
-
-    try {
-      const result = await createOffer(selectedPost.id, offerData);
-      if (result.success) {
-        toast.success(result.message);
-        setShowOfferModal(false);
-        setSelectedPost(null);
-        setOfferData({
-          cardTitle: '',
-          cardDescription: '',
-          cardImages: [],
-          cardCondition: 'ดี',
-          offerPrice: '',
-          message: ''
-        });
-      } else {
-        toast.error(result.message);
-      }
-    } catch (error) {
-      toast.error('เกิดข้อผิดพลาดในการส่งข้อเสนอ');
-    }
+  // Cleanup URLs when modal closes
+  const handleCloseImageSearchModal = (): void => {
+    imagePreviewUrls.forEach(url => URL.revokeObjectURL(url));
+    setShowImageSearchModal(false);
+    setSelectedSearchImages([]);
+    setImagePreviewUrls([]);
+    setIsDragging(false);
   };
+
 
   const handleAddToWishlist = async (post: Post): Promise<void> => {
     if (!post || !post.id) return;
@@ -460,14 +421,38 @@ const Home: React.FC = () => {
             <div className="main-search-section">
               <Form onSubmit={handleSearch}>
                 <Row className="g-2">
-                  <Col md={6}>
-                    <Form.Control
-                      type="text"
-                      placeholder="ค้นหาการ์ดที่ต้องการ..."
-                      value={searchTerm}
-                      onChange={(e: ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
-                      className="main-search-input"
-                    />
+                  <Col md={9}>
+                    <div className="search-input-wrapper">
+                      <Form.Control
+                        type="text"
+                        placeholder="คุณกำลังมองหาอะไรอยู่?"
+                        value={searchTerm}
+                        onChange={(e: ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        className="main-search-input"
+                      />
+                      <button 
+                        type="button" 
+                        className="search-visual-icon"
+                        title="ค้นหาด้วยรูปภาพ"
+                        onClick={() => setShowImageSearchModal(true)}
+                      >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                          <circle cx="12" cy="13" r="4"></circle>
+                        </svg>
+                      </button>
+                      <button 
+                        type="submit" 
+                        className="search-icon-btn"
+                        title="ค้นหา"
+                      >
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <circle cx="9" cy="9" r="6" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                          <path d="M13.5 13.5L17 17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                        </svg>
+                      </button>
+                    </div>
                   </Col>
                   <Col md={3}>
                     <Form.Select 
@@ -479,15 +464,6 @@ const Home: React.FC = () => {
                       <option value="priceAsc">ราคาต่ำ → สูง</option>
                       <option value="priceDesc">ราคาสูง → ต่ำ</option>
                     </Form.Select>
-                  </Col>
-                  <Col md={3}>
-                    <button type="submit" className="main-search-btn" disabled={loading}>
-                      {loading ? (
-                        <span className="search-spinner"></span>
-                      ) : (
-                        '🔍 ค้นหา'
-                      )}
-                    </button>
                   </Col>
                 </Row>
               </Form>
@@ -580,25 +556,14 @@ const Home: React.FC = () => {
                             >
                               ❤️
                             </button>
-                            {post.postType === 'buying' ? (
-                              <button 
-                                className="action-btn secondary-action"
-                                onClick={() => handleMakeOffer(post)}
-                                title="เสนอสินค้า"
-                                disabled={currentUser?.uid === post.sellerId || post.status === 'sold'}
-                              >
-                                💰
-                              </button>
-                            ) : (
-                              <button 
-                                className="action-btn secondary-action"
-                                onClick={() => handleAddToCart(post)}
-                                title="เพิ่มในตะกร้า"
-                                disabled={addingToCart === post.id || currentUser?.uid === post.sellerId || post.status === 'sold'}
-                              >
-                                {addingToCart === post.id ? '⏳' : '🛒'}
-                              </button>
-                            )}
+                            <button 
+                              className="action-btn secondary-action"
+                              onClick={() => handleAddToCart(post)}
+                              title="เพิ่มในตะกร้า"
+                              disabled={addingToCart === post.id || currentUser?.uid === post.sellerId || post.status === 'sold'}
+                            >
+                              {addingToCart === post.id ? '⏳' : '🛒'}
+                            </button>
                             <button 
                               className="action-btn secondary-action"
                               onClick={() => {
@@ -620,8 +585,6 @@ const Home: React.FC = () => {
                           <span className="badge sold-badge">✅ ขายแล้ว</span>
                         ) : post.postType === 'auction' ? (
                           <span className="badge auction-badge">🔨 ประมูล</span>
-                        ) : post.postType === 'buying' ? (
-                          <span className="badge buying-badge">🛒 รับซื้อ</span>
                         ) : (
                           <span className="badge sale-badge">💰 ขาย</span>
                         )}
@@ -669,14 +632,6 @@ const Home: React.FC = () => {
                                       </small>
                                     </div>
                                   )}
-                                </div>
-                              )
-                              : post.postType === 'buying' ? (
-                                <div className="buying-price">
-                                  <span className="price-label">ราคาสูงสุด</span>
-                                  <span className="price-value buying-price-value">
-                                    {formatPrice(post.maxPrice)}
-                                  </span>
                                 </div>
                               ) : post.postType === 'sale' && post.saleType === 'deck' ? (
                                 <div className="deck-price">
@@ -767,29 +722,19 @@ const Home: React.FC = () => {
                           ) : (
                             // Show action buttons for other posts
                             <div className="buyer-actions">
-                              {post.postType === 'buying' ? (
-                                <button 
-                                  className="btn-make-offer"
-                                  onClick={() => handleMakeOffer(post)}
-                                  disabled={post.status === 'sold'}
-                                >
-                                  💰 เสนอสินค้า
-                                </button>
-                              ) : (
-                                <button 
-                                  className={`btn-add-cart ${isInCart(post.id) ? 'in-cart' : ''}`}
-                                  onClick={() => handleAddToCart(post)}
-                                  disabled={addingToCart === post.id || post.status === 'sold'}
-                                >
-                                  {addingToCart === post.id ? (
-                                    <span className="loading-cart">⏳</span>
-                                  ) : isInCart(post.id) ? (
-                                    '🛒 อยู่ในตะกร้า'
-                                  ) : (
-                                    '🛒 เพิ่มตะกร้า'
-                                  )}
-                                </button>
-                              )}
+                              <button 
+                                className={`btn-add-cart ${isInCart(post.id) ? 'in-cart' : ''}`}
+                                onClick={() => handleAddToCart(post)}
+                                disabled={addingToCart === post.id || post.status === 'sold'}
+                              >
+                                {addingToCart === post.id ? (
+                                  <span className="loading-cart">⏳</span>
+                                ) : isInCart(post.id) ? (
+                                  '🛒 อยู่ในตะกร้า'
+                                ) : (
+                                  '🛒 เพิ่มตะกร้า'
+                                )}
+                              </button>
                               <button 
                                 className={`btn-add-favorites ${likedPosts.has(post.id) ? 'liked' : ''}`}
                                 onClick={() => handleAddToWishlist(post)}
@@ -828,149 +773,96 @@ const Home: React.FC = () => {
         </Row>
       </Container>
 
-      {/* Offer Modal */}
-      {showOfferModal && selectedPost && (
-        <div className="modal-overlay">
-          <div className="offer-modal">
-            <div className="modal-header">
-              <h5>💰 เสนอสินค้าให้ {selectedPost.title}</h5>
+      {/* Image Search Modal */}
+      {showImageSearchModal && (
+        <div className="modal-overlay" onClick={handleCloseImageSearchModal}>
+          <div className="image-search-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="image-search-header">
+              <h4>Search for similar products by image</h4>
               <button 
                 className="close-btn"
-                onClick={() => setShowOfferModal(false)}
+                onClick={handleCloseImageSearchModal}
               >
                 ✕
               </button>
             </div>
-            <div className="modal-body">
-              <div className="offer-form">
-                <div className="form-group">
-                  <label>ชื่อการ์ดที่เสนอ *</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    value={offerData.cardTitle}
-                    onChange={(e: ChangeEvent<HTMLInputElement>) => setOfferData({...offerData, cardTitle: e.target.value})}
-                    placeholder="เช่น Charizard, Blue-Eyes White Dragon..."
-                  />
-                </div>
-                
-                <div className="form-group">
-                  <label>รายละเอียดการ์ด</label>
-                  <textarea
-                    className="form-control"
-                    rows={3}
-                    value={offerData.cardDescription}
-                    onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setOfferData({...offerData, cardDescription: e.target.value})}
-                    placeholder="อธิบายสภาพและรายละเอียดการ์ด..."
-                  />
-                </div>
-                
-                <div className="form-group">
-                  <label>รูปภาพการ์ด (สูงสุด 5 รูป)</label>
-                  <div className="image-upload-section">
+            <div className="image-search-body">
+              <div 
+                className={`image-drop-zone ${isDragging ? 'dragging' : ''} ${selectedSearchImages.length > 0 ? 'has-images' : ''}`}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
+                {selectedSearchImages.length === 0 ? (
+                  <>
+                    <p className="drop-zone-text">Drag photos to add</p>
+                    <p className="drop-zone-or">-Or-</p>
                     <input
                       type="file"
                       multiple
                       accept="image/*"
-                      onChange={(e: ChangeEvent<HTMLInputElement>) => handleImageUpload(e.target.files)}
-                      className="image-upload-input"
-                      id="offer-image-upload"
-                      disabled={uploadingImages || offerData.cardImages.length >= 5}
+                      onChange={handleImageSearchFileSelect}
+                      className="image-upload-input-hidden"
+                      id="image-search-upload"
                     />
-                    <label 
-                      htmlFor="offer-image-upload" 
-                      className={`image-upload-label ${uploadingImages ? 'uploading' : ''}`}
-                    >
-                      {uploadingImages ? (
-                        <>
-                          <Spinner size="sm" className="me-2" />
-                          กำลังอัปโหลด...
-                        </>
-                      ) : (
-                        '📷 เพิ่มรูปภาพ'
-                      )}
+                    <label htmlFor="image-search-upload" className="image-search-upload-btn">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                        <circle cx="12" cy="13" r="4"></circle>
+                      </svg>
+                      Select image(s)
                     </label>
-                    {offerData.cardImages.length > 0 && (
-                      <div className="uploaded-images">
-                        {offerData.cardImages.map((image, index) => (
-                          <div key={index} className="uploaded-image-item">
-                            <img src={image} alt={`Card ${index + 1}`} />
-                            <button
-                              type="button"
-                              className="remove-image-btn"
-                              onClick={() => handleRemoveImage(index)}
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        ))}
+                  </>
+                ) : (
+                  <div className="selected-images-preview">
+                    {imagePreviewUrls.map((url, index) => (
+                      <div key={index} className="preview-image-item">
+                        <img src={url} alt={`Preview ${index + 1}`} />
+                        <button
+                          type="button"
+                          className="remove-preview-btn"
+                          onClick={() => {
+                            // Revoke the URL for the removed image
+                            URL.revokeObjectURL(imagePreviewUrls[index]);
+                            setImagePreviewUrls(prev => prev.filter((_, i) => i !== index));
+                            setSelectedSearchImages(prev => prev.filter((_, i) => i !== index));
+                          }}
+                        >
+                          ✕
+                        </button>
                       </div>
-                    )}
-                    <small className="text-muted">
-                      รูปภาพจะช่วยให้ผู้ขายเห็นสภาพการ์ดได้ชัดเจนขึ้น
-                    </small>
-                  </div>
-                </div>
-                
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>สภาพการ์ด</label>
-                    <select
-                      className="form-control"
-                      value={offerData.cardCondition}
-                      onChange={(e: ChangeEvent<HTMLSelectElement>) => setOfferData({...offerData, cardCondition: e.target.value})}
-                    >
-                      <option value="ดีมาก">ดีมาก</option>
-                      <option value="ดี">ดี</option>
-                      <option value="ปานกลาง">ปานกลาง</option>
-                      <option value="พอใช้">พอใช้</option>
-                    </select>
-                  </div>
-                  
-                  <div className="form-group">
-                    <label>ราคาที่เสนอ (บาท) *</label>
+                    ))}
+                    <label htmlFor="image-search-upload" className="add-more-images-btn">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                      </svg>
+                    </label>
                     <input
-                      type="number"
-                      className="form-control"
-                      value={offerData.offerPrice}
-                      onChange={(e: ChangeEvent<HTMLInputElement>) => setOfferData({...offerData, offerPrice: e.target.value})}
-                      placeholder={selectedPost.maxPrice ? `สูงสุด ${formatPrice(selectedPost.maxPrice)}` : ''}
-                      max={selectedPost.maxPrice || undefined}
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      onChange={handleImageSearchFileSelect}
+                      className="image-upload-input-hidden"
+                      id="image-search-upload"
                     />
                   </div>
-                </div>
-                
-                <div className="form-group">
-                  <label>ข้อความเพิ่มเติม</label>
-                  <textarea
-                    className="form-control"
-                    rows={2}
-                    value={offerData.message}
-                    onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setOfferData({...offerData, message: e.target.value})}
-                    placeholder="ข้อความถึงผู้ขาย..."
-                  />
-                </div>
-                
-                <div className="offer-info">
-                  <p><strong>ข้อมูลโพสต์:</strong></p>
-                  <p>• ราคาสูงสุด: {formatPrice(selectedPost.maxPrice)}</p>
-                  <p>• หมวดหมู่: {selectedPost.category}</p>
-                  <p>• ผู้ขาย: {selectedPost.sellerName}</p>
-                </div>
+                )}
               </div>
             </div>
-            <div className="modal-footer">
+            <div className="image-search-footer">
               <button 
                 className="btn btn-secondary"
-                onClick={() => setShowOfferModal(false)}
+                onClick={handleCloseImageSearchModal}
               >
-                ยกเลิก
+                Cancel
               </button>
               <button 
                 className="btn btn-primary"
-                onClick={handleSubmitOffer}
+                onClick={handleImageSearch}
+                disabled={selectedSearchImages.length === 0}
               >
-                ส่งข้อเสนอ
+                Search
               </button>
             </div>
           </div>

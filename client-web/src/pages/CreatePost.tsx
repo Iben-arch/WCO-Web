@@ -316,478 +316,747 @@ const CreatePost: React.FC = () => {
   };
 
   return (
-    <Container className="py-4">
+    <Container className="py-5 create-post-container">
       <Row className="justify-content-center">
-        <Col lg={8}>
-          <Card className="sakura-card" style={{
-            border: '1px solid var(--border-light)',
-            borderRadius: 'var(--radius-xl)',
-            boxShadow: 'var(--shadow-xl)',
-            overflow: 'hidden'
-          }}>
-            <Card.Header style={{
-              background: 'linear-gradient(135deg, var(--muted-olive) 0%, var(--faded-copper) 100%)',
-              color: 'var(--text-light)',
+        <Col lg={10} xl={9}>
+          <div className="create-post-wrapper">
+            <Card className="sakura-card create-post-card" style={{
               border: 'none',
-              padding: '1.5rem 2rem'
+              borderRadius: 'var(--radius-xl)',
+              boxShadow: 'var(--shadow-xl)',
+              overflow: 'hidden',
+              background: 'var(--bg-primary)'
             }}>
-              <h3 className="mb-0" style={{
-                fontSize: '1.75rem',
-                fontWeight: '700',
-                textShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
+              <Card.Header className="create-post-header" style={{
+                background: 'linear-gradient(135deg, var(--muted-olive) 0%, var(--faded-copper) 100%)',
+                color: 'var(--text-light)',
+                border: 'none',
+                padding: '2rem 2.5rem',
+                position: 'relative',
+                overflow: 'hidden'
               }}>
-                {formData.postType === 'auction' ? '🔨 ประมูลการ์ดเกม' : '🃏 ขายการ์ดเกม'}
-              </h3>
-            </Card.Header>
-            <Card.Body style={{ padding: '2rem' }}>
-              {error && (
-                <Alert variant="danger" className="alert-sakura-danger">
-                  {error}
-                </Alert>
-              )}
+                <div style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  background: 'radial-gradient(circle at 20% 50%, rgba(255, 255, 255, 0.15) 0%, transparent 50%)',
+                  pointerEvents: 'none'
+                }}></div>
+                <div style={{ position: 'relative', zIndex: 1 }}>
+                  <h2 className="mb-2" style={{
+                    fontSize: '2rem',
+                    fontWeight: '700',
+                    textShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
+                    margin: 0
+                  }}>
+                    {formData.postType === 'auction' ? '🔨 ประมูลการ์ดเกม' : '🃏 ขายการ์ดเกม'}
+                  </h2>
+                  <p className="mb-0" style={{
+                    fontSize: '1rem',
+                    opacity: 0.95,
+                    fontWeight: '400'
+                  }}>
+                    {formData.postType === 'auction' 
+                      ? 'สร้างการประมูลการ์ดเกมของคุณ' 
+                      : 'สร้างโพสต์ขายการ์ดเกมของคุณ'}
+                  </p>
+                </div>
+              </Card.Header>
+              <Card.Body style={{ padding: '2.5rem' }}>
+                {error && (
+                  <Alert variant="danger" className="alert-sakura-danger mb-4" style={{
+                    borderRadius: 'var(--radius-lg)',
+                    border: 'none',
+                    padding: '1rem 1.25rem',
+                    background: 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)',
+                    color: '#991b1b',
+                    boxShadow: 'var(--shadow-sm)'
+                  }}>
+                    <strong>⚠️ เกิดข้อผิดพลาด:</strong> {error}
+                  </Alert>
+                )}
 
-              <Form onSubmit={handleSubmit}>
-                {/* Post Type Selection */}
-                <Row className="mb-3">
-                  <Col>
-                    <Form.Group className="mb-3 form-group-sakura">
-                      <Form.Label className="form-label-sakura">📋 ประเภทโพสต์ *</Form.Label>
-                      <div className="d-flex gap-3">
+                <Form onSubmit={handleSubmit} className="create-post-form">
+                  {/* Section 1: Post Type Selection */}
+                  <div className="form-section mb-4">
+                    <div className="section-header mb-3">
+                      <h5 className="section-title">
+                        <span className="section-icon">📋</span>
+                        ประเภทโพสต์
+                        <span className="required-badge">*</span>
+                      </h5>
+                      <p className="section-description">เลือกประเภทการโพสต์ที่คุณต้องการ</p>
+                    </div>
+                    <div className="radio-group-modern">
+                      <Form.Check
+                        type="radio"
+                        id="postType-sale"
+                        name="postType"
+                        value="sale"
+                        checked={formData.postType === 'sale'}
+                        onChange={handleChange}
+                        label={
+                          <div className="radio-label-content">
+                            <span className="radio-icon">🛒</span>
+                            <div>
+                              <div className="radio-title">ขายการ์ด</div>
+                              <div className="radio-subtitle">Card Sale</div>
+                            </div>
+                          </div>
+                        }
+                        className="radio-option-modern"
+                      />
+                      <Form.Check
+                        type="radio"
+                        id="postType-auction"
+                        name="postType"
+                        value="auction"
+                        checked={formData.postType === 'auction'}
+                        onChange={handleChange}
+                        label={
+                          <div className="radio-label-content">
+                            <span className="radio-icon">🔨</span>
+                            <div>
+                              <div className="radio-title">ประมูลการ์ด</div>
+                              <div className="radio-subtitle">Auction</div>
+                            </div>
+                          </div>
+                        }
+                        className="radio-option-modern"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Section 2: Sale Type Selection */}
+                  {(formData.postType === 'sale' || formData.postType === 'auction') && (
+                    <div className="form-section mb-4">
+                      <div className="section-header mb-3">
+                        <h5 className="section-title">
+                          <span className="section-icon">🎯</span>
+                          ประเภทการขาย
+                          <span className="required-badge">*</span>
+                        </h5>
+                        <p className="section-description">เลือกว่าต้องการขายเป็นเด็คหรือแยกใบ</p>
+                      </div>
+                      <div className="radio-group-modern">
                         <Form.Check
                           type="radio"
-                          id="postType-sale"
-                          name="postType"
-                          value="sale"
-                          checked={formData.postType === 'sale'}
+                          id="saleType-deck"
+                          name="saleType"
+                          value="deck"
+                          checked={formData.saleType === 'deck'}
                           onChange={handleChange}
-                          label="🛒 ขายการ์ด (Card Sale)"
-                          className="form-check-sakura"
+                          label={
+                            <div className="radio-label-content">
+                              <span className="radio-icon">🃏</span>
+                              <div>
+                                <div className="radio-title">
+                                  {formData.postType === 'auction' ? 'ประมูลเป็นเด็ค' : 'ขายเป็นเด็ค'}
+                                </div>
+                                <div className="radio-subtitle">
+                                  {formData.postType === 'auction' ? 'Deck Auction' : 'Deck Sale'}
+                                </div>
+                              </div>
+                            </div>
+                          }
+                          className="radio-option-modern"
                         />
                         <Form.Check
                           type="radio"
-                          id="postType-auction"
-                          name="postType"
-                          value="auction"
-                          checked={formData.postType === 'auction'}
+                          id="saleType-individual"
+                          name="saleType"
+                          value="individual"
+                          checked={formData.saleType === 'individual'}
                           onChange={handleChange}
-                          label="🔨 ประมูลการ์ด (Auction)"
-                          className="form-check-sakura"
+                          label={
+                            <div className="radio-label-content">
+                              <span className="radio-icon">🃏</span>
+                              <div>
+                                <div className="radio-title">
+                                  {formData.postType === 'auction' ? 'ประมูลแยกใบ' : 'ขายแยกใบ'}
+                                </div>
+                                <div className="radio-subtitle">
+                                  {formData.postType === 'auction' ? 'Individual Auction' : 'Individual Cards'}
+                                </div>
+                              </div>
+                            </div>
+                          }
+                          className="radio-option-modern"
                         />
                       </div>
-                    </Form.Group>
-                  </Col>
-                </Row>
-
-                {/* Sale Type Selection - Show for both sale and auction posts */}
-                {(formData.postType === 'sale' || formData.postType === 'auction') && (
-                  <Row className="mb-3">
-                    <Col>
-                      <Form.Group className="mb-3 form-group-sakura">
-                        <Form.Label className="form-label-sakura">🎯 ประเภทการขาย *</Form.Label>
-                        <div className="d-flex gap-3">
-                          <Form.Check
-                            type="radio"
-                            id="saleType-deck"
-                            name="saleType"
-                            value="deck"
-                            checked={formData.saleType === 'deck'}
-                            onChange={handleChange}
-                            label={formData.postType === 'auction' ? "🃏 ประมูลเป็นเด็ค (Deck Auction)" : "🃏 ขายเป็นเด็ค (Deck Sale)"}
-                            className="form-check-sakura"
-                          />
-                          <Form.Check
-                            type="radio"
-                            id="saleType-individual"
-                            name="saleType"
-                            value="individual"
-                            checked={formData.saleType === 'individual'}
-                            onChange={handleChange}
-                            label={formData.postType === 'auction' ? "🃏 ประมูลแยกใบ (Individual Auction)" : "🃏 ขายแยกใบ (Individual Cards)"}
-                            className="form-check-sakura"
-                          />
-                        </div>
-                      </Form.Group>
-                    </Col>
-                  </Row>
-                )}
-
-                <Row>
-                  <Col md={8}>
-                    <Form.Group className="mb-3 form-group-sakura">
-                      <Form.Label className="form-label-sakura">🃏 ชื่อการ์ด (ไม่บังคับ)</Form.Label>
-                      <Form.Control
-                        type="text"
-                        name="title"
-                        placeholder="กรอกชื่อการ์ด (ถ้าต้องการ)"
-                        value={formData.title}
-                        onChange={handleChange}
-                        className="form-control-sakura"
-                      />
-                    </Form.Group>
-                  </Col>
-                  <Col md={4}>
-                    {formData.postType === 'sale' ? (
-                      // Sale type specific price fields
-                      formData.saleType === 'deck' ? (
-                        <Form.Group className="mb-3 form-group-sakura">
-                          <Form.Label className="form-label-sakura">💰 ราคาเด็ค (บาท) *</Form.Label>
-                          <Form.Control
-                            type="number"
-                            name="price"
-                            placeholder="0"
-                            value={formData.price}
-                            onChange={handleChange}
-                            className="form-control-sakura"
-                            min="0"
-                            step="0.01"
-                            required
-                          />
-                          <Form.Text className="text-muted">
-                            ราคาสำหรับทั้งเด็ค
-                          </Form.Text>
-                        </Form.Group>
-                      ) : (
-                        <Form.Group className="mb-3 form-group-sakura">
-                          <Form.Label className="form-label-sakura">💰 ราคาต่อใบ (บาท) *</Form.Label>
-                          <Form.Control
-                            type="number"
-                            name="individualPrice"
-                            placeholder="0"
-                            value={formData.individualPrice}
-                            onChange={handleChange}
-                            className="form-control-sakura"
-                            min="0"
-                            step="0.01"
-                            required
-                          />
-                        </Form.Group>
-                      )
-                    ) : formData.postType === 'auction' ? (
-                      // Auction type specific price fields
-                      formData.saleType === 'deck' ? (
-                        <Form.Group className="mb-3 form-group-sakura">
-                          <Form.Label className="form-label-sakura">🚀 ราคาเริ่มต้นเด็ค (บาท) *</Form.Label>
-                          <Form.Control
-                            type="number"
-                            name="startingBid"
-                            placeholder="0"
-                            value={formData.startingBid}
-                            onChange={handleChange}
-                            className="form-control-sakura"
-                            min="0"
-                            step="0.01"
-                            required
-                          />
-                          <Form.Text className="text-muted">
-                            ราคาเริ่มต้นสำหรับทั้งเด็ค
-                          </Form.Text>
-                        </Form.Group>
-                      ) : (
-                        <Form.Group className="mb-3 form-group-sakura">
-                          <Form.Label className="form-label-sakura">🚀 ราคาเริ่มต้นต่อใบ (บาท) *</Form.Label>
-                          <Form.Control
-                            type="number"
-                            name="startingBid"
-                            placeholder="0"
-                            value={formData.startingBid}
-                            onChange={handleChange}
-                            className="form-control-sakura"
-                            min="0"
-                            step="0.01"
-                            required
-                          />
-                          <Form.Text className="text-muted">
-                            ราคาเริ่มต้นต่อการ์ด 1 ใบ
-                          </Form.Text>
-                        </Form.Group>
-                      )
-                    ) : null}
-                  </Col>
-                </Row>
-
-                {/* Deck-specific fields */}
-                {((formData.postType === 'sale' && formData.saleType === 'deck') || (formData.postType === 'auction' && formData.saleType === 'deck')) && (
-                  <Row className="mb-3">
-                    <Col md={6}>
-                      <Form.Group className="mb-3 form-group-sakura">
-                        <Form.Label className="form-label-sakura">🔢 จำนวนการ์ดในเด็ค *</Form.Label>
-                        <Form.Control
-                          type="number"
-                          name="cardCount"
-                          placeholder="เช่น 60"
-                          value={formData.cardCount}
-                          onChange={handleChange}
-                          className="form-control-sakura"
-                          min="1"
-                          required
-                        />
-                        <Form.Text className="text-muted">
-                          จำนวนการ์ดทั้งหมดในเด็ค
-                        </Form.Text>
-                      </Form.Group>
-                    </Col>
-                    <Col md={6}>
-                      <Form.Group className="mb-3 form-group-sakura">
-                        <Form.Label className="form-label-sakura">📝 รายละเอียดเด็ค</Form.Label>
-                        <Form.Control
-                          type="text"
-                          name="deckDescription"
-                          placeholder="เช่น Blue-Eyes Deck, Dragon Deck..."
-                          value={formData.deckDescription || ''}
-                          onChange={handleChange}
-                          className="form-control-sakura"
-                        />
-                        <Form.Text className="text-muted">
-                          อธิบายประเภทเด็ค (ไม่บังคับ)
-                        </Form.Text>
-                      </Form.Group>
-                    </Col>
-                  </Row>
-                )}
-
-                {/* Individual card-specific fields */}
-                {((formData.postType === 'sale' && formData.saleType === 'individual') || (formData.postType === 'auction' && formData.saleType === 'individual')) && (
-                  <Row className="mb-3">
-                    <Col md={6}>
-                      <Form.Group className="mb-3 form-group-sakura">
-                        <Form.Label className="form-label-sakura">📦 จำนวนที่ขายได้ *</Form.Label>
-                        <Form.Control
-                          type="number"
-                          name="availableQuantity"
-                          placeholder="เช่น 10"
-                          value={formData.availableQuantity}
-                          onChange={handleChange}
-                          className="form-control-sakura"
-                          min="1"
-                          required
-                        />
-                        <Form.Text className="text-muted">
-                          จำนวนการ์ดที่พร้อมขาย
-                        </Form.Text>
-                      </Form.Group>
-                    </Col>
-                    <Col md={6}>
-                      <Form.Group className="mb-3 form-group-sakura">
-                        <Form.Label className="form-label-sakura">📂 หมวดหมู่ (ไม่บังคับ)</Form.Label>
-                        <Form.Select
-                          name="category"
-                          value={formData.category}
-                          onChange={handleChange}
-                          className="form-control-sakura"
-                        >
-                          <option value="">เลือกหมวดหมู่ (ถ้าต้องการ)</option>
-                          {categories.map(cat => (
-                            <option key={cat} value={cat}>{cat}</option>
-                          ))}
-                        </Form.Select>
-                      </Form.Group>
-                    </Col>
-                  </Row>
-                )}
-
-                {/* Category field for deck sales and auctions */}
-                {(formData.postType === 'auction' || (formData.postType === 'sale' && formData.saleType === 'deck')) && (
-                  <Row className="mb-3">
-                    <Col md={6}>
-                      <Form.Group className="mb-3 form-group-sakura">
-                        <Form.Label className="form-label-sakura">📂 หมวดหมู่ (ไม่บังคับ)</Form.Label>
-                        <Form.Select
-                          name="category"
-                          value={formData.category}
-                          onChange={handleChange}
-                          className="form-control-sakura"
-                        >
-                          <option value="">เลือกหมวดหมู่ (ถ้าต้องการ)</option>
-                          {categories.map(cat => (
-                            <option key={cat} value={cat}>{cat}</option>
-                          ))}
-                        </Form.Select>
-                      </Form.Group>
-                    </Col>
-                  </Row>
-                )}
-
-                {/* Auction-specific fields */}
-                {formData.postType === 'auction' && (
-                  <Row>
-                    <Col md={6}>
-                      <Form.Group className="mb-3 form-group-sakura">
-                        <Form.Label className="form-label-sakura">⏰ วันสิ้นสุดการประมูล *</Form.Label>
-                        <Form.Control
-                          type="datetime-local"
-                          name="auctionEndDate"
-                          value={formData.auctionEndDate}
-                          onChange={handleChange}
-                          className="form-control-sakura"
-                          min={new Date().toISOString().slice(0, 16)}
-                          required
-                        />
-                      </Form.Group>
-                    </Col>
-                    <Col md={6}>
-                      <Form.Group className="mb-3 form-group-sakura">
-                        <Form.Label className="form-label-sakura">💎 ราคาซื้อทันที (บาท)</Form.Label>
-                        <Form.Control
-                          type="number"
-                          name="buyNowPrice"
-                          placeholder="ไม่บังคับ"
-                          value={formData.buyNowPrice}
-                          onChange={handleChange}
-                          className="form-control-sakura"
-                          min="0"
-                          step="0.01"
-                        />
-                        <Form.Text className="text-muted">
-                          ราคาที่ผู้ซื้อสามารถซื้อได้ทันทีโดยไม่ต้องรอการประมูล
-                        </Form.Text>
-                      </Form.Group>
-                    </Col>
-                  </Row>
-                )}
-
-                <Form.Group className="mb-3 form-group-sakura">
-                  <Form.Label className="form-label-sakura">📝 รายละเอียด (ไม่บังคับ)</Form.Label>
-                  <Form.Control
-                    as="textarea"
-                    rows={4}
-                    name="description"
-                    placeholder="อธิบายรายละเอียดการ์ด (ถ้าต้องการ)..."
-                    value={formData.description}
-                    onChange={handleChange}
-                    className="form-control-sakura"
-                  />
-                </Form.Group>
-
-                <Form.Group className="mb-3 form-group-sakura">
-                  <Form.Label className="form-label-sakura">📷 รูปภาพการ์ด *</Form.Label>
-                  <Form.Control
-                    type="file"
-                    multiple
-                    accept="image/*"
-                    onChange={handleImageChange}
-                    className="form-control-sakura"
-                  />
-                  <Form.Text className="text-muted">
-                    รองรับไฟล์ JPG, PNG, GIF ขนาดไม่เกิน 10MB ต่อไฟล์ (บังคับอย่างน้อย 1 รูป)
-                  </Form.Text>
-                  {formData.images.length > 0 && (
-                    <div className="mt-2">
-                      <small className="text-success">
-                        ✅ เลือกแล้ว {formData.images.length} ไฟล์
-                      </small>
                     </div>
                   )}
-                  
-                  {/* Card Detection Section - Only show for individual sale */}
-                  {formData.postType === 'sale' && formData.saleType === 'individual' && formData.images.length > 0 && (
-                    <div className="card-detection-section mt-3">
-                      <div className="d-flex justify-content-between align-items-center mb-2">
-                        <h6 className="mb-0">
-                          <i className="fas fa-magic me-2"></i>
-                          การแยกการ์ดอัตโนมัติ
-                        </h6>
-                        <Button
-                          variant="outline-primary"
-                          size="sm"
-                          onClick={processImagesForCards}
-                          disabled={processingCards}
-                        >
-                          {processingCards ? (
-                            <>
-                              <Spinner size="sm" className="me-2" />
-                              กำลังประมวลผล...
-                            </>
-                          ) : (
-                            <>
-                              <i className="fas fa-cogs me-2"></i>
-                              แยกการ์ดอัตโนมัติ
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                      <Form.Text className="text-muted">
-                        ใช้ AI ในการแยกการ์ดแต่ละใบจากภาพอัตโนมัติ
-                      </Form.Text>
-                      
-                      {detectedCards.length > 0 && (
-                        <div className="detected-cards-preview mt-3">
-                          <h6 className="text-success">
-                            <i className="fas fa-check-circle me-2"></i>
-                            พบการ์ด {detectedCards.length} ใบ - กรอกราคาและจำนวนต่อใบ
-                          </h6>
-                          <div className="cards-preview-grid">
-                            {detectedCards.map((card, index) => (
-                              <div key={card.id} className="card-preview-item">
-                                <img
-                                  src={card.imageUrl}
-                                  alt={`การ์ด ${index + 1}`}
-                                  className="card-preview-image"
+
+                  {/* Section 3: Basic Information */}
+                  <div className="form-section mb-4">
+                    <div className="section-header mb-3">
+                      <h5 className="section-title">
+                        <span className="section-icon">📝</span>
+                        ข้อมูลพื้นฐาน
+                      </h5>
+                      <p className="section-description">กรอกข้อมูลพื้นฐานของการ์ด</p>
+                    </div>
+                    <Row>
+                      <Col md={8}>
+                        <Form.Group className="mb-3 form-group-sakura">
+                          <Form.Label className="form-label-sakura">
+                            🃏 ชื่อการ์ด
+                            <span className="optional-badge">(ไม่บังคับ)</span>
+                          </Form.Label>
+                          <Form.Control
+                            type="text"
+                            name="title"
+                            placeholder="เช่น Pikachu VMAX, Blue-Eyes White Dragon..."
+                            value={formData.title}
+                            onChange={handleChange}
+                            className="form-control-sakura"
+                          />
+                          <Form.Text className="form-help-text">
+                            กรอกชื่อการ์ดเฉพาะ (ถ้าต้องการระบุ)
+                          </Form.Text>
+                        </Form.Group>
+                      </Col>
+                      <Col md={4}>
+                        {formData.postType === 'sale' ? (
+                          formData.saleType === 'deck' ? (
+                            <Form.Group className="mb-3 form-group-sakura">
+                              <Form.Label className="form-label-sakura">
+                                💰 ราคาเด็ค (บาท)
+                                <span className="required-badge">*</span>
+                              </Form.Label>
+                              <div className="input-with-icon">
+                                <span className="input-icon-left">฿</span>
+                                <Form.Control
+                                  type="number"
+                                  name="price"
+                                  placeholder="0.00"
+                                  value={formData.price}
+                                  onChange={handleChange}
+                                  className="form-control-sakura"
+                                  min="0"
+                                  step="0.01"
+                                  required
                                 />
-                                <div className="card-preview-info">
-                                  <small className="text-muted">การ์ด #{index + 1}</small>
-                                </div>
-                                <div className="mt-2">
-                                  <Form.Control
-                                    type="number"
-                                    placeholder="จำนวน"
-                                    min="1"
-                                    value={card.quantity}
-                                    onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                                      const val = e.target.value;
-                                      setDetectedCards(prev => prev.map(c => c.id === card.id ? { ...c, quantity: val } : c));
-                                    }}
-                                    className="form-control-sakura mb-2"
-                                  />
-                                  <Form.Control
-                                    type="number"
-                                    placeholder="ราคา (บาท)"
-                                    min="0"
-                                    step="0.01"
-                                    value={card.price}
-                                    onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                                      const val = e.target.value;
-                                      setDetectedCards(prev => prev.map(c => c.id === card.id ? { ...c, price: val } : c));
-                                    }}
-                                    className="form-control-sakura"
-                                  />
-                                </div>
+                              </div>
+                              <Form.Text className="form-help-text">
+                                ราคาสำหรับทั้งเด็ค
+                              </Form.Text>
+                            </Form.Group>
+                          ) : (
+                            <Form.Group className="mb-3 form-group-sakura">
+                              <Form.Label className="form-label-sakura">
+                                💰 ราคาต่อใบ (บาท)
+                                <span className="required-badge">*</span>
+                              </Form.Label>
+                              <div className="input-with-icon">
+                                <span className="input-icon-left">฿</span>
+                                <Form.Control
+                                  type="number"
+                                  name="individualPrice"
+                                  placeholder="0.00"
+                                  value={formData.individualPrice}
+                                  onChange={handleChange}
+                                  className="form-control-sakura"
+                                  min="0"
+                                  step="0.01"
+                                  required
+                                />
+                              </div>
+                            </Form.Group>
+                          )
+                        ) : formData.postType === 'auction' ? (
+                          formData.saleType === 'deck' ? (
+                            <Form.Group className="mb-3 form-group-sakura">
+                              <Form.Label className="form-label-sakura">
+                                🚀 ราคาเริ่มต้นเด็ค (บาท)
+                                <span className="required-badge">*</span>
+                              </Form.Label>
+                              <div className="input-with-icon">
+                                <span className="input-icon-left">฿</span>
+                                <Form.Control
+                                  type="number"
+                                  name="startingBid"
+                                  placeholder="0.00"
+                                  value={formData.startingBid}
+                                  onChange={handleChange}
+                                  className="form-control-sakura"
+                                  min="0"
+                                  step="0.01"
+                                  required
+                                />
+                              </div>
+                              <Form.Text className="form-help-text">
+                                ราคาเริ่มต้นสำหรับทั้งเด็ค
+                              </Form.Text>
+                            </Form.Group>
+                          ) : (
+                            <Form.Group className="mb-3 form-group-sakura">
+                              <Form.Label className="form-label-sakura">
+                                🚀 ราคาเริ่มต้นต่อใบ (บาท)
+                                <span className="required-badge">*</span>
+                              </Form.Label>
+                              <div className="input-with-icon">
+                                <span className="input-icon-left">฿</span>
+                                <Form.Control
+                                  type="number"
+                                  name="startingBid"
+                                  placeholder="0.00"
+                                  value={formData.startingBid}
+                                  onChange={handleChange}
+                                  className="form-control-sakura"
+                                  min="0"
+                                  step="0.01"
+                                  required
+                                />
+                              </div>
+                              <Form.Text className="form-help-text">
+                                ราคาเริ่มต้นต่อการ์ด 1 ใบ
+                              </Form.Text>
+                            </Form.Group>
+                          )
+                        ) : null}
+                      </Col>
+                    </Row>
+                  </div>
+
+                  {/* Section 4: Deck-specific fields */}
+                  {((formData.postType === 'sale' && formData.saleType === 'deck') || (formData.postType === 'auction' && formData.saleType === 'deck')) && (
+                    <div className="form-section mb-4">
+                      <div className="section-header mb-3">
+                        <h5 className="section-title">
+                          <span className="section-icon">🃏</span>
+                          ข้อมูลเด็ค
+                        </h5>
+                        <p className="section-description">กรอกข้อมูลเกี่ยวกับเด็คการ์ด</p>
+                      </div>
+                      <Row>
+                        <Col md={6}>
+                          <Form.Group className="mb-3 form-group-sakura">
+                            <Form.Label className="form-label-sakura">
+                              🔢 จำนวนการ์ดในเด็ค
+                              <span className="required-badge">*</span>
+                            </Form.Label>
+                            <Form.Control
+                              type="number"
+                              name="cardCount"
+                              placeholder="เช่น 60"
+                              value={formData.cardCount}
+                              onChange={handleChange}
+                              className="form-control-sakura"
+                              min="1"
+                              required
+                            />
+                            <Form.Text className="form-help-text">
+                              จำนวนการ์ดทั้งหมดในเด็ค
+                            </Form.Text>
+                          </Form.Group>
+                        </Col>
+                        <Col md={6}>
+                          <Form.Group className="mb-3 form-group-sakura">
+                            <Form.Label className="form-label-sakura">
+                              📝 รายละเอียดเด็ค
+                              <span className="optional-badge">(ไม่บังคับ)</span>
+                            </Form.Label>
+                            <Form.Control
+                              type="text"
+                              name="deckDescription"
+                              placeholder="เช่น Blue-Eyes Deck, Dragon Deck..."
+                              value={formData.deckDescription || ''}
+                              onChange={handleChange}
+                              className="form-control-sakura"
+                            />
+                            <Form.Text className="form-help-text">
+                              อธิบายประเภทเด็ค (ไม่บังคับ)
+                            </Form.Text>
+                          </Form.Group>
+                        </Col>
+                      </Row>
+                    </div>
+                  )}
+
+                  {/* Section 5: Individual card-specific fields */}
+                  {((formData.postType === 'sale' && formData.saleType === 'individual') || (formData.postType === 'auction' && formData.saleType === 'individual')) && (
+                    <div className="form-section mb-4">
+                      <div className="section-header mb-3">
+                        <h5 className="section-title">
+                          <span className="section-icon">🃏</span>
+                          ข้อมูลการ์ดแยกใบ
+                        </h5>
+                        <p className="section-description">กรอกข้อมูลเกี่ยวกับการ์ดแยกใบ</p>
+                      </div>
+                      <Row>
+                        <Col md={6}>
+                          <Form.Group className="mb-3 form-group-sakura">
+                            <Form.Label className="form-label-sakura">
+                              📦 จำนวนที่ขายได้
+                              <span className="required-badge">*</span>
+                            </Form.Label>
+                            <Form.Control
+                              type="number"
+                              name="availableQuantity"
+                              placeholder="เช่น 10"
+                              value={formData.availableQuantity}
+                              onChange={handleChange}
+                              className="form-control-sakura"
+                              min="1"
+                              required
+                            />
+                            <Form.Text className="form-help-text">
+                              จำนวนการ์ดที่พร้อมขาย
+                            </Form.Text>
+                          </Form.Group>
+                        </Col>
+                        <Col md={6}>
+                          <Form.Group className="mb-3 form-group-sakura">
+                            <Form.Label className="form-label-sakura">
+                              📂 หมวดหมู่
+                              <span className="optional-badge">(ไม่บังคับ)</span>
+                            </Form.Label>
+                            <Form.Select
+                              name="category"
+                              value={formData.category}
+                              onChange={handleChange}
+                              className="form-control-sakura"
+                            >
+                              <option value="">เลือกหมวดหมู่ (ถ้าต้องการ)</option>
+                              {categories.map(cat => (
+                                <option key={cat} value={cat}>{cat}</option>
+                              ))}
+                            </Form.Select>
+                            <Form.Text className="form-help-text">
+                              เลือกประเภทการ์ดเกม
+                            </Form.Text>
+                          </Form.Group>
+                        </Col>
+                      </Row>
+                    </div>
+                  )}
+
+                  {/* Category field for deck sales and auctions */}
+                  {(formData.postType === 'auction' || (formData.postType === 'sale' && formData.saleType === 'deck')) && (
+                    <div className="form-section mb-4">
+                      <Row>
+                        <Col md={6}>
+                          <Form.Group className="mb-3 form-group-sakura">
+                            <Form.Label className="form-label-sakura">
+                              📂 หมวดหมู่
+                              <span className="optional-badge">(ไม่บังคับ)</span>
+                            </Form.Label>
+                            <Form.Select
+                              name="category"
+                              value={formData.category}
+                              onChange={handleChange}
+                              className="form-control-sakura"
+                            >
+                              <option value="">เลือกหมวดหมู่ (ถ้าต้องการ)</option>
+                              {categories.map(cat => (
+                                <option key={cat} value={cat}>{cat}</option>
+                              ))}
+                            </Form.Select>
+                            <Form.Text className="form-help-text">
+                              เลือกประเภทการ์ดเกม
+                            </Form.Text>
+                          </Form.Group>
+                        </Col>
+                      </Row>
+                    </div>
+                  )}
+
+                  {/* Section 6: Auction-specific fields */}
+                  {formData.postType === 'auction' && (
+                    <div className="form-section mb-4">
+                      <div className="section-header mb-3">
+                        <h5 className="section-title">
+                          <span className="section-icon">🔨</span>
+                          ข้อมูลการประมูล
+                        </h5>
+                        <p className="section-description">กรอกข้อมูลเกี่ยวกับการประมูล</p>
+                      </div>
+                      <Row>
+                        <Col md={6}>
+                          <Form.Group className="mb-3 form-group-sakura">
+                            <Form.Label className="form-label-sakura">
+                              ⏰ วันสิ้นสุดการประมูล
+                              <span className="required-badge">*</span>
+                            </Form.Label>
+                            <Form.Control
+                              type="datetime-local"
+                              name="auctionEndDate"
+                              value={formData.auctionEndDate}
+                              onChange={handleChange}
+                              className="form-control-sakura"
+                              min={new Date().toISOString().slice(0, 16)}
+                              required
+                            />
+                            <Form.Text className="form-help-text">
+                              เลือกวันและเวลาที่การประมูลจะสิ้นสุด
+                            </Form.Text>
+                          </Form.Group>
+                        </Col>
+                        <Col md={6}>
+                          <Form.Group className="mb-3 form-group-sakura">
+                            <Form.Label className="form-label-sakura">
+                              💎 ราคาซื้อทันที (บาท)
+                              <span className="optional-badge">(ไม่บังคับ)</span>
+                            </Form.Label>
+                            <div className="input-with-icon">
+                              <span className="input-icon-left">฿</span>
+                              <Form.Control
+                                type="number"
+                                name="buyNowPrice"
+                                placeholder="0.00"
+                                value={formData.buyNowPrice}
+                                onChange={handleChange}
+                                className="form-control-sakura"
+                                min="0"
+                                step="0.01"
+                              />
+                            </div>
+                            <Form.Text className="form-help-text">
+                              ราคาที่ผู้ซื้อสามารถซื้อได้ทันทีโดยไม่ต้องรอการประมูล
+                            </Form.Text>
+                          </Form.Group>
+                        </Col>
+                      </Row>
+                    </div>
+                  )}
+
+                  {/* Section 7: Description */}
+                  <div className="form-section mb-4">
+                    <div className="section-header mb-3">
+                      <h5 className="section-title">
+                        <span className="section-icon">📝</span>
+                        รายละเอียดเพิ่มเติม
+                        <span className="optional-badge">(ไม่บังคับ)</span>
+                      </h5>
+                      <p className="section-description">อธิบายรายละเอียดเพิ่มเติมเกี่ยวกับการ์ด</p>
+                    </div>
+                    <Form.Group className="mb-3 form-group-sakura">
+                      <Form.Control
+                        as="textarea"
+                        rows={5}
+                        name="description"
+                        placeholder="เช่น สภาพการ์ด, เงื่อนไขการขาย, ข้อมูลเพิ่มเติม..."
+                        value={formData.description}
+                        onChange={handleChange}
+                        className="form-control-sakura"
+                        style={{ resize: 'vertical' }}
+                      />
+                      <Form.Text className="form-help-text">
+                        อธิบายรายละเอียดเพิ่มเติม เช่น สภาพการ์ด, เงื่อนไขการขาย, ข้อมูลเพิ่มเติม
+                      </Form.Text>
+                    </Form.Group>
+                  </div>
+
+                  {/* Section 8: Images */}
+                  <div className="form-section mb-4">
+                    <div className="section-header mb-3">
+                      <h5 className="section-title">
+                        <span className="section-icon">📷</span>
+                        รูปภาพการ์ด
+                        <span className="required-badge">*</span>
+                      </h5>
+                      <p className="section-description">อัปโหลดรูปภาพการ์ดของคุณ (อย่างน้อย 1 รูป)</p>
+                    </div>
+                    <Form.Group className="mb-3 form-group-sakura">
+                      <div className="file-upload-wrapper">
+                        <Form.Control
+                          type="file"
+                          multiple
+                          accept="image/*"
+                          onChange={handleImageChange}
+                          className="form-control-sakura file-input-modern"
+                          id="image-upload"
+                        />
+                        <label htmlFor="image-upload" className="file-upload-label">
+                          <div className="file-upload-content">
+                            <span className="file-upload-icon">📤</span>
+                            <div>
+                              <div className="file-upload-text">
+                                คลิกเพื่อเลือกไฟล์ หรือลากไฟล์มาวางที่นี่
+                              </div>
+                              <div className="file-upload-hint">
+                                รองรับ JPG, PNG, GIF (สูงสุด 5 ไฟล์, ไม่เกิน 10MB ต่อไฟล์)
+                              </div>
+                            </div>
+                          </div>
+                        </label>
+                      </div>
+                      {formData.images.length > 0 && (
+                        <div className="file-selected-info mt-3">
+                          <div className="file-count-badge">
+                            <span className="file-count-icon">✅</span>
+                            <span>เลือกแล้ว {formData.images.length} ไฟล์</span>
+                          </div>
+                          <div className="file-list mt-2">
+                            {Array.from(formData.images).map((file, index) => (
+                              <div key={index} className="file-item">
+                                <span className="file-item-icon">🖼️</span>
+                                <span className="file-item-name">{file.name}</span>
+                                <span className="file-item-size">
+                                  ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                                </span>
                               </div>
                             ))}
                           </div>
                         </div>
                       )}
+                    </Form.Group>
+                  
+                    {/* Card Detection Section - Only show for individual sale */}
+                    {formData.postType === 'sale' && formData.saleType === 'individual' && formData.images.length > 0 && (
+                      <div className="card-detection-section mt-4">
+                        <div className="detection-header">
+                          <div>
+                            <h6 className="detection-title">
+                              <span className="detection-icon">✨</span>
+                              การแยกการ์ดอัตโนมัติ
+                            </h6>
+                            <p className="detection-description">
+                              ใช้ AI ในการแยกการ์ดแต่ละใบจากภาพอัตโนมัติ
+                            </p>
+                          </div>
+                          <Button
+                            variant="outline-primary"
+                            size="sm"
+                            onClick={processImagesForCards}
+                            disabled={processingCards}
+                            className="detection-button"
+                          >
+                            {processingCards ? (
+                              <>
+                                <Spinner size="sm" className="me-2" />
+                                กำลังประมวลผล...
+                              </>
+                            ) : (
+                              <>
+                                <span className="me-2">🔍</span>
+                                แยกการ์ดอัตโนมัติ
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                        
+                        {detectedCards.length > 0 && (
+                          <div className="detected-cards-preview mt-4">
+                            <div className="detected-cards-header">
+                              <div className="success-badge">
+                                <span className="success-icon">✅</span>
+                                <span>พบการ์ด {detectedCards.length} ใบ</span>
+                              </div>
+                              <p className="detected-cards-hint">
+                                กรุณากรอกราคาและจำนวนต่อใบให้ครบทุกการ์ด
+                              </p>
+                            </div>
+                            <div className="cards-preview-grid">
+                              {detectedCards.map((card, index) => (
+                                <div key={card.id} className="card-preview-item">
+                                  <div className="card-preview-image-wrapper">
+                                    <img
+                                      src={card.imageUrl}
+                                      alt={`การ์ด ${index + 1}`}
+                                      className="card-preview-image"
+                                    />
+                                    <div className="card-preview-number">#{index + 1}</div>
+                                  </div>
+                                  <div className="card-preview-form">
+                                    <Form.Group className="mb-2">
+                                      <Form.Label className="card-form-label">จำนวน</Form.Label>
+                                      <Form.Control
+                                        type="number"
+                                        placeholder="1"
+                                        min="1"
+                                        value={card.quantity}
+                                        onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                                          const val = e.target.value;
+                                          setDetectedCards(prev => prev.map(c => c.id === card.id ? { ...c, quantity: val } : c));
+                                        }}
+                                        className="form-control-sakura"
+                                      />
+                                    </Form.Group>
+                                    <Form.Group>
+                                      <Form.Label className="card-form-label">ราคา (บาท)</Form.Label>
+                                      <div className="input-with-icon">
+                                        <span className="input-icon-left">฿</span>
+                                        <Form.Control
+                                          type="number"
+                                          placeholder="0.00"
+                                          min="0"
+                                          step="0.01"
+                                          value={card.price}
+                                          onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                                            const val = e.target.value;
+                                            setDetectedCards(prev => prev.map(c => c.id === card.id ? { ...c, price: val } : c));
+                                          }}
+                                          className="form-control-sakura"
+                                        />
+                                      </div>
+                                    </Form.Group>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Upload Progress */}
+                  {uploadProgress > 0 && uploadProgress < 100 && (
+                    <div className="upload-progress-section mb-4">
+                      <div className="progress-label mb-2">
+                        <span>📤 กำลังอัปโหลด...</span>
+                        <span className="progress-percentage">{uploadProgress}%</span>
+                      </div>
+                      <ProgressBar 
+                        now={uploadProgress} 
+                        label={`${uploadProgress}%`}
+                        className="upload-progress-bar"
+                        style={{
+                          height: '10px',
+                          borderRadius: 'var(--radius-full)',
+                          backgroundColor: 'var(--gray-200)'
+                        }}
+                      />
                     </div>
                   )}
-                </Form.Group>
 
-                {uploadProgress > 0 && uploadProgress < 100 && (
-                  <div className="mb-3">
-                    <ProgressBar now={uploadProgress} label={`${uploadProgress}%`} />
+                  {/* Submit Buttons */}
+                  <div className="form-actions">
+                    <PrimaryActionButton
+                      type="submit"
+                      disabled={loading}
+                      className="submit-button"
+                    >
+                      {loading ? (
+                        <>
+                          <Spinner size="sm" className="me-2" />
+                          {formData.postType === 'auction' ? 'กำลังสร้างการประมูล...' : 'กำลังสร้างโพสต์...'}
+                        </>
+                      ) : (
+                        <>
+                          <span className="me-2">
+                            {formData.postType === 'auction' ? '🔨' : '✅'}
+                          </span>
+                          {formData.postType === 'auction' ? 'สร้างการประมูล' : 'สร้างโพสต์'}
+                        </>
+                      )}
+                    </PrimaryActionButton>
+                    <SecondaryActionButton
+                      type="button"
+                      onClick={() => navigate('/')}
+                      className="cancel-button"
+                    >
+                      ยกเลิก
+                    </SecondaryActionButton>
                   </div>
-                )}
-
-                <div className="d-flex gap-2">
-                  <Button
-                    type="submit"
-                    className="btn-tcg-primary btn-tcg-lg"
-                    disabled={loading}
-                  >
-                    {loading 
-                      ? (formData.postType === 'auction' ? 'กำลังสร้างการประมูล...' : 'กำลังสร้างโพสต์...')
-                      : (formData.postType === 'auction' ? 'สร้างการประมูล' : 'สร้างโพสต์')
-                    }
-                  </Button>
-                  <Button
-                    type="button"
-                    className="btn-tcg-outline btn-tcg-lg"
-                    onClick={() => navigate('/')}
-                  >
-                    ยกเลิก
-                  </Button>
-                </div>
-              </Form>
-            </Card.Body>
-          </Card>
+                </Form>
+              </Card.Body>
+            </Card>
+          </div>
         </Col>
       </Row>
     </Container>
