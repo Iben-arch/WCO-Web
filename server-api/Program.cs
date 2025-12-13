@@ -13,12 +13,25 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// Get Firebase configuration
+var firebaseProjectId = builder.Configuration["Firebase:ProjectId"];
+
 // Register custom services
-builder.Services.AddScoped<FirebaseService>();
+// Note: FirebaseService will validate credentials when first used, not at startup
+try
+{
+    builder.Services.AddScoped<FirebaseService>();
+    Console.WriteLine("✅ FirebaseService registered");
+}
+catch (Exception ex)
+{
+    Console.Error.WriteLine($"❌ Error registering FirebaseService: {ex.Message}");
+    throw;
+}
+
 builder.Services.AddScoped<CloudinaryService>();
 
 // Add Firebase Authentication
-var firebaseProjectId = builder.Configuration["Firebase:ProjectId"];
 if (!string.IsNullOrEmpty(firebaseProjectId))
 {
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
