@@ -55,12 +55,19 @@ const Register: React.FC = () => {
       navigate('/');
     } catch (error: any) {
       console.error('Register error:', error);
-      if (error.code === 'auth/email-already-in-use') {
+      
+      // Handle different types of errors from server API
+      if (error.response?.data?.error) {
+        // Server API error
+        setError(error.response.data.error);
+      } else if (error.code === 'auth/email-already-in-use' || error.message?.includes('อีเมลนี้ถูกใช้งานแล้ว')) {
         setError('อีเมลนี้ถูกใช้งานแล้ว');
-      } else if (error.code === 'auth/weak-password') {
+      } else if (error.code === 'auth/weak-password' || error.message?.includes('รหัสผ่านไม่แข็งแรงพอ')) {
         setError('รหัสผ่านไม่แข็งแรงพอ');
+      } else if (error.message) {
+        setError(error.message);
       } else {
-        setError('เกิดข้อผิดพลาดในการสมัครสมาชิก');
+        setError('เกิดข้อผิดพลาดในการสมัครสมาชิก กรุณาลองใหม่อีกครั้ง');
       }
     } finally {
       setLoading(false);
@@ -69,7 +76,7 @@ const Register: React.FC = () => {
 
   return (
     <div className="auth-page-container" style={{
-      background: 'linear-gradient(135deg, var(--vanilla-cream) 0%, var(--tea-green) 100%)',
+      background: 'linear-gradient(135deg, var(--light-cyan) 0%, var(--frosted-blue-light) 50%, var(--sky-aqua) 100%)',
       minHeight: '100vh',
       padding: '2rem 0'
     }}>
@@ -84,9 +91,9 @@ const Register: React.FC = () => {
                 <h1 className="auth-brand-title" style={{
                   fontSize: '2.5rem',
                   fontWeight: '700',
-                  color: 'var(--ash-brown)',
+                  color: 'var(--deep-twilight)',
                   marginBottom: '1rem',
-                  textShadow: '0 2px 4px rgba(108, 88, 76, 0.1)'
+                  textShadow: '0 2px 4px rgba(3, 4, 94, 0.1)'
                 }}>🎴 WCO Thailand</h1>
                 <p className="auth-brand-tagline" style={{
                   fontSize: '1rem',

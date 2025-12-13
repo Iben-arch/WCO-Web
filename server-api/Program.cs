@@ -31,6 +31,9 @@ catch (Exception ex)
 
 builder.Services.AddScoped<CloudinaryService>();
 
+// Add HttpClient for Firebase REST API calls
+builder.Services.AddHttpClient();
+
 // Add Firebase Authentication
 if (!string.IsNullOrEmpty(firebaseProjectId))
 {
@@ -74,6 +77,13 @@ app.UseHttpsRedirection();
 app.UseCors("AllowAll");
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Add default route that redirects to Swagger in development
+if (app.Environment.IsDevelopment())
+{
+    app.MapGet("/", () => Results.Redirect("/swagger")).ExcludeFromDescription();
+}
+
 app.MapControllers();
 
 app.Run();

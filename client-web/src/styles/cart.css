@@ -1,7 +1,7 @@
 /* Cart Page Styles - Modern Design */
 .cart-container {
   min-height: 100vh;
-  background: linear-gradient(135deg, var(--vanilla-cream) 0%, var(--bg-secondary) 50%, var(--vanilla-cream) 100%);
+  background: linear-gradient(135deg, var(--light-cyan) 0%, var(--bg-secondary) 50%, var(--light-cyan) 100%);
   padding: 2rem 0;
 }
 
@@ -189,7 +189,7 @@
 }
 
 .cart-item-name a:hover {
-  color: var(--muted-olive);
+  color: var(--bright-teal-blue);
 }
 
 .cart-item-meta-info {
@@ -206,7 +206,7 @@
 }
 
 .cart-item-seller-info .seller-link {
-  color: var(--muted-olive);
+  color: var(--bright-teal-blue);
   text-decoration: none;
   font-weight: 500;
   transition: color 0.2s ease;
@@ -229,7 +229,7 @@
 .cart-item-price-value {
   font-size: 1.25rem;
   font-weight: 700;
-  color: var(--muted-olive);
+  color: var(--bright-teal-blue);
 }
 
 .cart-item-remove-btn {
@@ -289,7 +289,7 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  background: linear-gradient(135deg, var(--tea-green) 0%, var(--muted-olive) 100%);
+  background: linear-gradient(135deg, var(--bright-teal-blue) 0%, var(--turquoise-surf) 100%);
   color: var(--text-light);
 }
 
@@ -402,7 +402,7 @@
   left: 0;
   right: 0;
   height: 3px;
-  background: linear-gradient(90deg, var(--muted-olive) 0%, var(--tea-green) 50%, var(--faded-copper) 100%);
+  background: linear-gradient(90deg, var(--deep-twilight) 0%, var(--bright-teal-blue) 50%, var(--turquoise-surf) 100%);
   opacity: 0.6;
 }
 
@@ -430,11 +430,11 @@
   color: var(--text-primary);
   margin-top: 0.5rem;
   padding-top: 1rem;
-  border-top: 2px solid var(--muted-olive);
+  border-top: 2px solid var(--bright-teal-blue);
 }
 
 .total-price-amount {
-  color: var(--muted-olive);
+  color: var(--bright-teal-blue);
   font-size: 1.5rem;
   font-weight: 700;
 }
@@ -593,7 +593,7 @@
 }
 
 .modal-header {
-  background: linear-gradient(135deg, var(--muted-olive) 0%, var(--faded-copper) 100%);
+  background: linear-gradient(135deg, var(--deep-twilight) 0%, var(--french-blue) 25%, var(--bright-teal-blue) 50%, var(--turquoise-surf) 75%, var(--sky-aqua) 100%);
   color: var(--text-light);
   border: none;
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;

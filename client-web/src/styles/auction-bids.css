@@ -65,8 +65,8 @@
 }
 
 .bid-item.highest-bid {
-  background: linear-gradient(135deg, var(--vanilla-cream) 0%, var(--tea-green) 100%);
-  border: 2px solid var(--muted-olive);
+  background: linear-gradient(135deg, var(--light-cyan) 0%, var(--frosted-blue-light) 50%, var(--sky-aqua) 100%);
+  border: 2px solid var(--bright-teal-blue);
   box-shadow: var(--shadow-hover);
   animation: pulse 2s ease-in-out infinite;
 }
@@ -80,7 +80,7 @@
 }
 
 .rank-number {
-  background: linear-gradient(135deg, var(--muted-olive) 0%, var(--faded-copper) 100%);
+  background: linear-gradient(135deg, var(--bright-teal-blue) 0%, var(--turquoise-surf) 100%);
   color: var(--text-light);
   width: 36px;
   height: 36px;
@@ -99,7 +99,7 @@
 }
 
 .bid-item.highest-bid .rank-number {
-  background: linear-gradient(135deg, var(--faded-copper) 0%, var(--muted-olive) 100%);
+  background: linear-gradient(135deg, var(--turquoise-surf) 0%, var(--bright-teal-blue) 100%);
   color: var(--text-light);
   box-shadow: var(--shadow-hover);
   animation: bounce 1s ease-in-out infinite;
@@ -145,7 +145,7 @@
 }
 
 .bid-item.highest-bid .bid-amount {
-  color: var(--faded-copper);
+  color: var(--bright-teal-blue);
 }
 
 .bid-time {
@@ -274,9 +274,9 @@
   text-align: center;
   margin-top: 1rem;
   padding: 0.75rem;
-  background: linear-gradient(135deg, var(--vanilla-cream) 0%, var(--tea-green) 100%);
+  background: linear-gradient(135deg, var(--light-cyan) 0%, var(--frosted-blue-light) 50%, var(--sky-aqua) 100%);
   border-radius: var(--radius-md);
-  border: 1px solid var(--muted-olive);
+  border: 1px solid var(--bright-teal-blue);
   color: var(--text-primary);
   font-weight: 500;
   animation: fadeIn var(--transition-base) ease-out;

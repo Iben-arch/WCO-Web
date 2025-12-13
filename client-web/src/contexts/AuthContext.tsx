@@ -1,12 +1,4 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  signOut, 
-  onAuthStateChanged,
-  User as FirebaseUser
-} from 'firebase/auth';
-import { auth } from '../config/firebase';
 import axios from '../utils/axiosInterceptor';
 import { setAuthContext } from '../utils/axiosInterceptor';
 import { User, UserProfile, AuthContextType } from '../types';
@@ -27,71 +19,115 @@ interface AuthProviderProps {
 }
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
-  const login = async (email: string, password: string): Promise<FirebaseUser> => {
+  const login = async (email: string, password: string): Promise<User> => {
     try {
-      if (!auth) {
-        throw new Error('Firebase authentication is not configured. Please check your Firebase setup.');
+      // Call server API for login
+      const response = await authAPI.login(email, password);
+      
+      // Store token and user info in localStorage
+      localStorage.setItem('authToken', response.token);
+      localStorage.setItem('userId', response.userId);
+      localStorage.setItem('userEmail', response.email);
+      if (response.refreshToken) {
+        localStorage.setItem('refreshToken', response.refreshToken);
       }
       
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const token = await userCredential.user.getIdToken();
-      
-      // Store token in localStorage
-      localStorage.setItem('authToken', token);
-      
       // Set axios default header
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      axios.defaults.headers.common['Authorization'] = `Bearer ${response.token}`;
       
-      return userCredential.user;
-    } catch (error) {
+      // Create a minimal user object for compatibility
+      // Note: This is a simplified user object since we're not using Firebase SDK directly
+      const user: any = {
+        uid: response.userId,
+        email: response.email,
+        getIdToken: async () => response.token
+      };
+      
+      // Update current user state
+      setCurrentUser(user);
+      
+      // Fetch user profile
+      try {
+        await fetchUserProfile(user);
+      } catch (profileError) {
+        console.warn('Could not fetch user profile:', profileError);
+      }
+      
+      return user;
+    } catch (error: any) {
       console.error('Login error:', error);
+      
+      // Handle server errors
+      if (error.response?.data?.error) {
+        const serverError = new Error(error.response.data.error);
+        (serverError as any).code = error.response.data.error;
+        throw serverError;
+      }
+      
       throw error;
     }
   };
 
-  const register = async (email: string, password: string, displayName: string): Promise<FirebaseUser> => {
+  const register = async (email: string, password: string, displayName: string): Promise<User> => {
     try {
-      if (!auth) {
-        throw new Error('Firebase authentication is not configured. Please check your Firebase setup.');
+      // Call server API for registration
+      const response = await authAPI.register(email, password, displayName);
+      
+      // Store token and user info in localStorage
+      localStorage.setItem('authToken', response.token);
+      localStorage.setItem('userId', response.userId);
+      localStorage.setItem('userEmail', response.email);
+      if (response.refreshToken) {
+        localStorage.setItem('refreshToken', response.refreshToken);
       }
-      
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const token = await userCredential.user.getIdToken();
-      
-      // Store token in localStorage
-      localStorage.setItem('authToken', token);
       
       // Set axios default header
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      axios.defaults.headers.common['Authorization'] = `Bearer ${response.token}`;
       
-      // Create user profile (optional - only if server is available)
+      // Create a minimal user object for compatibility
+      const user: any = {
+        uid: response.userId,
+        email: response.email,
+        displayName: displayName,
+        getIdToken: async () => response.token
+      };
+      
+      // Update current user state
+      setCurrentUser(user);
+      
+      // Fetch user profile (should be created by server)
       try {
-        await authAPI.createProfile({
-          displayName,
-          email: userCredential.user.email || undefined
-        });
+        await fetchUserProfile(user);
       } catch (profileError) {
-        console.warn('Could not create user profile on server:', profileError);
-        // Continue with registration even if profile creation fails
+        console.warn('Could not fetch user profile:', profileError);
       }
       
-      return userCredential.user;
-    } catch (error) {
+      return user;
+    } catch (error: any) {
       console.error('Register error:', error);
+      
+      // Handle server errors
+      if (error.response?.data?.error) {
+        const serverError = new Error(error.response.data.error);
+        (serverError as any).code = error.response.data.error;
+        throw serverError;
+      }
+      
       throw error;
     }
   };
 
   const logout = async (): Promise<void> => {
     try {
-      if (auth) {
-        await signOut(auth);
-      }
+      // Clear all stored data
       localStorage.removeItem('authToken');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('userId');
+      localStorage.removeItem('userEmail');
       delete axios.defaults.headers.common['Authorization'];
       setCurrentUser(null);
       setUserProfile(null);
@@ -111,7 +147,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const fetchUserProfile = async (user: FirebaseUser): Promise<void> => {
+  const fetchUserProfile = async (user: User): Promise<void> => {
     try {
       const profile = await authAPI.getProfile();
       setUserProfile(profile);
@@ -129,9 +165,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const refreshToken = async (): Promise<string | null> => {
     try {
-      if (auth.currentUser) {
-        const token = await auth.currentUser.getIdToken(true); // Force refresh
-        localStorage.setItem('authToken', token);
+      // For now, we'll use the stored token
+      // In the future, we can implement token refresh using refreshToken
+      const token = localStorage.getItem('authToken');
+      if (token) {
         axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
         return token;
       }
@@ -145,40 +182,49 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   useEffect(() => {
-    if (!auth) {
-      setLoading(false);
-      return;
-    }
-
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      try {
-        if (user) {
-          setCurrentUser(user);
-          
-          // Get stored token
-          const token = localStorage.getItem('authToken');
-          if (token) {
-            axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-            await fetchUserProfile(user);
+    // Check if user is already logged in (has token)
+    const token = localStorage.getItem('authToken');
+    
+    if (token) {
+      // Set axios header
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      
+      // Try to fetch user profile to verify token is still valid
+      // Create a minimal user object for compatibility
+      const userId = localStorage.getItem('userId');
+      const email = localStorage.getItem('userEmail');
+      
+      if (userId && email) {
+        const user: any = {
+          uid: userId,
+          email: email,
+          getIdToken: async () => token
+        };
+        setCurrentUser(user);
+        
+        // Fetch user profile
+        fetchUserProfile(user).catch(error => {
+          console.warn('Could not fetch user profile on mount:', error);
+          // If profile fetch fails, token might be invalid
+          if (error.response?.status === 401) {
+            // Token is invalid, clear everything
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('refreshToken');
+            localStorage.removeItem('userId');
+            localStorage.removeItem('userEmail');
+            delete axios.defaults.headers.common['Authorization'];
+            setCurrentUser(null);
+            setUserProfile(null);
           }
-        } else {
-          setCurrentUser(null);
-          setUserProfile(null);
-          localStorage.removeItem('authToken');
-          delete axios.defaults.headers.common['Authorization'];
-        }
-      } catch (error) {
-        console.error('Auth state change error:', error);
-      } finally {
-        setLoading(false);
+        });
       }
-    });
-
-    return unsubscribe;
+    }
+    
+    setLoading(false);
   }, []);
 
   const value: AuthContextType = {
-    currentUser: currentUser as User | null,
+    currentUser,
     userProfile,
     login,
     register,

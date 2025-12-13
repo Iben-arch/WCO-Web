@@ -27,6 +27,28 @@ if (apiBaseUrl) {
 
 // ==================== AUTH API ====================
 export const authAPI = {
+  // Login with email and password
+  login: async (email: string, password: string): Promise<{ token: string; refreshToken: string; userId: string; email: string }> => {
+    try {
+      const response = await axios.post('/api/auth/login', { email, password });
+      return response.data;
+    } catch (error: any) {
+      console.error('Error logging in:', error);
+      throw error;
+    }
+  },
+
+  // Register new user
+  register: async (email: string, password: string, displayName: string): Promise<{ token: string; refreshToken: string; userId: string; email: string }> => {
+    try {
+      const response = await axios.post('/api/auth/register', { email, password, displayName });
+      return response.data;
+    } catch (error: any) {
+      console.error('Error registering:', error);
+      throw error;
+    }
+  },
+
   // Create/Update user profile
   createProfile: async (profileData: { displayName: string; email?: string }): Promise<any> => {
     try {

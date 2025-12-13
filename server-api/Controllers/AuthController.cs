@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Authorization;
 using ServerApi.Services;
 using System.ComponentModel.DataAnnotations;
 using Google.Cloud.Firestore;
+using System.Text.Json;
+using System.Text;
 
 namespace ServerApi.Controllers
 {
@@ -16,15 +18,281 @@ namespace ServerApi.Controllers
         private readonly FirebaseService _firebaseService;
         private readonly CloudinaryService _cloudinaryService;
         private readonly ILogger<AuthController> _logger;
+        private readonly IConfiguration _configuration;
+        private readonly HttpClient _httpClient;
 
         public AuthController(
             FirebaseService firebaseService,
             CloudinaryService cloudinaryService,
-            ILogger<AuthController> logger)
+            ILogger<AuthController> logger,
+            IConfiguration configuration,
+            IHttpClientFactory httpClientFactory)
         {
             _firebaseService = firebaseService;
             _cloudinaryService = cloudinaryService;
             _logger = logger;
+            _configuration = configuration;
+            _httpClient = httpClientFactory.CreateClient();
+        }
+
+        /// <summary>
+        /// Login endpoint - รับ email/password แล้ว authenticate ผ่าน Firebase REST API
+        /// </summary>
+        [HttpPost("login")]
+        public async Task<IActionResult> Login([FromBody] LoginRequest request)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Password))
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        error = "กรุณากรอกอีเมลและรหัสผ่าน"
+                    });
+                }
+
+                var firebaseApiKey = _configuration["Firebase:ApiKey"];
+                if (string.IsNullOrEmpty(firebaseApiKey))
+                {
+                    _logger.LogError("Firebase API Key not configured");
+                    return StatusCode(500, new
+                    {
+                        success = false,
+                        error = "ระบบยังไม่ได้ตั้งค่า Firebase API Key"
+                    });
+                }
+
+                // ใช้ Firebase REST API เพื่อ authenticate
+                var loginUrl = $"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={firebaseApiKey}";
+                
+                var loginPayload = new
+                {
+                    email = request.Email,
+                    password = request.Password,
+                    returnSecureToken = true
+                };
+
+                var jsonContent = JsonSerializer.Serialize(loginPayload);
+                var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+
+                var response = await _httpClient.PostAsync(loginUrl, content);
+                var responseContent = await response.Content.ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning($"Firebase login failed: {responseContent}");
+                    
+                    // Parse error message
+                    var errorResponse = JsonSerializer.Deserialize<JsonElement>(responseContent);
+                    var errorMessage = "เกิดข้อผิดพลาดในการเข้าสู่ระบบ";
+                    
+                    if (errorResponse.TryGetProperty("error", out var errorObj))
+                    {
+                        if (errorObj.TryGetProperty("message", out var message))
+                        {
+                            var messageStr = message.GetString() ?? "";
+                            if (messageStr.Contains("INVALID_PASSWORD") || messageStr.Contains("INVALID_EMAIL"))
+                            {
+                                errorMessage = "อีเมลหรือรหัสผ่านไม่ถูกต้อง";
+                            }
+                            else if (messageStr.Contains("USER_NOT_FOUND"))
+                            {
+                                errorMessage = "ไม่พบผู้ใช้นี้ในระบบ";
+                            }
+                            else if (messageStr.Contains("TOO_MANY_ATTEMPTS"))
+                            {
+                                errorMessage = "พยายามเข้าสู่ระบบบ่อยเกินไป กรุณารอสักครู่";
+                            }
+                            else
+                            {
+                                errorMessage = messageStr;
+                            }
+                        }
+                    }
+
+                    return Unauthorized(new
+                    {
+                        success = false,
+                        error = errorMessage
+                    });
+                }
+
+                var loginResult = JsonSerializer.Deserialize<JsonElement>(responseContent);
+                
+                // Extract token and user info
+                var idToken = loginResult.GetProperty("idToken").GetString();
+                var refreshToken = loginResult.GetProperty("refreshToken").GetString();
+                var localId = loginResult.GetProperty("localId").GetString();
+                var email = loginResult.GetProperty("email").GetString();
+
+                _logger.LogInformation($"User logged in successfully: {email}");
+
+                return Ok(new
+                {
+                    success = true,
+                    token = idToken,
+                    refreshToken = refreshToken,
+                    userId = localId,
+                    email = email,
+                    message = "เข้าสู่ระบบสำเร็จ"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during login");
+                return StatusCode(500, new
+                {
+                    success = false,
+                    error = "เกิดข้อผิดพลาดในการเข้าสู่ระบบ",
+                    message = ex.Message
+                });
+            }
+        }
+
+        /// <summary>
+        /// Register endpoint - รับ email/password/displayName แล้วสร้าง user ผ่าน Firebase REST API
+        /// </summary>
+        [HttpPost("register")]
+        public async Task<IActionResult> Register([FromBody] RegisterRequest request)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Password))
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        error = "กรุณากรอกอีเมลและรหัสผ่าน"
+                    });
+                }
+
+                if (request.Password.Length < 6)
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        error = "รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร"
+                    });
+                }
+
+                var firebaseApiKey = _configuration["Firebase:ApiKey"];
+                if (string.IsNullOrEmpty(firebaseApiKey))
+                {
+                    _logger.LogError("Firebase API Key not configured");
+                    return StatusCode(500, new
+                    {
+                        success = false,
+                        error = "ระบบยังไม่ได้ตั้งค่า Firebase API Key"
+                    });
+                }
+
+                // ใช้ Firebase REST API เพื่อสร้าง user
+                var registerUrl = $"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={firebaseApiKey}";
+                
+                var registerPayload = new
+                {
+                    email = request.Email,
+                    password = request.Password,
+                    returnSecureToken = true
+                };
+
+                var jsonContent = JsonSerializer.Serialize(registerPayload);
+                var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+
+                var response = await _httpClient.PostAsync(registerUrl, content);
+                var responseContent = await response.Content.ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning($"Firebase registration failed: {responseContent}");
+                    
+                    // Parse error message
+                    var errorResponse = JsonSerializer.Deserialize<JsonElement>(responseContent);
+                    var errorMessage = "เกิดข้อผิดพลาดในการสมัครสมาชิก";
+                    
+                    if (errorResponse.TryGetProperty("error", out var errorObj))
+                    {
+                        if (errorObj.TryGetProperty("message", out var message))
+                        {
+                            var messageStr = message.GetString() ?? "";
+                            if (messageStr.Contains("EMAIL_EXISTS"))
+                            {
+                                errorMessage = "อีเมลนี้ถูกใช้งานแล้ว";
+                            }
+                            else if (messageStr.Contains("WEAK_PASSWORD"))
+                            {
+                                errorMessage = "รหัสผ่านไม่แข็งแรงพอ";
+                            }
+                            else
+                            {
+                                errorMessage = messageStr;
+                            }
+                        }
+                    }
+
+                    return BadRequest(new
+                    {
+                        success = false,
+                        error = errorMessage
+                    });
+                }
+
+                var registerResult = JsonSerializer.Deserialize<JsonElement>(responseContent);
+                
+                // Extract token and user info
+                var idToken = registerResult.GetProperty("idToken").GetString();
+                var refreshToken = registerResult.GetProperty("refreshToken").GetString();
+                var localId = registerResult.GetProperty("localId").GetString();
+                var email = registerResult.GetProperty("email").GetString();
+
+                // สร้าง user profile ใน Firestore
+                try
+                {
+                    var profileData = new Dictionary<string, object>
+                    {
+                        ["uid"] = localId,
+                        ["email"] = email,
+                        ["createdAt"] = Timestamp.GetCurrentTimestamp(),
+                        ["updatedAt"] = Timestamp.GetCurrentTimestamp()
+                    };
+
+                    if (!string.IsNullOrEmpty(request.DisplayName))
+                    {
+                        profileData["displayName"] = request.DisplayName;
+                    }
+
+                    await _firebaseService.CreateAsync("users", profileData);
+                    _logger.LogInformation($"User profile created: {email}");
+                }
+                catch (Exception profileEx)
+                {
+                    _logger.LogWarning(profileEx, "Failed to create user profile, but registration succeeded");
+                    // Continue even if profile creation fails
+                }
+
+                _logger.LogInformation($"User registered successfully: {email}");
+
+                return Ok(new
+                {
+                    success = true,
+                    token = idToken,
+                    refreshToken = refreshToken,
+                    userId = localId,
+                    email = email,
+                    message = "สมัครสมาชิกสำเร็จ"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during registration");
+                return StatusCode(500, new
+                {
+                    success = false,
+                    error = "เกิดข้อผิดพลาดในการสมัครสมาชิก",
+                    message = ex.Message
+                });
+            }
         }
 
         /// <summary>
@@ -345,6 +613,26 @@ namespace ServerApi.Controllers
                 });
             }
         }
+    }
+
+    public class LoginRequest
+    {
+        [Required]
+        public string Email { get; set; } = string.Empty;
+        
+        [Required]
+        public string Password { get; set; } = string.Empty;
+    }
+
+    public class RegisterRequest
+    {
+        [Required]
+        public string Email { get; set; } = string.Empty;
+        
+        [Required]
+        public string Password { get; set; } = string.Empty;
+        
+        public string? DisplayName { get; set; }
     }
 
     public class ProfileRequest

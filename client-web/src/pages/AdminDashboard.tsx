@@ -147,7 +147,7 @@ const AdminDashboard: React.FC = () => {
       <Row className="mb-5">
         <Col>
           <div style={{
-            background: 'linear-gradient(135deg, var(--muted-olive) 0%, var(--faded-copper) 100%)',
+            background: 'linear-gradient(135deg, var(--deep-twilight) 0%, var(--french-blue) 25%, var(--bright-teal-blue) 50%, var(--turquoise-surf) 75%, var(--sky-aqua) 100%)',
             borderRadius: 'var(--radius-xl)',
             padding: '2rem',
             color: 'var(--text-light)',
@@ -218,7 +218,7 @@ const AdminDashboard: React.FC = () => {
                 <h3 style={{
                   fontSize: '2.5rem',
                   fontWeight: '700',
-                  color: 'var(--muted-olive)',
+                  color: 'var(--bright-teal-blue)',
                   marginBottom: '0.5rem'
                 }}>{stats.totalPosts}</h3>
                 <p className="mb-0" style={{
@@ -333,7 +333,7 @@ const AdminDashboard: React.FC = () => {
           boxShadow: 'var(--shadow-md)'
         }}>
           <Card.Header style={{
-            background: 'linear-gradient(135deg, var(--muted-olive) 0%, var(--faded-copper) 100%)',
+            background: 'linear-gradient(135deg, var(--deep-twilight) 0%, var(--french-blue) 25%, var(--bright-teal-blue) 50%, var(--turquoise-surf) 75%, var(--sky-aqua) 100%)',
             color: 'var(--text-light)',
             border: 'none',
             borderRadius: 'var(--radius-lg) var(--radius-lg) 0 0',
@@ -412,7 +412,7 @@ const AdminDashboard: React.FC = () => {
           boxShadow: 'var(--shadow-md)'
         }}>
           <Card.Header style={{
-            background: 'linear-gradient(135deg, var(--muted-olive) 0%, var(--faded-copper) 100%)',
+            background: 'linear-gradient(135deg, var(--deep-twilight) 0%, var(--french-blue) 25%, var(--bright-teal-blue) 50%, var(--turquoise-surf) 75%, var(--sky-aqua) 100%)',
             color: 'var(--text-light)',
             border: 'none',
             borderRadius: 'var(--radius-lg) var(--radius-lg) 0 0',

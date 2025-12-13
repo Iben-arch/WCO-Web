@@ -303,31 +303,73 @@ const Profile: React.FC = () => {
         {/* Profile Header */}
         <div className="profile-header mb-4">
           <div className="d-flex align-items-center flex-wrap">
-            <div className="profile-image-container me-4">
-              <img
-                src={previewImage || formData.profileImage || userProfile?.profileImage || '/default-avatar.png'}
-                alt="Profile"
-                className="profile-image"
-              />
-              {loading && (
-                <div className="upload-overlay">
-                  <div className="upload-progress">
-                    <div className="spinner-border text-light mb-2" role="status">
-                      <span className="visually-hidden">กำลังอัปโหลด...</span>
-                    </div>
-                    <div className="progress" style={{ width: '100px' }}>
-                      <div 
-                        className="progress-bar" 
-                        role="progressbar" 
-                        style={{ width: `${uploadProgress}%` }}
-                        aria-valuenow={uploadProgress} 
-                        aria-valuemin={0} 
-                        aria-valuemax={100}
-                      >
-                        {uploadProgress}%
+            <label 
+              htmlFor="profile-image-upload" 
+              className="profile-image-container me-4"
+              style={{ cursor: 'pointer' }}
+              title="คลิกเพื่ออัปโหลดรูปโปรไฟล์"
+            >
+              {previewImage || formData.profileImage || userProfile?.profileImage ? (
+                <>
+                  <img
+                    src={previewImage || formData.profileImage || userProfile?.profileImage}
+                    alt="Profile"
+                    className="profile-image"
+                  />
+                  {loading && (
+                    <div className="upload-overlay">
+                      <div className="upload-progress">
+                        <div className="spinner-border text-light mb-2" role="status">
+                          <span className="visually-hidden">กำลังอัปโหลด...</span>
+                        </div>
+                        <div className="progress" style={{ width: '100px' }}>
+                          <div 
+                            className="progress-bar" 
+                            role="progressbar" 
+                            style={{ width: `${uploadProgress}%` }}
+                            aria-valuenow={uploadProgress} 
+                            aria-valuemin={0} 
+                            aria-valuemax={100}
+                          >
+                            {uploadProgress}%
+                          </div>
+                        </div>
                       </div>
                     </div>
+                  )}
+                </>
+              ) : (
+                <div className="profile-image-placeholder">
+                  <div className="profile-placeholder-content">
+                    <div className="profile-placeholder-icon">
+                      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 12C14.7614 12 17 9.76142 17 7C17 4.23858 14.7614 2 12 2C9.23858 2 7 4.23858 7 7C7 9.76142 9.23858 12 12 12Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M20.59 22C20.59 18.13 16.74 15 12 15C7.26 15 3.41 18.13 3.41 22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                    <div className="profile-placeholder-text">Profile</div>
                   </div>
+                  {loading && (
+                    <div className="upload-overlay">
+                      <div className="upload-progress">
+                        <div className="spinner-border text-light mb-2" role="status">
+                          <span className="visually-hidden">กำลังอัปโหลด...</span>
+                        </div>
+                        <div className="progress" style={{ width: '100px' }}>
+                          <div 
+                            className="progress-bar" 
+                            role="progressbar" 
+                            style={{ width: `${uploadProgress}%` }}
+                            aria-valuenow={uploadProgress} 
+                            aria-valuemin={0} 
+                            aria-valuemax={100}
+                          >
+                            {uploadProgress}%
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               <input
@@ -338,14 +380,7 @@ const Profile: React.FC = () => {
                 id="profile-image-upload"
                 disabled={loading}
               />
-              <label 
-                htmlFor="profile-image-upload" 
-                className="profile-image-upload-label"
-                title="คลิกเพื่ออัปโหลดรูปโปรไฟล์"
-              >
-                📷
-              </label>
-            </div>
+            </label>
             <div className="flex-grow-1">
               <h4 className="profile-name mb-2">
                 {getDisplayName()}

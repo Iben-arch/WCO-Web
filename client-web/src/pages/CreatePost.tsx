@@ -328,7 +328,7 @@ const CreatePost: React.FC = () => {
               background: 'var(--bg-primary)'
             }}>
               <Card.Header className="create-post-header" style={{
-                background: 'linear-gradient(135deg, var(--muted-olive) 0%, var(--faded-copper) 100%)',
+                background: 'linear-gradient(135deg, var(--deep-twilight) 0%, var(--french-blue) 25%, var(--bright-teal-blue) 50%, var(--turquoise-surf) 75%, var(--sky-aqua) 100%)',
                 color: 'var(--text-light)',
                 border: 'none',
                 padding: '2rem 2.5rem',

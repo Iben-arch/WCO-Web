@@ -28,19 +28,24 @@ const Login: React.FC = () => {
     } catch (error: any) {
       console.error('Login error:', error);
       
-      // Handle different types of errors
-      if (error.message?.includes('Firebase authentication is not configured')) {
+      // Handle different types of errors from server API
+      if (error.response?.data?.error) {
+        // Server API error
+        setError(error.response.data.error);
+      } else if (error.message?.includes('Firebase authentication is not configured')) {
         setError('ระบบยังไม่ได้ตั้งค่า Firebase กรุณาติดต่อผู้ดูแลระบบ');
-      } else if (error.code === 'auth/user-not-found') {
+      } else if (error.code === 'auth/user-not-found' || error.message?.includes('ไม่พบผู้ใช้นี้ในระบบ')) {
         setError('ไม่พบผู้ใช้นี้ในระบบ');
-      } else if (error.code === 'auth/wrong-password') {
-        setError('รหัสผ่านไม่ถูกต้อง');
-      } else if (error.code === 'auth/invalid-email') {
+      } else if (error.code === 'auth/wrong-password' || error.message?.includes('รหัสผ่านไม่ถูกต้อง') || error.message?.includes('อีเมลหรือรหัสผ่านไม่ถูกต้อง')) {
+        setError('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+      } else if (error.code === 'auth/invalid-email' || error.message?.includes('รูปแบบอีเมลไม่ถูกต้อง')) {
         setError('รูปแบบอีเมลไม่ถูกต้อง');
-      } else if (error.code === 'auth/too-many-requests') {
+      } else if (error.code === 'auth/too-many-requests' || error.message?.includes('พยายามเข้าสู่ระบบบ่อยเกินไป')) {
         setError('พยายามเข้าสู่ระบบบ่อยเกินไป กรุณารอสักครู่');
+      } else if (error.message) {
+        setError(error.message);
       } else {
-        setError('เกิดข้อผิดพลาดในการเข้าสู่ระบบ: ' + (error.message || 'Unknown error'));
+        setError('เกิดข้อผิดพลาดในการเข้าสู่ระบบ กรุณาลองใหม่อีกครั้ง');
       }
     } finally {
       setLoading(false);
@@ -49,7 +54,7 @@ const Login: React.FC = () => {
 
   return (
     <div className="auth-page-container" style={{
-      background: 'linear-gradient(135deg, var(--vanilla-cream) 0%, var(--tea-green) 100%)',
+      background: 'linear-gradient(135deg, var(--light-cyan) 0%, var(--frosted-blue-light) 50%, var(--sky-aqua) 100%)',
       minHeight: '100vh',
       padding: '2rem 0'
     }}>
@@ -64,9 +69,9 @@ const Login: React.FC = () => {
                 <h1 className="auth-brand-title" style={{
                   fontSize: '2.5rem',
                   fontWeight: '700',
-                  color: 'var(--ash-brown)',
+                  color: 'var(--deep-twilight)',
                   marginBottom: '1rem',
-                  textShadow: '0 2px 4px rgba(108, 88, 76, 0.1)'
+                  textShadow: '0 2px 4px rgba(3, 4, 94, 0.1)'
                 }}>🎴 WCO Thailand</h1>
                 <p className="auth-brand-tagline" style={{
                   fontSize: '1rem',
