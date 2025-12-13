@@ -15,7 +15,7 @@
 .individual-card:hover {
   transform: translateY(-4px);
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-  border-color: #007bff;
+  border-color: #0077B6;
 }
 
 .card-image-container {
@@ -116,7 +116,7 @@
 .card-category-badge {
   font-size: 10px;
   padding: 4px 8px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #0077B6 0%, #0096C7 100%);
   border: none;
   color: white;
   font-weight: 500;
@@ -137,7 +137,7 @@
 .price-value {
   font-size: 18px;
   font-weight: 700;
-  color: #28a745;
+  color: #0077B6;
   line-height: 1;
 }
 
@@ -154,15 +154,15 @@
 }
 
 .card-actions .btn-primary {
-  background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+  background: linear-gradient(135deg, #0077B6 0%, #0096C7 100%);
   border: none;
-  box-shadow: 0 2px 4px rgba(0, 123, 255, 0.3);
+  box-shadow: 0 2px 4px rgba(0, 119, 182, 0.3);
 }
 
 .card-actions .btn-primary:hover {
-  background: linear-gradient(135deg, #0056b3 0%, #004085 100%);
+  background: linear-gradient(135deg, #0096C7 0%, #00B4D8 100%);
   transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0, 123, 255, 0.4);
+  box-shadow: 0 4px 8px rgba(0, 119, 182, 0.4);
 }
 
 .card-actions .btn-outline-danger {
@@ -424,19 +424,19 @@
 }
 
 .process-button {
-  background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+  background: linear-gradient(135deg, #0077B6 0%, #0096C7 100%);
   border: none;
   padding: 12px 24px;
   border-radius: 8px;
   font-weight: 600;
-  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 119, 182, 0.3);
   transition: all 0.3s ease;
 }
 
 .process-button:hover {
-  background: linear-gradient(135deg, #0056b3 0%, #004085 100%);
+  background: linear-gradient(135deg, #0096C7 0%, #00B4D8 100%);
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(0, 123, 255, 0.4);
+  box-shadow: 0 6px 16px rgba(0, 119, 182, 0.4);
 }
 
 .processing-container {
@@ -450,7 +450,7 @@
 }
 
 .processing-content h6 {
-  color: #007bff;
+  color: #0077B6;
   margin-bottom: 8px;
 }
 
@@ -462,7 +462,7 @@
   padding: 12px 16px;
   background: #f8f9fa;
   border-radius: 8px;
-  border-left: 4px solid #007bff;
+  border-left: 4px solid #0077B6;
 }
 
 .cards-count {
