@@ -10,9 +10,21 @@ export const setAuthContext = (context: AuthContextType): void => {
 // Request interceptor to add Authorization header
 axios.interceptors.request.use(
   (config) => {
+    // Skip adding Authorization header for refresh token endpoint
+    if (config.url?.includes('/auth/refresh-token')) {
+      return config;
+    }
+
     // Get token from localStorage
     const token = localStorage.getItem('authToken');
-    if (token && config.headers) {
+    if (token) {
+      // สร้าง headers object ถ้ายังไม่มี
+      if (!config.headers) {
+        config.headers = {} as any;
+      }
+      
+      // เพิ่ม Authorization header
+      // สำหรับ FormData axios จะไม่ลบ headers ที่มีอยู่
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
@@ -28,6 +40,11 @@ axios.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
+    // Skip token refresh for refresh token endpoint itself to avoid infinite loop
+    if (originalRequest.url?.includes('/auth/refresh-token')) {
+      return Promise.reject(error);
+    }
+
     // Check if the error is due to expired token
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
@@ -35,10 +52,21 @@ axios.interceptors.response.use(
       try {
         // Try to refresh the token
         if (authContext && authContext.refreshToken) {
-          await authContext.refreshToken();
+          const newToken = await authContext.refreshToken();
           
-          // Retry the original request with new token
-          return axios(originalRequest);
+          if (newToken) {
+            // Update Authorization header with new token
+            if (originalRequest.headers) {
+              originalRequest.headers.Authorization = `Bearer ${newToken}`;
+            } else {
+              originalRequest.headers = {
+                Authorization: `Bearer ${newToken}`
+              } as any;
+            }
+            
+            // Retry the original request with new token
+            return axios(originalRequest);
+          }
         }
       } catch (refreshError) {
         console.error('Token refresh failed:', refreshError);
@@ -46,6 +74,7 @@ axios.interceptors.response.use(
         if (authContext && authContext.logout) {
           await authContext.logout();
         }
+        return Promise.reject(refreshError);
       }
     }
 

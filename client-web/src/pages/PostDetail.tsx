@@ -4,7 +4,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
 import IndividualCardsGrid from '../components/common/IndividualCardsGrid';
-import axios from 'axios';
+import axios from '../utils/axiosInterceptor';
 import { toast } from 'react-toastify';
 import '../styles/auction-bids.css';
 import { Post, Message, AuctionBid, DetectedCard, FirestoreTimestamp, IndividualCardItem } from '../types';

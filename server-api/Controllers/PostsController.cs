@@ -2,33 +2,32 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using ServerApi.Services;
 using System.ComponentModel.DataAnnotations;
-using Google.Cloud.Firestore;
 
 namespace ServerApi.Controllers
 {
     /// <summary>
-    /// Controller สำหรับจัดการ Posts - ทำหน้าที่เป็น Middleware ระหว่าง Client กับ Firebase/Cloudinary
+    /// Controller สำหรับจัดการ Posts - ทำหน้าที่เป็น Middleware ระหว่าง Client กับ Supabase/Cloudinary
     /// </summary>
     [ApiController]
     [Route("api/[controller]")]
     public class PostsController : ControllerBase
     {
-        private readonly FirebaseService _firebaseService;
+        private readonly SupabaseService _supabaseService;
         private readonly CloudinaryService _cloudinaryService;
         private readonly ILogger<PostsController> _logger;
 
         public PostsController(
-            FirebaseService firebaseService,
+            SupabaseService supabaseService,
             CloudinaryService cloudinaryService,
             ILogger<PostsController> logger)
         {
-            _firebaseService = firebaseService;
+            _supabaseService = supabaseService;
             _cloudinaryService = cloudinaryService;
             _logger = logger;
         }
 
         /// <summary>
-        /// สร้าง Post ใหม่ - รับข้อมูลจาก Client แล้วส่งต่อไปยัง Firebase และ Cloudinary
+        /// สร้าง Post ใหม่ - รับข้อมูลจาก Client แล้วส่งต่อไปยัง Supabase และ Cloudinary
         /// </summary>
         [HttpPost]
         [Authorize]
@@ -61,7 +60,7 @@ namespace ServerApi.Controllers
                     _logger.LogInformation($"Successfully uploaded {imageUrls.Count} images");
                 }
 
-                // 2. เตรียมข้อมูลสำหรับ Firebase
+                // 2. เตรียมข้อมูลสำหรับ Supabase
                 var userId = User.FindFirst("uid")?.Value ?? User.Identity?.Name ?? "unknown";
                 var userName = User.FindFirst("name")?.Value ?? "Unknown User";
 
@@ -76,8 +75,8 @@ namespace ServerApi.Controllers
                     ["sellerName"] = userName,
                     ["status"] = "pending",
                     ["postType"] = request.PostType ?? "sale",
-                    ["createdAt"] = Timestamp.GetCurrentTimestamp(),
-                    ["updatedAt"] = Timestamp.GetCurrentTimestamp()
+                    ["createdAt"] = DateTime.UtcNow,
+                    ["updatedAt"] = DateTime.UtcNow
                 };
 
                 // เพิ่มข้อมูลตาม postType
@@ -111,7 +110,7 @@ namespace ServerApi.Controllers
                     if (!string.IsNullOrEmpty(request.BuyNowPrice))
                         postData["buyNowPrice"] = double.Parse(request.BuyNowPrice);
                     if (!string.IsNullOrEmpty(request.AuctionEndDate))
-                        postData["auctionEndDate"] = Timestamp.FromDateTime(DateTime.Parse(request.AuctionEndDate));
+                        postData["auctionEndDate"] = DateTime.Parse(request.AuctionEndDate);
 
                     if (request.SaleType != null)
                         postData["saleType"] = request.SaleType;
@@ -134,13 +133,13 @@ namespace ServerApi.Controllers
                 if (!string.IsNullOrEmpty(request.Game))
                     postData["game"] = request.Game;
 
-                // 3. บันทึกข้อมูลลง Firebase Firestore
-                _logger.LogInformation("Saving post to Firebase Firestore...");
-                var postId = await _firebaseService.CreateAsync("posts", postData);
+                // 3. บันทึกข้อมูลลง Supabase
+                _logger.LogInformation("Saving post to Supabase...");
+                var postId = await _supabaseService.CreateAsync("posts", postData);
                 _logger.LogInformation($"Post created with ID: {postId}");
 
                 // 4. ดึงข้อมูลที่บันทึกแล้วเพื่อส่งกลับ
-                var createdPost = await _firebaseService.GetAsync("posts", postId);
+                var createdPost = await _supabaseService.GetAsync("posts", postId);
 
                 return Ok(new
                 {
@@ -174,11 +173,11 @@ namespace ServerApi.Controllers
 
                 if (!string.IsNullOrEmpty(category))
                 {
-                    posts = await _firebaseService.QueryAsync("posts", "category", category);
+                    posts = await _supabaseService.QueryAsync("posts", "category", category);
                 }
                 else
                 {
-                    posts = await _firebaseService.GetAllAsync("posts");
+                    posts = await _supabaseService.GetAllAsync("posts");
                 }
 
                 // Filter by search term if provided
@@ -212,7 +211,7 @@ namespace ServerApi.Controllers
         {
             try
             {
-                var post = await _firebaseService.GetAsync("posts", id);
+                var post = await _supabaseService.GetAsync("posts", id);
                 
                 if (post == null)
                 {
@@ -243,7 +242,7 @@ namespace ServerApi.Controllers
             try
             {
                 var userId = User.FindFirst("uid")?.Value ?? User.Identity?.Name;
-                var existingPost = await _firebaseService.GetAsync("posts", id);
+                var existingPost = await _supabaseService.GetAsync("posts", id);
 
                 if (existingPost == null)
                 {
@@ -258,7 +257,7 @@ namespace ServerApi.Controllers
 
                 var updateData = new Dictionary<string, object>
                 {
-                    ["updatedAt"] = Timestamp.GetCurrentTimestamp()
+                    ["updatedAt"] = DateTime.UtcNow
                 };
 
                 if (!string.IsNullOrEmpty(request.Title))
@@ -270,9 +269,9 @@ namespace ServerApi.Controllers
                 if (request.Price.HasValue)
                     updateData["price"] = request.Price.Value;
 
-                await _firebaseService.UpdateAsync("posts", id, updateData);
+                await _supabaseService.UpdateAsync("posts", id, updateData);
 
-                var updatedPost = await _firebaseService.GetAsync("posts", id);
+                var updatedPost = await _supabaseService.GetAsync("posts", id);
 
                 return Ok(new
                 {
@@ -303,7 +302,7 @@ namespace ServerApi.Controllers
             try
             {
                 var userId = User.FindFirst("uid")?.Value ?? User.Identity?.Name;
-                var existingPost = await _firebaseService.GetAsync("posts", id);
+                var existingPost = await _supabaseService.GetAsync("posts", id);
 
                 if (existingPost == null)
                 {
@@ -327,8 +326,8 @@ namespace ServerApi.Controllers
                     }
                 }
 
-                // ลบข้อมูลจาก Firebase
-                await _firebaseService.DeleteAsync("posts", id);
+                // ลบข้อมูลจาก Supabase
+                await _supabaseService.DeleteAsync("posts", id);
 
                 return Ok(new
                 {
@@ -358,7 +357,7 @@ namespace ServerApi.Controllers
             try
             {
                 var userId = User.FindFirst("uid")?.Value ?? User.Identity?.Name;
-                var posts = await _firebaseService.QueryAsync("posts", "sellerId", userId ?? "");
+                var posts = await _supabaseService.QueryAsync("posts", "sellerId", userId ?? "");
 
                 return Ok(posts);
             }

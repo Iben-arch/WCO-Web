@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Table, Button, Badge, Modal, Form, Alert } from 'react-bootstrap';
 import { useAuth } from '../contexts/AuthContext';
-import axios from 'axios';
+import axios from '../utils/axiosInterceptor';
 import { toast } from 'react-toastify';
 import { AdminStats, Post, PostStatus, UserProfile } from '../types';
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Button, Alert, Spinner, Badge } from 'react-bootstrap';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import axios from 'axios';
+import axios from '../utils/axiosInterceptor';
 import { toast } from 'react-toastify';
 import '../styles/seller-profile.css';
 import { Seller, Post, FirestoreTimestamp } from '../types';

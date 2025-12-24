@@ -2,7 +2,7 @@ import React, { useState, FormEvent, ChangeEvent } from 'react';
 import { Container, Row, Col, Card, Form, Button, Alert, ProgressBar, Spinner } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import axios from 'axios';
+import axios from '../utils/axiosInterceptor';
 import { toast } from 'react-toastify';
 import { 
   TCGButton, 

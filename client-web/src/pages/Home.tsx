@@ -1,7 +1,7 @@
 import React, { useState, useEffect, FormEvent, ChangeEvent } from 'react';
 import { Container, Row, Col, Card, Form, Button, Spinner, Alert } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
-import axios from 'axios';
+import axios from '../utils/axiosInterceptor';
 import { toast } from 'react-toastify';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';

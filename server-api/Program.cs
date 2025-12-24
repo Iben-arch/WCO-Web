@@ -13,40 +13,42 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Get Firebase configuration
-var firebaseProjectId = builder.Configuration["Firebase:ProjectId"];
+// Get Supabase configuration
+var supabaseUrl = builder.Configuration["Supabase:Url"];
 
 // Register custom services
-// Note: FirebaseService will validate credentials when first used, not at startup
 try
 {
-    builder.Services.AddScoped<FirebaseService>();
-    Console.WriteLine("✅ FirebaseService registered");
+    builder.Services.AddScoped<SupabaseService>();
+    Console.WriteLine("✅ SupabaseService registered");
 }
 catch (Exception ex)
 {
-    Console.Error.WriteLine($"❌ Error registering FirebaseService: {ex.Message}");
+    Console.Error.WriteLine($"❌ Error registering SupabaseService: {ex.Message}");
     throw;
 }
 
 builder.Services.AddScoped<CloudinaryService>();
 
-// Add HttpClient for Firebase REST API calls
-builder.Services.AddHttpClient();
+// Add HttpClient for Supabase REST API calls with timeout
+builder.Services.AddHttpClient()
+    .ConfigureHttpClient(client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(10); // Timeout 10 วินาที
+    });
 
-// Add Firebase Authentication
-if (!string.IsNullOrEmpty(firebaseProjectId))
+// Add Supabase Authentication (JWT Bearer)
+if (!string.IsNullOrEmpty(supabaseUrl))
 {
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(options =>
         {
-            options.Authority = $"https://securetoken.google.com/{firebaseProjectId}";
+            options.Authority = $"{supabaseUrl}/auth/v1";
             options.TokenValidationParameters = new TokenValidationParameters
             {
                 ValidateIssuer = true,
-                ValidIssuer = $"https://securetoken.google.com/{firebaseProjectId}",
-                ValidateAudience = true,
-                ValidAudience = firebaseProjectId,
+                ValidIssuer = $"{supabaseUrl}/auth/v1",
+                ValidateAudience = false, // Supabase doesn't use audience validation
                 ValidateLifetime = true,
                 ClockSkew = TimeSpan.Zero
             };

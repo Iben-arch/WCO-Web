@@ -27,24 +27,24 @@ if (apiBaseUrl) {
 
 // ==================== AUTH API ====================
 export const authAPI = {
-  // Login with email and password
+  // Login
   login: async (email: string, password: string): Promise<{ token: string; refreshToken: string; userId: string; email: string }> => {
     try {
       const response = await axios.post('/api/auth/login', { email, password });
       return response.data;
     } catch (error: any) {
-      console.error('Error logging in:', error);
+      console.error('Login error:', error);
       throw error;
     }
   },
 
-  // Register new user
-  register: async (email: string, password: string, displayName: string): Promise<{ token: string; refreshToken: string; userId: string; email: string }> => {
+  // Register
+  register: async (email: string, password: string, displayName?: string): Promise<{ token: string; refreshToken: string; userId: string; email: string; user: any }> => {
     try {
       const response = await axios.post('/api/auth/register', { email, password, displayName });
       return response.data;
     } catch (error: any) {
-      console.error('Error registering:', error);
+      console.error('Register error:', error);
       throw error;
     }
   },
@@ -100,6 +100,17 @@ export const authAPI = {
       return response.data;
     } catch (error: any) {
       console.error('Error toggling like:', error);
+      throw error;
+    }
+  },
+
+  // Refresh token
+  refreshToken: async (refreshToken: string): Promise<{ token: string; refreshToken: string; userId: string; email: string }> => {
+    try {
+      const response = await axios.post('/api/auth/refresh-token', { refreshToken });
+      return response.data;
+    } catch (error: any) {
+      console.error('Error refreshing token:', error);
       throw error;
     }
   },

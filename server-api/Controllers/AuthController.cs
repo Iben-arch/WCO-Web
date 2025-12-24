@@ -2,41 +2,43 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using ServerApi.Services;
 using System.ComponentModel.DataAnnotations;
-using Google.Cloud.Firestore;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text;
 
 namespace ServerApi.Controllers
 {
     /// <summary>
-    /// Controller สำหรับจัดการ Authentication และ Profile - ทำหน้าที่เป็น Middleware ระหว่าง Client กับ Firebase/Cloudinary
+    /// Controller สำหรับจัดการ Authentication และ Profile - ทำหน้าที่เป็น Middleware ระหว่าง Client กับ Supabase/Cloudinary
     /// </summary>
     [ApiController]
     [Route("api/[controller]")]
     public class AuthController : ControllerBase
     {
-        private readonly FirebaseService _firebaseService;
+        private readonly SupabaseService _supabaseService;
         private readonly CloudinaryService _cloudinaryService;
         private readonly ILogger<AuthController> _logger;
         private readonly IConfiguration _configuration;
         private readonly HttpClient _httpClient;
 
         public AuthController(
-            FirebaseService firebaseService,
+            SupabaseService supabaseService,
             CloudinaryService cloudinaryService,
             ILogger<AuthController> logger,
             IConfiguration configuration,
             IHttpClientFactory httpClientFactory)
         {
-            _firebaseService = firebaseService;
+            _supabaseService = supabaseService;
             _cloudinaryService = cloudinaryService;
             _logger = logger;
             _configuration = configuration;
             _httpClient = httpClientFactory.CreateClient();
+            // ตั้ง timeout สำหรับ HttpClient เพื่อไม่ให้รอนานเกินไป
+            _httpClient.Timeout = TimeSpan.FromSeconds(5); // ลดเป็น 5 วินาที
         }
 
         /// <summary>
-        /// Login endpoint - รับ email/password แล้ว authenticate ผ่าน Firebase REST API
+        /// Login endpoint - รับ email/password แล้ว authenticate ผ่าน Supabase REST API
         /// </summary>
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
@@ -52,63 +54,62 @@ namespace ServerApi.Controllers
                     });
                 }
 
-                var firebaseApiKey = _configuration["Firebase:ApiKey"];
-                if (string.IsNullOrEmpty(firebaseApiKey))
+                var supabaseUrl = _configuration["Supabase:Url"];
+                if (string.IsNullOrEmpty(supabaseUrl))
                 {
-                    _logger.LogError("Firebase API Key not configured");
+                    _logger.LogError("Supabase URL not configured");
                     return StatusCode(500, new
                     {
                         success = false,
-                        error = "ระบบยังไม่ได้ตั้งค่า Firebase API Key"
+                        error = "ระบบยังไม่ได้ตั้งค่า Supabase URL"
                     });
                 }
 
-                // ใช้ Firebase REST API เพื่อ authenticate
-                var loginUrl = $"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={firebaseApiKey}";
+                // ใช้ Supabase REST API เพื่อ authenticate
+                var loginUrl = $"{supabaseUrl}/auth/v1/token?grant_type=password";
                 
                 var loginPayload = new
                 {
                     email = request.Email,
-                    password = request.Password,
-                    returnSecureToken = true
+                    password = request.Password
                 };
 
                 var jsonContent = JsonSerializer.Serialize(loginPayload);
                 var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+                
+                var supabaseKey = _configuration["Supabase:Key"];
+                _httpClient.DefaultRequestHeaders.Clear();
+                _httpClient.DefaultRequestHeaders.Add("apikey", supabaseKey);
+                _httpClient.DefaultRequestHeaders.Add("Content-Type", "application/json");
 
                 var response = await _httpClient.PostAsync(loginUrl, content);
                 var responseContent = await response.Content.ReadAsStringAsync();
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    _logger.LogWarning($"Firebase login failed: {responseContent}");
+                    _logger.LogWarning($"Supabase login failed: {responseContent}");
                     
                     // Parse error message
-                    var errorResponse = JsonSerializer.Deserialize<JsonElement>(responseContent);
                     var errorMessage = "เกิดข้อผิดพลาดในการเข้าสู่ระบบ";
-                    
-                    if (errorResponse.TryGetProperty("error", out var errorObj))
+                    try
                     {
-                        if (errorObj.TryGetProperty("message", out var message))
+                        var errorResponse = JsonSerializer.Deserialize<JsonElement>(responseContent);
+                        if (errorResponse.TryGetProperty("error_description", out var errorDesc))
                         {
-                            var messageStr = message.GetString() ?? "";
-                            if (messageStr.Contains("INVALID_PASSWORD") || messageStr.Contains("INVALID_EMAIL"))
+                            var messageStr = errorDesc.GetString() ?? "";
+                            if (messageStr.Contains("Invalid login credentials"))
                             {
                                 errorMessage = "อีเมลหรือรหัสผ่านไม่ถูกต้อง";
-                            }
-                            else if (messageStr.Contains("USER_NOT_FOUND"))
-                            {
-                                errorMessage = "ไม่พบผู้ใช้นี้ในระบบ";
-                            }
-                            else if (messageStr.Contains("TOO_MANY_ATTEMPTS"))
-                            {
-                                errorMessage = "พยายามเข้าสู่ระบบบ่อยเกินไป กรุณารอสักครู่";
                             }
                             else
                             {
                                 errorMessage = messageStr;
                             }
                         }
+                    }
+                    catch
+                    {
+                        // Use default error message
                     }
 
                     return Unauthorized(new
@@ -121,22 +122,44 @@ namespace ServerApi.Controllers
                 var loginResult = JsonSerializer.Deserialize<JsonElement>(responseContent);
                 
                 // Extract token and user info
-                var idToken = loginResult.GetProperty("idToken").GetString();
-                var refreshToken = loginResult.GetProperty("refreshToken").GetString();
-                var localId = loginResult.GetProperty("localId").GetString();
-                var email = loginResult.GetProperty("email").GetString();
+                var accessToken = loginResult.GetProperty("access_token").GetString();
+                var refreshToken = loginResult.GetProperty("refresh_token").GetString();
+                var userObj = loginResult.GetProperty("user");
+                var userId = userObj.GetProperty("id").GetString();
+                var email = userObj.GetProperty("email").GetString();
 
                 _logger.LogInformation($"User logged in successfully: {email}");
 
-                return Ok(new
+                // ส่ง response กลับทันทีโดยไม่รอ profile
+                // Profile จะถูก fetch ใน background หรือเมื่อ user เข้าหน้า profile
+                var responseData = new
                 {
                     success = true,
-                    token = idToken,
+                    token = accessToken,
                     refreshToken = refreshToken,
-                    userId = localId,
+                    userId = userId,
                     email = email,
                     message = "เข้าสู่ระบบสำเร็จ"
+                };
+
+                // ดึง profile ใน background (ไม่ block response)
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var profile = await _supabaseService.GetAsync("users", userId ?? "");
+                        if (profile != null)
+                        {
+                            _logger.LogInformation($"Profile fetched in background for user: {email}");
+                        }
+                    }
+                    catch (Exception profileEx)
+                    {
+                        _logger.LogWarning(profileEx, $"Could not fetch profile in background for user: {email}");
+                    }
                 });
+
+                return Ok(responseData);
             }
             catch (Exception ex)
             {
@@ -151,7 +174,7 @@ namespace ServerApi.Controllers
         }
 
         /// <summary>
-        /// Register endpoint - รับ email/password/displayName แล้วสร้าง user ผ่าน Firebase REST API
+        /// Register endpoint - รับ email/password/displayName แล้วสร้าง user ผ่าน Supabase REST API
         /// </summary>
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterRequest request)
@@ -176,51 +199,54 @@ namespace ServerApi.Controllers
                     });
                 }
 
-                var firebaseApiKey = _configuration["Firebase:ApiKey"];
-                if (string.IsNullOrEmpty(firebaseApiKey))
+                var supabaseUrl = _configuration["Supabase:Url"];
+                if (string.IsNullOrEmpty(supabaseUrl))
                 {
-                    _logger.LogError("Firebase API Key not configured");
+                    _logger.LogError("Supabase URL not configured");
                     return StatusCode(500, new
                     {
                         success = false,
-                        error = "ระบบยังไม่ได้ตั้งค่า Firebase API Key"
+                        error = "ระบบยังไม่ได้ตั้งค่า Supabase URL"
                     });
                 }
 
-                // ใช้ Firebase REST API เพื่อสร้าง user
-                var registerUrl = $"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={firebaseApiKey}";
+                // ใช้ Supabase REST API เพื่อสร้าง user
+                var registerUrl = $"{supabaseUrl}/auth/v1/signup";
                 
                 var registerPayload = new
                 {
                     email = request.Email,
-                    password = request.Password,
-                    returnSecureToken = true
+                    password = request.Password
                 };
 
                 var jsonContent = JsonSerializer.Serialize(registerPayload);
                 var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+                
+                var supabaseKey = _configuration["Supabase:Key"];
+                _httpClient.DefaultRequestHeaders.Clear();
+                _httpClient.DefaultRequestHeaders.Add("apikey", supabaseKey);
+                _httpClient.DefaultRequestHeaders.Add("Content-Type", "application/json");
 
                 var response = await _httpClient.PostAsync(registerUrl, content);
                 var responseContent = await response.Content.ReadAsStringAsync();
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    _logger.LogWarning($"Firebase registration failed: {responseContent}");
+                    _logger.LogWarning($"Supabase registration failed: {responseContent}");
                     
                     // Parse error message
-                    var errorResponse = JsonSerializer.Deserialize<JsonElement>(responseContent);
                     var errorMessage = "เกิดข้อผิดพลาดในการสมัครสมาชิก";
-                    
-                    if (errorResponse.TryGetProperty("error", out var errorObj))
+                    try
                     {
-                        if (errorObj.TryGetProperty("message", out var message))
+                        var errorResponse = JsonSerializer.Deserialize<JsonElement>(responseContent);
+                        if (errorResponse.TryGetProperty("error_description", out var errorDesc))
                         {
-                            var messageStr = message.GetString() ?? "";
-                            if (messageStr.Contains("EMAIL_EXISTS"))
+                            var messageStr = errorDesc.GetString() ?? "";
+                            if (messageStr.Contains("User already registered"))
                             {
                                 errorMessage = "อีเมลนี้ถูกใช้งานแล้ว";
                             }
-                            else if (messageStr.Contains("WEAK_PASSWORD"))
+                            else if (messageStr.Contains("Password"))
                             {
                                 errorMessage = "รหัสผ่านไม่แข็งแรงพอ";
                             }
@@ -229,6 +255,10 @@ namespace ServerApi.Controllers
                                 errorMessage = messageStr;
                             }
                         }
+                    }
+                    catch
+                    {
+                        // Use default error message
                     }
 
                     return BadRequest(new
@@ -241,45 +271,75 @@ namespace ServerApi.Controllers
                 var registerResult = JsonSerializer.Deserialize<JsonElement>(responseContent);
                 
                 // Extract token and user info
-                var idToken = registerResult.GetProperty("idToken").GetString();
-                var refreshToken = registerResult.GetProperty("refreshToken").GetString();
-                var localId = registerResult.GetProperty("localId").GetString();
-                var email = registerResult.GetProperty("email").GetString();
+                var accessToken = registerResult.GetProperty("access_token").GetString();
+                var refreshToken = registerResult.GetProperty("refresh_token").GetString();
+                var userObj = registerResult.GetProperty("user");
+                var userId = userObj.GetProperty("id").GetString();
+                var email = userObj.GetProperty("email").GetString();
 
-                // สร้าง user profile ใน Firestore
-                try
+                // สร้าง user profile ใน Supabase (ทำแบบ async เพื่อไม่ให้ block)
+                var createdAt = DateTime.UtcNow;
+                
+                // กำหนดชื่อบัญชี - ใช้ displayName ถ้ามี หรือใช้ email แทน
+                var accountName = !string.IsNullOrEmpty(request.DisplayName) 
+                    ? request.DisplayName 
+                    : email.Split('@')[0]; // ใช้ส่วนก่อน @ ของ email เป็นชื่อบัญชี
+
+                var profileData = new Dictionary<string, object>
                 {
-                    var profileData = new Dictionary<string, object>
-                    {
-                        ["uid"] = localId,
-                        ["email"] = email,
-                        ["createdAt"] = Timestamp.GetCurrentTimestamp(),
-                        ["updatedAt"] = Timestamp.GetCurrentTimestamp()
-                    };
+                    ["id"] = userId,
+                    ["uid"] = userId,
+                    ["email"] = email,
+                    ["displayName"] = accountName, // เก็บชื่อบัญชีเสมอ
+                    ["accountName"] = accountName, // เก็บชื่อบัญชีแยกไว้ด้วย
+                    ["createdAt"] = createdAt,
+                    ["updatedAt"] = createdAt,
+                    ["registrationDate"] = createdAt, // วันที่สมัครสมาชิก
+                    ["isActive"] = true // สถานะบัญชี
+                };
 
-                    if (!string.IsNullOrEmpty(request.DisplayName))
+                // หมายเหตุ: ไม่เก็บรหัสผ่านใน Supabase เพราะ Supabase Authentication จัดการให้แล้ว
+                // รหัสผ่านถูก hash และเก็บใน Supabase Authentication อย่างปลอดภัย
+
+                // สร้าง profile ใน Supabase แบบ background (ไม่ block response)
+                // ส่ง response กลับทันทีโดยไม่รอ profile creation
+                _ = Task.Run(async () =>
+                {
+                    try
                     {
-                        profileData["displayName"] = request.DisplayName;
+                        await _supabaseService.CreateAsync("users", profileData);
+                        _logger.LogInformation($"User profile created successfully (background) - Email: {email}, AccountName: {accountName}, CreatedAt: {createdAt}");
                     }
-
-                    await _firebaseService.CreateAsync("users", profileData);
-                    _logger.LogInformation($"User profile created: {email}");
-                }
-                catch (Exception profileEx)
-                {
-                    _logger.LogWarning(profileEx, "Failed to create user profile, but registration succeeded");
-                    // Continue even if profile creation fails
-                }
+                    catch (Exception profileEx)
+                    {
+                        _logger.LogError(profileEx, $"Failed to create user profile in Supabase for user: {email}");
+                        // Profile จะถูกสร้างเมื่อ user login ครั้งแรกหรือแก้ไข profile
+                    }
+                });
 
                 _logger.LogInformation($"User registered successfully: {email}");
 
+                // ส่ง response กลับทันทีโดยไม่รอ profile creation
+                // Profile จะถูกสร้างใน background
+                var createdAtString = createdAt.ToString("o"); // ISO 8601 format
+                
                 return Ok(new
                 {
                     success = true,
-                    token = idToken,
+                    token = accessToken,
                     refreshToken = refreshToken,
-                    userId = localId,
+                    userId = userId,
                     email = email,
+                    user = new
+                    {
+                        uid = userId,
+                        email = email,
+                        displayName = accountName,
+                        accountName = accountName,
+                        createdAt = createdAtString,
+                        updatedAt = createdAtString,
+                        isActive = true
+                    },
                     message = "สมัครสมาชิกสำเร็จ"
                 });
             }
@@ -296,7 +356,7 @@ namespace ServerApi.Controllers
         }
 
         /// <summary>
-        /// สร้างหรืออัปเดต User Profile - รับข้อมูลจาก Client แล้วส่งต่อไปยัง Firebase
+        /// สร้างหรืออัปเดต User Profile - รับข้อมูลจาก Client แล้วส่งต่อไปยัง Supabase
         /// </summary>
         [HttpPost("profile")]
         [Authorize]
@@ -304,50 +364,94 @@ namespace ServerApi.Controllers
         {
             try
             {
-                var userId = User.FindFirst("uid")?.Value 
-                    ?? User.FindFirst("user_id")?.Value 
-                    ?? User.Identity?.Name 
-                    ?? throw new UnauthorizedAccessException("User ID not found");
+                // ดึง userId จาก JWT claims - Supabase ใช้ 'sub' (subject) เป็น user ID
+                var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                    ?? User.FindFirst("sub")?.Value
+                    ?? User.FindFirst("user_id")?.Value
+                    ?? User.FindFirst("uid")?.Value
+                    ?? User.Identity?.Name
+                    ?? throw new UnauthorizedAccessException("User ID not found in token");
 
-                var profileData = new Dictionary<string, object>
+                _logger.LogInformation($"Updating profile for user: {userId}");
+
+                // ดึงข้อมูล profile ที่มีอยู่ก่อน
+                var existingProfile = await _supabaseService.GetAsync("users", userId);
+
+                // สร้าง dictionary สำหรับข้อมูลที่จะอัปเดต
+                var profileData = new Dictionary<string, object>();
+
+                // ถ้ามี profile อยู่แล้ว ให้ merge ข้อมูลเดิมกับข้อมูลใหม่
+                if (existingProfile != null)
                 {
-                    ["updatedAt"] = Timestamp.GetCurrentTimestamp()
-                };
+                    // คัดลอกข้อมูลเดิมทั้งหมด
+                    foreach (var item in existingProfile)
+                    {
+                        profileData[item.Key] = item.Value;
+                    }
+                }
+                else
+                {
+                    // ถ้ายังไม่มี profile ให้สร้างใหม่
+                    var createdAt = DateTime.UtcNow;
+                    profileData["id"] = userId;
+                    profileData["uid"] = userId;
+                    profileData["createdAt"] = createdAt;
+                    profileData["registrationDate"] = createdAt; // วันที่สมัครสมาชิก
+                    profileData["isActive"] = true; // สถานะบัญชี
+                }
 
-                if (!string.IsNullOrEmpty(request.DisplayName))
+                // อัปเดตเฉพาะฟิลด์ที่ส่งมา (partial update)
+                if (request.AccountName != null)
+                    profileData["accountName"] = request.AccountName;
+
+                if (request.DisplayName != null)
                     profileData["displayName"] = request.DisplayName;
 
-                if (!string.IsNullOrEmpty(request.Email))
+                if (request.Email != null)
                     profileData["email"] = request.Email;
 
-                if (!string.IsNullOrEmpty(request.ProfileImage))
+                if (request.ProfileImage != null)
                     profileData["photoURL"] = request.ProfileImage;
 
-                // ตรวจสอบว่ามี profile อยู่แล้วหรือไม่
-                var existingProfile = await _firebaseService.GetAsync("users", userId);
+                if (request.Phone != null)
+                    profileData["phone"] = request.Phone;
 
+                if (request.Address != null)
+                    profileData["address"] = request.Address;
+
+                // อัปเดต timestamp เสมอ
+                profileData["updatedAt"] = DateTime.UtcNow;
+
+                // บันทึกข้อมูล
                 if (existingProfile == null)
                 {
-                    // สร้าง profile ใหม่
-                    profileData["createdAt"] = Timestamp.GetCurrentTimestamp();
-                    profileData["uid"] = userId;
-                    await _firebaseService.CreateAsync("users", profileData);
+                    await _supabaseService.CreateAsync("users", profileData);
                     _logger.LogInformation($"Created new profile for user: {userId}");
                 }
                 else
                 {
-                    // อัปเดต profile ที่มีอยู่
-                    await _firebaseService.UpdateAsync("users", userId, profileData);
+                    await _supabaseService.UpdateAsync("users", userId, profileData);
                     _logger.LogInformation($"Updated profile for user: {userId}");
                 }
 
-                var updatedProfile = await _firebaseService.GetAsync("users", userId);
+                // ดึงข้อมูล profile ที่อัปเดตแล้วเพื่อส่งกลับ
+                var updatedProfile = await _supabaseService.GetAsync("users", userId);
 
                 return Ok(new
                 {
                     success = true,
                     message = "Profile saved successfully",
                     user = updatedProfile
+                });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning(ex, "Unauthorized access attempt");
+                return Unauthorized(new
+                {
+                    success = false,
+                    error = "ไม่พบข้อมูลผู้ใช้ใน token",
+                    message = ex.Message
                 });
             }
             catch (Exception ex)
@@ -363,7 +467,7 @@ namespace ServerApi.Controllers
         }
 
         /// <summary>
-        /// ดึงข้อมูล User Profile - รับข้อมูลจาก Firebase แล้วส่งกลับไปยัง Client
+        /// ดึงข้อมูล User Profile - รับข้อมูลจาก Supabase แล้วส่งกลับไปยัง Client
         /// </summary>
         [HttpGet("profile")]
         [Authorize]
@@ -371,15 +475,21 @@ namespace ServerApi.Controllers
         {
             try
             {
-                var userId = User.FindFirst("uid")?.Value 
-                    ?? User.FindFirst("user_id")?.Value 
-                    ?? User.Identity?.Name 
-                    ?? throw new UnauthorizedAccessException("User ID not found");
+                // ดึง userId จาก JWT claims - Supabase ใช้ 'sub' (subject) เป็น user ID
+                var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                    ?? User.FindFirst("sub")?.Value
+                    ?? User.FindFirst("user_id")?.Value
+                    ?? User.FindFirst("uid")?.Value
+                    ?? User.Identity?.Name
+                    ?? throw new UnauthorizedAccessException("User ID not found in token");
 
-                var profile = await _firebaseService.GetAsync("users", userId);
+                _logger.LogInformation($"Fetching profile for user: {userId}");
+
+                var profile = await _supabaseService.GetAsync("users", userId);
 
                 if (profile == null)
                 {
+                    _logger.LogWarning($"Profile not found for user: {userId}");
                     return NotFound(new
                     {
                         success = false,
@@ -391,6 +501,16 @@ namespace ServerApi.Controllers
                 {
                     success = true,
                     user = profile
+                });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning(ex, "Unauthorized access attempt");
+                return Unauthorized(new
+                {
+                    success = false,
+                    error = "ไม่พบข้อมูลผู้ใช้ใน token",
+                    message = ex.Message
                 });
             }
             catch (Exception ex)
@@ -406,7 +526,7 @@ namespace ServerApi.Controllers
         }
 
         /// <summary>
-        /// อัปโหลดรูป Profile Image - รับไฟล์จาก Client แล้วส่งต่อไปยัง Cloudinary และ Firebase
+        /// อัปโหลดรูป Profile Image - รับไฟล์จาก Client แล้วส่งต่อไปยัง Cloudinary และ Supabase
         /// </summary>
         [HttpPost("upload-profile-image")]
         [Authorize]
@@ -445,10 +565,13 @@ namespace ServerApi.Controllers
                     });
                 }
 
-                var userId = User.FindFirst("uid")?.Value 
-                    ?? User.FindFirst("user_id")?.Value 
-                    ?? User.Identity?.Name 
-                    ?? throw new UnauthorizedAccessException("User ID not found");
+                // ดึง userId จาก JWT claims - Supabase ใช้ 'sub' (subject) เป็น user ID
+                var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                    ?? User.FindFirst("sub")?.Value
+                    ?? User.FindFirst("user_id")?.Value
+                    ?? User.FindFirst("uid")?.Value
+                    ?? User.Identity?.Name
+                    ?? throw new UnauthorizedAccessException("User ID not found in token");
 
                 // 1. อัปโหลดรูปไปยัง Cloudinary
                 _logger.LogInformation($"Uploading profile image for user: {userId}");
@@ -469,15 +592,15 @@ namespace ServerApi.Controllers
                 var imageUrl = uploadResult.SecureUrl.ToString();
                 var publicId = uploadResult.PublicId;
 
-                // 2. บันทึก URL ลง Firebase
+                // 2. บันทึก URL ลง Supabase
                 var updateData = new Dictionary<string, object>
                 {
                     ["photoURL"] = imageUrl,
                     ["cloudinaryPublicId"] = publicId,
-                    ["updatedAt"] = Timestamp.GetCurrentTimestamp()
+                    ["updatedAt"] = DateTime.UtcNow
                 };
 
-                var existingProfile = await _firebaseService.GetAsync("users", userId);
+                var existingProfile = await _supabaseService.GetAsync("users", userId);
                 if (existingProfile != null)
                 {
                     // ลบรูปเก่าจาก Cloudinary ถ้ามี
@@ -497,13 +620,14 @@ namespace ServerApi.Controllers
                         }
                     }
 
-                    await _firebaseService.UpdateAsync("users", userId, updateData);
+                    await _supabaseService.UpdateAsync("users", userId, updateData);
                 }
                 else
                 {
+                    updateData["id"] = userId;
                     updateData["uid"] = userId;
-                    updateData["createdAt"] = Timestamp.GetCurrentTimestamp();
-                    await _firebaseService.CreateAsync("users", updateData);
+                    updateData["createdAt"] = DateTime.UtcNow;
+                    await _supabaseService.CreateAsync("users", updateData);
                 }
 
                 _logger.LogInformation($"Profile image uploaded successfully for user: {userId}");
@@ -538,8 +662,11 @@ namespace ServerApi.Controllers
         {
             try
             {
-                var userId = User.FindFirst("uid")?.Value 
-                    ?? User.FindFirst("user_id")?.Value 
+                // ดึง userId จาก JWT claims - Supabase ใช้ 'sub' (subject) เป็น user ID
+                var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                    ?? User.FindFirst("sub")?.Value
+                    ?? User.FindFirst("user_id")?.Value
+                    ?? User.FindFirst("uid")?.Value
                     ?? User.Identity?.Name;
 
                 if (string.IsNullOrEmpty(userId))
@@ -547,7 +674,7 @@ namespace ServerApi.Controllers
                     return Ok(new { liked = false });
                 }
 
-                var likes = await _firebaseService.QueryAsync("likes", "postId", postId);
+                var likes = await _supabaseService.QueryAsync("likes", "postId", postId);
                 var userLike = likes.FirstOrDefault(l => 
                     l.ContainsKey("userId") && l["userId"]?.ToString() == userId);
 
@@ -569,13 +696,16 @@ namespace ServerApi.Controllers
         {
             try
             {
-                var userId = User.FindFirst("uid")?.Value 
-                    ?? User.FindFirst("user_id")?.Value 
-                    ?? User.Identity?.Name 
-                    ?? throw new UnauthorizedAccessException("User ID not found");
+                // ดึง userId จาก JWT claims - Supabase ใช้ 'sub' (subject) เป็น user ID
+                var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                    ?? User.FindFirst("sub")?.Value
+                    ?? User.FindFirst("user_id")?.Value
+                    ?? User.FindFirst("uid")?.Value
+                    ?? User.Identity?.Name
+                    ?? throw new UnauthorizedAccessException("User ID not found in token");
 
                 // ตรวจสอบว่ามี like อยู่แล้วหรือไม่
-                var likes = await _firebaseService.QueryAsync("likes", "postId", postId);
+                var likes = await _supabaseService.QueryAsync("likes", "postId", postId);
                 var existingLike = likes.FirstOrDefault(l => 
                     l.ContainsKey("userId") && l["userId"]?.ToString() == userId);
 
@@ -585,7 +715,7 @@ namespace ServerApi.Controllers
                     var likeId = existingLike["id"]?.ToString();
                     if (!string.IsNullOrEmpty(likeId))
                     {
-                        await _firebaseService.DeleteAsync("likes", likeId);
+                        await _supabaseService.DeleteAsync("likes", likeId);
                     }
                     return Ok(new { liked = false, message = "Unlike successful" });
                 }
@@ -596,9 +726,9 @@ namespace ServerApi.Controllers
                     {
                         ["postId"] = postId,
                         ["userId"] = userId,
-                        ["createdAt"] = Timestamp.GetCurrentTimestamp()
+                        ["createdAt"] = DateTime.UtcNow
                     };
-                    await _firebaseService.CreateAsync("likes", likeData);
+                    await _supabaseService.CreateAsync("likes", likeData);
                     return Ok(new { liked = true, message = "Like successful" });
                 }
             }
@@ -609,6 +739,120 @@ namespace ServerApi.Controllers
                 {
                     success = false,
                     error = "เกิดข้อผิดพลาดในการ like/unlike",
+                    message = ex.Message
+                });
+            }
+        }
+
+        /// <summary>
+        /// Refresh Token endpoint - รับ refresh token แล้ว refresh ID token ใหม่
+        /// </summary>
+        [HttpPost("refresh-token")]
+        public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenRequest request)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(request.RefreshToken))
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        error = "กรุณาส่ง refresh token"
+                    });
+                }
+
+                var supabaseUrl = _configuration["Supabase:Url"];
+                if (string.IsNullOrEmpty(supabaseUrl))
+                {
+                    _logger.LogError("Supabase URL not configured");
+                    return StatusCode(500, new
+                    {
+                        success = false,
+                        error = "ระบบยังไม่ได้ตั้งค่า Supabase URL"
+                    });
+                }
+
+                // ใช้ Supabase REST API เพื่อ refresh token
+                var refreshUrl = $"{supabaseUrl}/auth/v1/token?grant_type=refresh_token";
+                
+                var refreshPayload = new
+                {
+                    refresh_token = request.RefreshToken
+                };
+
+                var jsonContent = JsonSerializer.Serialize(refreshPayload);
+                var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+                
+                var supabaseKey = _configuration["Supabase:Key"];
+                _httpClient.DefaultRequestHeaders.Clear();
+                _httpClient.DefaultRequestHeaders.Add("apikey", supabaseKey);
+                _httpClient.DefaultRequestHeaders.Add("Content-Type", "application/json");
+
+                var response = await _httpClient.PostAsync(refreshUrl, content);
+                var responseContent = await response.Content.ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning($"Supabase token refresh failed: {responseContent}");
+                    
+                    // Parse error message
+                    var errorMessage = "ไม่สามารถ refresh token ได้";
+                    try
+                    {
+                        var errorResponse = JsonSerializer.Deserialize<JsonElement>(responseContent);
+                        if (errorResponse.TryGetProperty("error_description", out var errorDesc))
+                        {
+                            var messageStr = errorDesc.GetString() ?? "";
+                            if (messageStr.Contains("expired") || messageStr.Contains("invalid"))
+                            {
+                                errorMessage = "Refresh token หมดอายุหรือไม่ถูกต้อง กรุณาเข้าสู่ระบบอีกครั้ง";
+                            }
+                            else
+                            {
+                                errorMessage = messageStr;
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Use default error message
+                    }
+
+                    return Unauthorized(new
+                    {
+                        success = false,
+                        error = errorMessage
+                    });
+                }
+
+                var refreshResult = JsonSerializer.Deserialize<JsonElement>(responseContent);
+                
+                // Extract new tokens
+                var accessToken = refreshResult.GetProperty("access_token").GetString();
+                var refreshToken = refreshResult.GetProperty("refresh_token").GetString();
+                var userObj = refreshResult.GetProperty("user");
+                var userId = userObj.GetProperty("id").GetString();
+                var email = userObj.GetProperty("email")?.GetString() ?? "";
+
+                _logger.LogInformation($"Token refreshed successfully for user: {userId}");
+
+                return Ok(new
+                {
+                    success = true,
+                    token = accessToken,
+                    refreshToken = refreshToken,
+                    userId = userId,
+                    email = email,
+                    message = "Refresh token สำเร็จ"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during token refresh");
+                return StatusCode(500, new
+                {
+                    success = false,
+                    error = "เกิดข้อผิดพลาดในการ refresh token",
                     message = ex.Message
                 });
             }
@@ -637,9 +881,30 @@ namespace ServerApi.Controllers
 
     public class ProfileRequest
     {
+        [JsonPropertyName("accountName")]
+        public string? AccountName { get; set; }
+        
+        [JsonPropertyName("displayName")]
         public string? DisplayName { get; set; }
+        
+        [JsonPropertyName("email")]
         public string? Email { get; set; }
+        
+        [JsonPropertyName("profileImage")]
         public string? ProfileImage { get; set; }
+        
+        [JsonPropertyName("phone")]
+        public string? Phone { get; set; }
+        
+        [JsonPropertyName("address")]
+        public string? Address { get; set; }
+    }
+
+    public class RefreshTokenRequest
+    {
+        [Required]
+        [JsonPropertyName("refreshToken")]
+        public string RefreshToken { get; set; } = string.Empty;
     }
 }
 

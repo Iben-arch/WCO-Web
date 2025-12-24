@@ -87,7 +87,7 @@ export interface AuthContextType {
   currentUser: User | null;
   userProfile: UserProfile | null;
   login: (email: string, password: string) => Promise<any>;
-  register: (email: string, password: string, displayName: string) => Promise<any>;
+  register: (email: string, password: string, displayName: string, profileImage?: string) => Promise<any>;
   logout: () => Promise<void>;
   updateProfile: (profileData: any) => Promise<any>;
   refreshToken: () => Promise<string | null>;

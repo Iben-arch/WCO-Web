@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Row, Col, Card, Form, Modal, Button } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import axios from 'axios';
+import axios from '../utils/axiosInterceptor';
 import { toast } from 'react-toastify';
 import ProfileSidebar from '../components/layout/ProfileSidebar';
 import { 
@@ -12,10 +12,11 @@ import {
 import { Post, FirestoreTimestamp } from '../types';
 
 interface ProfileFormData {
-  displayName: string;
-  phone: string;
-  address: string;
-  profileImage: string;
+  accountName: string; // ชื่อบัญชี
+  displayName: string; // ชื่อ-นามสกุล
+  phone: string; // เบอร์โทรศัพท์
+  address: string; // ที่อยู่
+  photoURL: string; // รูปโปรไฟล์
 }
 
 interface PasswordData {
@@ -35,10 +36,11 @@ const Profile: React.FC = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<ActiveTab>('personal-info');
   const [formData, setFormData] = useState<ProfileFormData>({
+    accountName: '',
     displayName: '',
     phone: '',
     address: '',
-    profileImage: ''
+    photoURL: ''
   });
   const [loading, setLoading] = useState<boolean>(false);
   const [likedItems, setLikedItems] = useState<LikedPost[]>([]);
@@ -46,7 +48,14 @@ const Profile: React.FC = () => {
   const [watchlist, setWatchlist] = useState<Post[]>([]);
   const [orders, setOrders] = useState<Post[]>([]);
   const [myPosts, setMyPosts] = useState<Post[]>([]);
-  const [editingField, setEditingField] = useState<keyof ProfileFormData | null>(null);
+  const [isEditMode, setIsEditMode] = useState<boolean>(false);
+  const [originalFormData, setOriginalFormData] = useState<ProfileFormData>({
+    accountName: '',
+    displayName: '',
+    phone: '',
+    address: '',
+    photoURL: ''
+  });
   const [showPasswordModal, setShowPasswordModal] = useState<boolean>(false);
   const [passwordData, setPasswordData] = useState<PasswordData>({
     currentPassword: '',
@@ -68,12 +77,18 @@ const Profile: React.FC = () => {
 
   useEffect(() => {
     if (userProfile) {
-      setFormData({
+      const newFormData = {
+        accountName: userProfile.accountName || userProfile.displayName || '',
         displayName: userProfile.displayName || '',
         phone: userProfile.phone || '',
         address: userProfile.address || '',
-        profileImage: userProfile.profileImage || ''
-      });
+        photoURL: userProfile.photoURL || ''
+      };
+      setFormData(newFormData);
+      // ถ้าไม่ได้อยู่ในโหมดแก้ไข ให้อัปเดต originalFormData ด้วย
+      if (!isEditMode) {
+        setOriginalFormData(newFormData);
+      }
     }
     fetchAllData();
   }, [userProfile, fetchAllData]);
@@ -141,15 +156,66 @@ const Profile: React.FC = () => {
     });
   };
 
-  const handleFieldSave = async (field: keyof ProfileFormData, value: string): Promise<void> => {
+  const handleEditModeToggle = (): void => {
+    if (!isEditMode) {
+      // เข้าสู่โหมดแก้ไข - เก็บข้อมูลเดิมไว้
+      setOriginalFormData({ ...formData });
+      setIsEditMode(true);
+    } else {
+      // ยกเลิกการแก้ไข - คืนค่าข้อมูลเดิม
+      setFormData({ ...originalFormData });
+      setIsEditMode(false);
+    }
+  };
+
+  const handleSaveAll = async (): Promise<void> => {
     try {
       setLoading(true);
-      await updateProfile({ [field]: value });
-      setEditingField(null);
-      toast.success('อัปเดตข้อมูลสำเร็จ');
-    } catch (error) {
-      console.error('Error updating field:', error);
-      toast.error('เกิดข้อผิดพลาดในการอัปเดตข้อมูล');
+      
+      // สร้าง object สำหรับอัปเดตเฉพาะฟิลด์ที่เปลี่ยนแปลง
+      const updateData: any = {};
+      
+      // ตรวจสอบและเพิ่มฟิลด์ที่เปลี่ยนแปลง
+      if (formData.accountName !== originalFormData.accountName) {
+        updateData.accountName = formData.accountName;
+      }
+      if (formData.displayName !== originalFormData.displayName) {
+        updateData.displayName = formData.displayName;
+      }
+      if (formData.phone !== originalFormData.phone) {
+        updateData.phone = formData.phone;
+      }
+      if (formData.address !== originalFormData.address) {
+        updateData.address = formData.address;
+      }
+      if (formData.photoURL !== originalFormData.photoURL) {
+        updateData.profileImage = formData.photoURL;
+      }
+
+      // ถ้ามีการเปลี่ยนแปลง ให้อัปเดต
+      if (Object.keys(updateData).length > 0) {
+        await updateProfile(updateData);
+        setOriginalFormData({ ...formData });
+        toast.success('บันทึกข้อมูลโปรไฟล์สำเร็จ');
+      } else {
+        toast.info('ไม่มีการเปลี่ยนแปลงข้อมูล');
+      }
+      
+      setIsEditMode(false);
+    } catch (error: any) {
+      console.error('Error saving profile:', error);
+      
+      // Handle 401 Unauthorized - token หมดอายุหรือไม่ถูกต้อง
+      if (error.response?.status === 401) {
+        toast.error('เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง');
+        // Redirect to login after a short delay
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 2000);
+      } else {
+        const errorMessage = error.response?.data?.error || 'เกิดข้อผิดพลาดในการบันทึกข้อมูล';
+        toast.error(errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -204,11 +270,23 @@ const Profile: React.FC = () => {
       setLoading(true);
       setUploadProgress(0);
       
+      // ตรวจสอบว่ามี token หรือไม่
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        toast.error('กรุณาเข้าสู่ระบบก่อนอัปโหลดรูปโปรไฟล์');
+        setLoading(false);
+        return;
+      }
+      
       const formData = new FormData();
       formData.append('profileImage', file);
 
+      // ไม่ต้องตั้ง Content-Type ให้ axios จัดการเอง
+      // axios จะตั้ง multipart/form-data อัตโนมัติเมื่อส่ง FormData
+      // และ interceptor จะเพิ่ม Authorization header ให้อัตโนมัติ
       const response = await axios.post('/api/auth/upload-profile-image', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        // ไม่ต้องตั้ง headers เพราะ interceptor จะจัดการให้
+        // และ axios จะตั้ง Content-Type: multipart/form-data อัตโนมัติ
         onUploadProgress: (progressEvent) => {
           const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1));
           setUploadProgress(percentCompleted);
@@ -230,7 +308,14 @@ const Profile: React.FC = () => {
       setPreviewImage(null);
       setUploadProgress(0);
       
-      if (error.response?.data?.error) {
+      // Handle 401 Unauthorized - token หมดอายุหรือไม่ถูกต้อง
+      if (error.response?.status === 401) {
+        toast.error('เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง');
+        // อาจจะ redirect ไปหน้า login
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 2000);
+      } else if (error.response?.data?.error) {
         toast.error(`เกิดข้อผิดพลาด: ${error.response.data.error}`);
       } else if (error.code === 'ECONNREFUSED') {
         toast.error('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้');
@@ -291,6 +376,8 @@ const Profile: React.FC = () => {
   const renderPersonalInfo = (): JSX.Element => {
     // Get the best available display name
     const getDisplayName = (): string => {
+      if (formData.accountName) return formData.accountName;
+      if (userProfile?.accountName) return userProfile.accountName;
       if (formData.displayName) return formData.displayName;
       if (userProfile?.displayName) return userProfile.displayName;
       if (currentUser?.displayName) return currentUser.displayName;
@@ -309,10 +396,10 @@ const Profile: React.FC = () => {
               style={{ cursor: 'pointer' }}
               title="คลิกเพื่ออัปโหลดรูปโปรไฟล์"
             >
-              {previewImage || formData.profileImage || userProfile?.profileImage ? (
+              {previewImage || formData.photoURL || userProfile?.photoURL ? (
                 <>
                   <img
-                    src={previewImage || formData.profileImage || userProfile?.profileImage}
+                    src={previewImage || formData.photoURL || userProfile?.photoURL}
                     alt="Profile"
                     className="profile-image"
                   />
@@ -419,70 +506,151 @@ const Profile: React.FC = () => {
         </div>
 
       {/* Personal Information Section */}
-      <Card className="mb-4">
-        <Card.Header>
-          <h5 className="mb-0">📝 ข้อมูลส่วนตัว</h5>
+      <Card className={`mb-4 profile-info-card ${isEditMode ? 'profile-edit-mode' : ''}`}>
+        <Card.Header className={`profile-card-header ${isEditMode ? 'edit-mode-active' : ''}`}>
+          <div className="d-flex justify-content-between align-items-center flex-wrap gap-3">
+            <div className="d-flex align-items-center gap-2">
+              <div className="profile-section-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M20 21V19C20 17.9391 19.5786 16.9217 18.8284 16.1716C18.0783 15.4214 17.0609 15 16 15H8C6.93913 15 5.92172 15.4214 5.17157 16.1716C4.42143 16.9217 4 17.9391 4 19V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M12 11C14.2091 11 16 9.20914 16 7C16 4.79086 14.2091 3 12 3C9.79086 3 8 4.79086 8 7C8 9.20914 9.79086 11 12 11Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+              <div>
+                <h5 className="mb-0 profile-section-title">ข้อมูลส่วนตัว</h5>
+                {isEditMode && (
+                  <small className="text-primary d-block mt-1" style={{ fontSize: '0.75rem', fontWeight: 500 }}>
+                    <span className="edit-mode-badge">โหมดแก้ไข</span>
+                  </small>
+                )}
+              </div>
+            </div>
+            {!isEditMode ? (
+              <button
+                className="btn btn-edit-profile"
+                onClick={handleEditModeToggle}
+                disabled={loading}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: '0.5rem' }}>
+                  <path d="M11 4H4C3.46957 4 2.96086 4.21071 2.58579 4.58579C2.21071 4.96086 2 5.46957 2 6V20C2 20.5304 2.21071 21.0391 2.58579 21.4142C2.96086 21.7893 3.46957 22 4 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M18.5 2.5C18.8978 2.10218 19.4374 1.87868 20 1.87868C20.5626 1.87868 21.1022 2.10218 21.5 2.5C21.8978 2.89782 22.1213 3.43739 22.1213 4C22.1213 4.56261 21.8978 5.10218 21.5 5.5L12 15L8 16L9 12L18.5 2.5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                แก้ไขโปรไฟล์
+              </button>
+            ) : (
+              <div className="d-flex gap-2">
+                <button
+                  className="btn btn-cancel-edit"
+                  onClick={handleEditModeToggle}
+                  disabled={loading}
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  className="btn btn-save-profile"
+                  onClick={handleSaveAll}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-2" role="status" />
+                      กำลังบันทึก...
+                    </>
+                  ) : (
+                    <>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: '0.5rem' }}>
+                        <path d="M19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H16L21 8V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M17 21V13H7V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M7 3V8H15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                      บันทึก
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
         </Card.Header>
-        <Card.Body>
+        <Card.Body className="profile-card-body">
           <div className="profile-field">
-            <label className="profile-field-label">ชื่อ - นามสกุล</label>
+            <label className="profile-field-label">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: '0.5rem', verticalAlign: 'middle' }}>
+                <path d="M20 21V19C20 17.9391 19.5786 16.9217 18.8284 16.1716C18.0783 15.4214 17.0609 15 16 15H8C6.93913 15 5.92172 15.4214 5.17157 16.1716C4.42143 16.9217 4 17.9391 4 19V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M12 11C14.2091 11 16 9.20914 16 7C16 4.79086 14.2091 3 12 3C9.79086 3 8 4.79086 8 7C8 9.20914 9.79086 11 12 11Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              ชื่อบัญชี
+            </label>
+            <div className="profile-field-input-group">
+              <input
+                type="text"
+                className="profile-field-input"
+                value={formData.accountName}
+                onChange={(e) => setFormData({...formData, accountName: e.target.value})}
+                placeholder="กรอกชื่อบัญชี"
+                disabled={!isEditMode}
+                readOnly={!isEditMode}
+              />
+            </div>
+            <small className="profile-field-hint">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: '0.25rem', verticalAlign: 'middle' }}>
+                <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M12 16V12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M12 8H12.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              ชื่อบัญชีที่ใช้แสดงในระบบ
+            </small>
+          </div>
+
+          <div className="profile-field">
+            <label className="profile-field-label">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: '0.5rem', verticalAlign: 'middle' }}>
+                <path d="M20 21V19C20 17.9391 19.5786 16.9217 18.8284 16.1716C18.0783 15.4214 17.0609 15 16 15H8C6.93913 15 5.92172 15.4214 5.17157 16.1716C4.42143 16.9217 4 17.9391 4 19V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M12 11C14.2091 11 16 9.20914 16 7C16 4.79086 14.2091 3 12 3C9.79086 3 8 4.79086 8 7C8 9.20914 9.79086 11 12 11Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              ชื่อ - นามสกุล
+            </label>
             <div className="profile-field-input-group">
               <input
                 type="text"
                 className="profile-field-input"
                 value={formData.displayName}
                 onChange={(e) => setFormData({...formData, displayName: e.target.value})}
-                onBlur={() => handleFieldSave('displayName', formData.displayName)}
                 placeholder="กรอกชื่อ - นามสกุล"
-                disabled={editingField !== 'displayName' && editingField !== null}
+                disabled={!isEditMode}
+                readOnly={!isEditMode}
               />
-              <button
-                className="profile-field-edit-btn"
-                onClick={() => {
-                  if (editingField === 'displayName') {
-                    setEditingField(null);
-                  } else {
-                    setEditingField('displayName');
-                  }
-                }}
-                title={editingField === 'displayName' ? 'บันทึก' : 'แก้ไข'}
-              >
-                {editingField === 'displayName' ? '💾' : '✏️'}
-              </button>
             </div>
           </div>
 
           <div className="profile-field">
-            <label className="profile-field-label">หมายเลขโทรศัพท์มือถือ</label>
+            <label className="profile-field-label">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: '0.5rem', verticalAlign: 'middle' }}>
+                <path d="M22 16.92V19.92C22 20.52 21.52 21 20.92 21C9.4 21 0 11.6 0 0.08C0 -0.52 0.48 -1 1.08 -1H4.08C4.68 -1 5.16 -0.52 5.16 0.08C5.16 1.08 5.24 2.08 5.4 3.04C5.52 3.36 5.44 3.72 5.2 3.96L3.24 5.92C4.56 8.76 7.24 11.44 10.08 12.76L12.04 10.8C12.28 10.56 12.64 10.48 12.96 10.6C13.92 10.76 14.92 10.84 15.92 10.84C16.52 10.84 17 11.32 17 11.92V14.92C17 15.52 16.52 16 15.92 16Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              หมายเลขโทรศัพท์มือถือ
+            </label>
             <div className="profile-field-input-group">
               <input
                 type="tel"
                 className="profile-field-input"
                 value={formData.phone}
                 onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                onBlur={() => handleFieldSave('phone', formData.phone)}
                 placeholder="กรอกหมายเลขโทรศัพท์มือถือ"
-                disabled={editingField !== 'phone' && editingField !== null}
+                disabled={!isEditMode}
+                readOnly={!isEditMode}
               />
-              <button
-                className="profile-field-edit-btn"
-                onClick={() => {
-                  if (editingField === 'phone') {
-                    setEditingField(null);
-                  } else {
-                    setEditingField('phone');
-                  }
-                }}
-                title={editingField === 'phone' ? 'บันทึก' : 'แก้ไข'}
-              >
-                {editingField === 'phone' ? '💾' : '✏️'}
-              </button>
             </div>
           </div>
 
           <div className="profile-field">
-            <label className="profile-field-label">อีเมล</label>
-            <div className="profile-field-input-group">
+            <label className="profile-field-label">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: '0.5rem', verticalAlign: 'middle' }}>
+                <path d="M4 4H20C21.1 4 22 4.9 22 6V18C22 19.1 21.1 20 20 20H4C2.9 20 2 19.1 2 18V6C2 4.9 2.9 4 4 4Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M22 6L12 13L2 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              อีเมล
+            </label>
+            <div className="profile-field-input-group profile-field-disabled">
               <input
                 type="email"
                 className="profile-field-input"
@@ -490,46 +658,41 @@ const Profile: React.FC = () => {
                 disabled
                 placeholder="อีเมล"
               />
-              <span className="text-muted" style={{ fontSize: '0.875rem', paddingRight: '0.5rem' }}>
-                🔒
+              <span className="profile-field-lock-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M19 11H5C3.89543 11 3 11.8954 3 13V20C3 21.1046 3.89543 22 5 22H19C20.1046 22 21 21.1046 21 20V13C21 11.8954 20.1046 11 19 11Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M7 11V7C7 5.67392 7.52678 4.40215 8.46447 3.46447C9.40215 2.52678 10.6739 2 12 2C13.3261 2 14.5979 2.52678 15.5355 3.46447C16.4732 4.40215 17 5.67392 17 7V11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
               </span>
             </div>
-            <small className="text-muted" style={{ fontSize: '0.8125rem', marginTop: '0.5rem', display: 'block' }}>
+            <small className="profile-field-hint">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: '0.25rem', verticalAlign: 'middle' }}>
+                <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M12 16V12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M12 8H12.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
               อีเมลไม่สามารถแก้ไขได้
             </small>
           </div>
 
           <div className="profile-field">
-            <label className="profile-field-label">ที่อยู่</label>
+            <label className="profile-field-label">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: '0.5rem', verticalAlign: 'middle' }}>
+                <path d="M21 10C21 17 12 23 12 23C12 23 3 17 3 10C3 7.61305 3.94821 5.32387 5.63604 3.63604C7.32387 1.94821 9.61305 1 12 1C14.3869 1 16.6761 1.94821 18.364 3.63604C20.0518 5.32387 21 7.61305 21 10Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M12 13C13.6569 13 15 11.6569 15 10C15 8.34315 13.6569 7 12 7C10.3431 7 9 8.34315 9 10C9 11.6569 10.3431 13 12 13Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              ที่อยู่
+            </label>
             <div className="profile-field-input-group">
               <textarea
                 className="profile-field-input"
                 value={formData.address}
                 onChange={(e) => setFormData({...formData, address: e.target.value})}
-                onBlur={() => handleFieldSave('address', formData.address)}
                 placeholder="กรอกที่อยู่"
-                disabled={editingField !== 'address' && editingField !== null}
-                rows={3}
-                style={{ 
-                  resize: 'vertical',
-                  minHeight: '80px',
-                  fontFamily: 'inherit'
-                }}
+                disabled={!isEditMode}
+                readOnly={!isEditMode}
+                rows={4}
               />
-              <button
-                className="profile-field-edit-btn"
-                onClick={() => {
-                  if (editingField === 'address') {
-                    setEditingField(null);
-                  } else {
-                    setEditingField('address');
-                  }
-                }}
-                title={editingField === 'address' ? 'บันทึก' : 'แก้ไข'}
-                style={{ alignSelf: 'flex-start', marginTop: '0.5rem' }}
-              >
-                {editingField === 'address' ? '💾' : '✏️'}
-              </button>
             </div>
           </div>
         </Card.Body>
