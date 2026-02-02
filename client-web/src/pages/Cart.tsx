@@ -19,6 +19,8 @@ const Cart: React.FC = () => {
   // Filter only normal sale items (not auction)
   const normalCartItems = cartItems.filter(item => item.post.postType === 'sale');
 
+  const getItemKey = (item: CartItem): string => item.id || `${item.postId}_${item.cardId || ''}`;
+
   // Refresh cart items when component mounts
   useEffect(() => {
     if (currentUser) {
@@ -30,14 +32,15 @@ const Cart: React.FC = () => {
   // Select all items by default when cart items change
   useEffect(() => {
     if (normalCartItems.length > 0) {
-      setSelectedItems(new Set(normalCartItems.map(item => item.postId)));
+      setSelectedItems(new Set(normalCartItems.map(getItemKey)));
     }
   }, [normalCartItems]);
 
-  const handleRemoveItem = async (postId: string): Promise<void> => {
-    setRemovingItem(postId);
+  const handleRemoveItem = async (item: CartItem): Promise<void> => {
+    const itemKey = getItemKey(item);
+    setRemovingItem(itemKey);
     try {
-      const result = await removeFromCart(postId);
+      const result = await removeFromCart(item.id || item.postId, item.cardId);
       if (result.success) {
         toast.success(result.message);
       } else {
@@ -87,10 +90,11 @@ const Cart: React.FC = () => {
 
   const getSelectedTotal = (): number => {
     return normalCartItems
-      .filter(item => selectedItems.has(item.postId))
+      .filter(item => selectedItems.has(getItemKey(item)))
       .reduce((total, item) => {
-        const price = item.post.price || item.post.individualPrice || 0;
-        return total + price;
+        const price = item.post.individualPrice || item.post.price || 0;
+        const qty = item.quantity ?? 1;
+        return total + price * qty;
       }, 0);
   };
 
@@ -205,7 +209,7 @@ const Cart: React.FC = () => {
                       <div className="d-flex align-items-center">
                         <Form.Check
                           type="checkbox"
-                          checked={selectedItems.size === normalCartItems.length && normalCartItems.length > 0}
+                          checked={normalCartItems.length > 0 && selectedItems.size === normalCartItems.length}
                           onChange={handleSelectAll}
                           className="me-3"
                           label="เลือกทั้งหมด"
@@ -218,17 +222,28 @@ const Cart: React.FC = () => {
                   </Card.Header>
                   <Card.Body className="p-0">
                     <div className="cart-items-list">
-                      {normalCartItems.map((item: CartItem) => (
-                        <div key={item.postId} className="cart-item-row">
+                      {normalCartItems.map((item: CartItem) => {
+                        const itemKey = getItemKey(item);
+                        const displayImage = item.cardId && item.post.individualCards
+                          ? item.post.individualCards.find(c => c.id === item.cardId)?.imageUrl
+                          : item.post.images?.[0];
+                        return (
+                        <div key={itemKey} className="cart-item-row">
                           <div className="cart-item-checkbox">
                             <Form.Check
                               type="checkbox"
-                              checked={selectedItems.has(item.postId)}
-                              onChange={() => handleToggleItem(item.postId)}
+                              checked={selectedItems.has(itemKey)}
+                              onChange={() => handleToggleItem(itemKey)}
                             />
                           </div>
                           <div className="cart-item-image-wrapper">
-                            {item.post.images && item.post.images.length > 0 ? (
+                            {displayImage ? (
+                              <img
+                                src={displayImage}
+                                alt={item.post.title}
+                                className="cart-item-image"
+                              />
+                            ) : item.post.images && item.post.images.length > 0 ? (
                               <img
                                 src={item.post.images[0]}
                                 alt={item.post.title}
@@ -264,15 +279,18 @@ const Cart: React.FC = () => {
                           </div>
                           <div className="cart-item-price-section">
                             <div className="cart-item-price-value">
-                              {formatPrice(item.post.price || item.post.individualPrice || 0)}
+                              {formatPrice((item.post.individualPrice || item.post.price || 0) * (item.quantity ?? 1))}
+                              {item.quantity && item.quantity > 1 && (
+                                <small className="text-muted ms-1">x{item.quantity}</small>
+                              )}
                             </div>
                             <Button
                               variant="link"
                               className="cart-item-remove-btn"
-                              onClick={() => handleRemoveItem(item.postId)}
-                              disabled={removingItem === item.postId}
+                              onClick={() => handleRemoveItem(item)}
+                              disabled={removingItem === itemKey}
                             >
-                              {removingItem === item.postId ? (
+                              {removingItem === itemKey ? (
                                 <Spinner size="sm" />
                               ) : (
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -283,7 +301,7 @@ const Cart: React.FC = () => {
                             </Button>
                           </div>
                         </div>
-                      ))}
+                      );})}
                     </div>
                   </Card.Body>
                 </Card>

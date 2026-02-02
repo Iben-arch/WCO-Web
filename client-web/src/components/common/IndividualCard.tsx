@@ -9,7 +9,7 @@ interface IndividualCardProps {
   card: IndividualCardItem;
   post: Post;
   onAddToCart: (cardForCart: CardForCart) => Promise<void>;
-  onRemoveFromCart?: (cardId: string) => void;
+  onRemoveFromCart?: (postId: string, cardId: string) => void;
   isInCart?: boolean;
   isAddingToCart?: boolean;
 }
@@ -57,7 +57,7 @@ const IndividualCard: React.FC<IndividualCardProps> = ({
         cardId: card.id,
         cardImage: card.imageUrl,
         cardTitle: post.title || 'การ์ดเกม',
-        price: post.individualPrice || post.price || 0,
+        price: typeof card.price === 'number' ? card.price : (post.individualPrice || post.price || 0),
         sellerId: post.sellerId,
         sellerName: post.sellerName,
         category: post.category,
@@ -74,7 +74,7 @@ const IndividualCard: React.FC<IndividualCardProps> = ({
 
   const handleRemoveFromCart = (): void => {
     if (onRemoveFromCart) {
-      onRemoveFromCart(`${post.id}_${card.id}`);
+      onRemoveFromCart(post.id, card.id);
     }
   };
 

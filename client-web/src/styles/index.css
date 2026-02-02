@@ -785,15 +785,14 @@ html {
 .card-modern,
 .modern-card,
 .sakura-card {
-  background: linear-gradient(135deg, #ffffff 0%, var(--frosted-blue-light) 100%);
-  border: 2px solid var(--border-light);
+  background: #ffffff;
+  border: 1px solid var(--border-light);
   border-radius: var(--radius-xl);
   overflow: hidden;
-  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 
-    0 4px 12px rgba(3, 4, 94, 0.08),
-    0 2px 6px rgba(72, 202, 228, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    0 2px 12px rgba(3, 4, 94, 0.06),
+    0 1px 4px rgba(72, 202, 228, 0.04);
   position: relative;
   animation: fadeInUp var(--transition-slow) ease-out;
   height: 100%;
@@ -820,10 +819,9 @@ html {
 .modern-card:hover,
 .sakura-card:hover {
   box-shadow: 
-    0 12px 32px rgba(3, 4, 94, 0.15),
-    0 6px 16px rgba(72, 202, 228, 0.12),
-    0 0 24px rgba(72, 202, 228, 0.1);
-  transform: translateY(-12px) scale(1.03);
+    0 12px 28px rgba(3, 4, 94, 0.12),
+    0 6px 14px rgba(72, 202, 228, 0.1);
+  transform: translateY(-6px);
   border-color: var(--bright-teal-blue);
 }
 
@@ -836,9 +834,9 @@ html {
 .card-image-container {
   position: relative;
   width: 100%;
-  height: 260px;
+  height: 140px;
   overflow: hidden;
-  background: linear-gradient(135deg, var(--light-cyan) 0%, var(--sky-aqua) 50%, var(--bright-teal-blue) 100%);
+  background: linear-gradient(135deg, var(--gray-100) 0%, var(--gray-200) 100%);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 
@@ -857,7 +855,7 @@ html {
 
 .card-modern:hover .card-image-container::after,
 .modern-card:hover .card-image-container::after {
-  opacity: 1;
+  opacity: 0;
 }
 
 .card-image {
@@ -869,15 +867,15 @@ html {
 
 .card-modern:hover .card-image,
 .modern-card:hover .card-image {
-  transform: scale(1.1);
+  transform: scale(1.03);
 }
 
 .card-content {
-  padding: 1.25rem;
+  padding: 0.65rem 0.85rem;
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.35rem;
 }
 
 .card-title {
@@ -917,6 +915,339 @@ html {
   font-weight: 700;
   color: var(--primary-dark);
   margin: 0;
+}
+
+/* ===== POST CARD - Enhanced UI ===== */
+.modern-card .post-type-badge {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 2;
+  display: flex;
+  gap: 0.25rem;
+}
+
+.modern-card .post-type-badge .badge {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  border-radius: var(--radius-full);
+  letter-spacing: 0.03em;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.modern-card .post-type-badge .sale-badge {
+  background: linear-gradient(135deg, rgba(72, 202, 228, 0.95) 0%, rgba(0, 180, 216, 0.95) 100%);
+  color: white;
+}
+
+.modern-card .post-type-badge .auction-badge {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.95) 0%, rgba(217, 119, 6, 0.95) 100%);
+  color: white;
+}
+
+.modern-card .post-type-badge .sold-badge {
+  background: linear-gradient(135deg, rgba(100, 116, 139, 0.95) 0%, rgba(71, 85, 105, 0.95) 100%);
+  color: white;
+}
+
+.modern-card .card-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  padding-bottom: 0.25rem;
+  margin-bottom: 0.2rem;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.modern-card .card-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.25;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+}
+
+.modern-card .category-tag {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--primary-dark);
+  background: linear-gradient(135deg, rgba(72, 202, 228, 0.12) 0%, rgba(0, 180, 216, 0.08) 100%);
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(72, 202, 228, 0.25);
+}
+
+.modern-card .card-description {
+  font-size: 0.7rem;
+  color: var(--gray-600);
+  line-height: 1.3;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.modern-card .card-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: auto;
+  padding-top: 0.25rem;
+}
+
+.modern-card .price-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.modern-card .price-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.modern-card .individual-price,
+.modern-card .deck-price,
+.modern-card .auction-price {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.6rem;
+}
+
+.modern-card .price-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--gray-500);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.modern-card .price-value.individual-price-value,
+.modern-card .price-value.deck-price-value {
+  font-size: 1.1rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--bright-teal-blue) 0%, var(--turquoise-surf) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -0.02em;
+}
+
+.modern-card .quantity-text,
+.modern-card .deck-info {
+  font-size: 0.75rem;
+  color: var(--gray-600);
+  font-weight: 500;
+}
+
+.modern-card .buy-now-price {
+  font-size: 0.72rem;
+  color: var(--primary-dark);
+  font-weight: 600;
+  padding: 0.25rem 0.5rem;
+  background: linear-gradient(135deg, rgba(72, 202, 228, 0.1) 0%, rgba(0, 180, 216, 0.08) 100%);
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(72, 202, 228, 0.2);
+}
+
+.modern-card .card-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  background: var(--gray-50);
+  border-radius: var(--radius-md);
+  font-size: 0.8rem;
+}
+
+.modern-card .seller-info {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.modern-card .seller-label {
+  color: var(--gray-500);
+  font-weight: 500;
+}
+
+.modern-card .seller-name {
+  font-weight: 700;
+  color: var(--primary-dark);
+}
+
+.modern-card .date-info {
+  font-size: 0.7rem;
+  color: var(--gray-500);
+  font-weight: 500;
+}
+
+.modern-card .auction-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--gray-600);
+}
+
+.modern-card .card-actions {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.2rem;
+}
+
+.modern-card .btn-view-details {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, var(--bright-teal-blue) 0%, var(--blue-green) 100%);
+  border: none;
+  border-radius: var(--radius-md);
+  color: white;
+  cursor: pointer;
+  transition: all var(--transition-base);
+  box-shadow: 0 4px 12px rgba(0, 119, 182, 0.3);
+}
+
+.modern-card .btn-view-details:hover {
+  background: linear-gradient(135deg, var(--blue-green) 0%, var(--turquoise-surf) 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 119, 182, 0.4);
+}
+
+.modern-card .btn-mark-sold {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  flex: 1;
+  min-width: fit-content;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: white;
+  border: 2px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  color: var(--gray-600);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.modern-card .btn-mark-sold:hover:not(:disabled):not(.sold) {
+  border-color: var(--primary);
+  color: var(--primary-dark);
+  background: rgba(72, 202, 228, 0.08);
+}
+
+.modern-card .btn-mark-sold.sold {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(5, 150, 105, 0.08) 100%);
+  border-color: var(--success);
+  color: var(--success);
+  cursor: default;
+}
+
+.modern-card .btn-mark-sold:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.modern-card .buyer-actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.modern-card .btn-add-cart,
+.modern-card .btn-add-favorites {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-base);
+  border: 2px solid var(--gray-200);
+  background: white;
+  color: var(--gray-700);
+}
+
+.modern-card .btn-add-cart:hover:not(:disabled),
+.modern-card .btn-add-favorites:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary-dark);
+  background: rgba(72, 202, 228, 0.06);
+  transform: translateY(-1px);
+}
+
+.modern-card .btn-add-cart.in-cart {
+  border-color: var(--success);
+  color: var(--success);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.modern-card .btn-add-favorites.liked {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.modern-card .btn-add-cart:disabled,
+.modern-card .btn-add-favorites:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.modern-card .no-image-placeholder {
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  background: linear-gradient(135deg, var(--gray-100) 0%, var(--gray-200) 100%);
+  color: var(--gray-500);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.modern-card .no-image-placeholder .no-image-icon {
+  font-size: 3rem;
+  opacity: 0.5;
+}
+
+/* Sold state - dim the card */
+.modern-card.sold-card .card-image-container {
+  filter: grayscale(0.3);
+  opacity: 0.85;
+}
+
+.modern-card.sold-card .card-content {
+  opacity: 0.9;
 }
 
 /* ===== FORMS - Sweet Candy Theme ===== */
@@ -2139,6 +2470,7 @@ input[type="datetime-local"].form-control-sakura {
 
 .auth-submit-btn {
   width: 100%;
+  margin-top: 1.5rem;
   background: var(--bright-teal-blue);
   color: var(--text-light);
   border: 2px solid rgba(255, 255, 255, 0.2);
@@ -2247,7 +2579,7 @@ input[type="datetime-local"].form-control-sakura {
   display: flex;
   align-items: center;
   text-align: center;
-  margin: 2.5rem 0 2rem 0;
+  margin: 2rem 0 1.5rem 0;
   position: relative;
 }
 
@@ -2268,7 +2600,7 @@ input[type="datetime-local"].form-control-sakura {
 
 .auth-footer {
   text-align: center;
-  margin-top: 0;
+  margin-top: 1.5rem;
 }
 
 .auth-footer-text {
@@ -2472,7 +2804,7 @@ body::before {
   }
   
   .card-image-container {
-    height: 220px;
+    height: 130px;
   }
   
   .cards-grid {
@@ -2496,7 +2828,7 @@ body::before {
   }
   
   .card-content {
-    padding: 1rem;
+    padding: 0.6rem 0.75rem;
   }
 }
 
@@ -2514,7 +2846,7 @@ body::before {
   }
   
   .card-image-container {
-    height: 200px;
+    height: 120px;
   }
   
   .hero-title {
@@ -4439,6 +4771,75 @@ textarea {
 
 .create-post-header {
   position: relative;
+}
+
+/* Create Post Stepper */
+.create-post-stepper {
+  padding: 1rem 0;
+}
+.stepper-track {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.stepper-step {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  cursor: default;
+}
+.stepper-step.current {
+  cursor: default;
+}
+.stepper-step:not(.active):not(.current) .stepper-circle {
+  opacity: 0.5;
+}
+.stepper-step.active .stepper-circle {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+.stepper-step.current .stepper-circle {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(0, 119, 182, 0.3);
+}
+.stepper-circle {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  border: 2px solid var(--gray-300);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  font-weight: 600;
+  background: white;
+  transition: all 0.2s ease;
+}
+.stepper-label {
+  font-size: 0.75rem;
+  margin-top: 0.5rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.stepper-line {
+  position: absolute;
+  top: 1.25rem;
+  left: calc(50% + 1.5rem);
+  right: calc(-50% + 1.5rem);
+  height: 2px;
+  background: var(--gray-200);
+  z-index: -1;
+}
+.stepper-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
 .create-post-form {

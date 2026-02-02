@@ -31,10 +31,19 @@ interface LikedPost extends Post {
 
 type ActiveTab = 'personal-info' | 'security' | 'my-posts' | 'liked' | 'auctions' | 'watchlist' | 'orders';
 
-const Profile: React.FC = () => {
+interface ProfileProps {
+  initialTab?: ActiveTab;
+}
+
+const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
   const { userProfile, updateProfile, currentUser } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<ActiveTab>('personal-info');
+  const [activeTab, setActiveTab] = useState<ActiveTab>(initialTab);
+
+  useEffect(() => {
+    if (initialTab) setActiveTab(initialTab);
+  }, [initialTab]);
+
   const [formData, setFormData] = useState<ProfileFormData>({
     displayName: '',
     phone: '',
@@ -63,16 +72,7 @@ const Profile: React.FC = () => {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
 
-  const fetchAllData = useCallback(async (): Promise<void> => {
-    await Promise.all([
-      fetchLikedItems(),
-      fetchAuctions(),
-      fetchWatchlist(),
-      fetchOrders(),
-      fetchMyPosts()
-    ]);
-  }, []);
-
+  // Lazy load: โหลดข้อมูลเฉพาะเมื่อเปลี่ยนแท็บ (แทนการโหลดทั้งหมดพร้อมกัน)
   useEffect(() => {
     if (userProfile) {
       const newFormData = {
@@ -82,20 +82,36 @@ const Profile: React.FC = () => {
         photoURL: userProfile.photoURL || ''
       };
       setFormData(newFormData);
-      // ถ้าไม่ได้อยู่ในโหมดแก้ไข ให้อัปเดต originalFormData ด้วย
       if (!isEditMode) {
         setOriginalFormData(newFormData);
       }
     }
-    fetchAllData();
-  }, [userProfile, fetchAllData]);
+  }, [userProfile, isEditMode]);
 
-  // Refresh liked items when switching to liked tab
+  // โหลดข้อมูลเฉพาะแท็บที่เลือก (lazy load)
   useEffect(() => {
-    if (activeTab === 'liked') {
-      fetchLikedItems();
+    if (!userProfile) return;
+    switch (activeTab) {
+      case 'liked':
+        fetchLikedItems();
+        break;
+      case 'auctions':
+        fetchAuctions();
+        break;
+      case 'watchlist':
+        fetchWatchlist();
+        break;
+      case 'orders':
+        fetchOrders();
+        break;
+      case 'my-posts':
+        fetchMyPosts();
+        break;
+      default:
+        break;
     }
-  }, [activeTab]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userProfile, activeTab]);
 
   const fetchLikedItems = async (): Promise<void> => {
     try {
@@ -152,7 +168,7 @@ const Profile: React.FC = () => {
   const fetchMyPosts = async (): Promise<void> => {
     try {
       const response = await axios.get('/api/posts/my-posts');
-      setMyPosts(response.data.posts);
+      setMyPosts(response.data.posts ?? response.data ?? []);
     } catch (error: any) {
       console.error('Error fetching my posts:', error);
       // If user is not authenticated or API error, set empty array
@@ -866,8 +882,16 @@ const Profile: React.FC = () => {
 
   const renderMyPosts = (): JSX.Element => (
       <Card>
-        <Card.Header>
+        <Card.Header className="d-flex justify-content-between align-items-center flex-wrap gap-2">
           <h5 className="mb-0">📝 รายการของฉัน</h5>
+          <Button
+            variant="primary"
+            size="sm"
+            className="btn-tcg-primary"
+            onClick={() => navigate('/create-post')}
+          >
+            + สร้างโพส
+          </Button>
         </Card.Header>
       <Card.Body>
         {myPosts.length === 0 ? (

@@ -75,7 +75,9 @@ const IndividualCardsGrid: React.FC<IndividualCardsGridProps> = ({ post, onCardP
 
   const handleAddToCart = async (cardForCart: CardForCart): Promise<void> => {
     try {
-      const result = await addToCart(cardForCart.originalPost);
+      const card = cardForCart.originalPost?.individualCards?.find(c => c.id === cardForCart.cardId);
+      const quantity = card?.quantity ?? 1;
+      const result = await addToCart(cardForCart.originalPost, cardForCart.cardId, quantity);
       if (result.success) {
         toast.success(result.message);
       } else {
@@ -87,9 +89,9 @@ const IndividualCardsGrid: React.FC<IndividualCardsGridProps> = ({ post, onCardP
     }
   };
 
-  const handleRemoveFromCart = (cardId: string): void => {
+  const handleRemoveFromCart = (postId: string, cardId: string): void => {
     try {
-      removeFromCart(cardId);
+      removeFromCart(postId, cardId);
       toast.success('ลบออกจากตะกร้าแล้ว');
     } catch (error) {
       console.error('Error removing card from cart:', error);
@@ -205,7 +207,7 @@ const IndividualCardsGrid: React.FC<IndividualCardsGridProps> = ({ post, onCardP
                 post={post}
                 onAddToCart={handleAddToCart}
                 onRemoveFromCart={handleRemoveFromCart}
-                isInCart={isInCart(`${post.id}_${card.id}`)}
+                isInCart={isInCart(post.id, card.id)}
                 isAddingToCart={loading}
               />
             ))}

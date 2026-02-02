@@ -94,7 +94,7 @@ export const authAPI = {
     }
   },
 
-  // Check if user liked a post
+  // Check if user liked a post (สำหรับ PostDetail - single)
   checkLike: async (postId: string): Promise<{ liked: boolean }> => {
     try {
       const response = await axios.get(`/api/auth/check-like/${postId}`);
@@ -102,6 +102,20 @@ export const authAPI = {
     } catch (error: any) {
       console.error('Error checking like status:', error);
       return { liked: false };
+    }
+  },
+
+  // Check liked status สำหรับหลาย posts พร้อมกัน (batch - แก้ N+1 สำหรับหน้า Home)
+  checkLikes: async (postIds: string[]): Promise<{ likedPostIds: string[] }> => {
+    try {
+      if (postIds.length === 0) return { likedPostIds: [] };
+      const response = await axios.get(`/api/auth/check-likes`, {
+        params: { postIds: postIds.join(',') }
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error('Error checking likes batch:', error);
+      return { likedPostIds: [] };
     }
   },
 
@@ -138,9 +152,13 @@ export const postsAPI = {
       return response.data.posts || response.data || [];
     } catch (error: any) {
       console.error('Error fetching posts:', error);
-      // Return empty array if server is not available (for frontend-only mode)
-      if (error.code === 'ECONNREFUSED' || error.message?.includes('Network Error')) {
-        console.warn('Server not available, returning empty posts array');
+      // Return empty array if server is not available or timeout (ป้องกัน loading ค้าง)
+      const isNetworkError = error.code === 'ECONNREFUSED' || 
+        error.code === 'ECONNABORTED' ||
+        error.message?.includes('Network Error') ||
+        error.message?.includes('timeout');
+      if (isNetworkError) {
+        console.warn('Server not available or timeout, returning empty posts array');
         return [];
       }
       throw error;
@@ -158,13 +176,11 @@ export const postsAPI = {
     }
   },
 
-  // Create new post
-  createPost: async (postData: FormData): Promise<Post> => {
+  // Create new post (postData includes imageUrls, imageStoragePaths from Supabase Storage upload)
+  createPost: async (postData: Record<string, unknown>): Promise<Post> => {
     try {
       const response = await axios.post('/api/posts', postData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+        headers: { 'Content-Type': 'application/json' },
       });
       return response.data;
     } catch (error: any) {
@@ -275,10 +291,13 @@ export const cartAPI = {
     }
   },
 
-  // Add item to cart
-  addToCart: async (postId: string): Promise<{ success: boolean; message: string }> => {
+  // Add item to cart (cardId optional for individual card)
+  addToCart: async (postId: string, cardId?: string, quantity?: number): Promise<{ success: boolean; message: string }> => {
     try {
-      const response = await axios.post('/api/cart', { postId });
+      const payload: { postId: string; cardId?: string; quantity?: number } = { postId };
+      if (cardId) payload.cardId = cardId;
+      if (quantity) payload.quantity = quantity;
+      const response = await axios.post('/api/cart', payload);
       return { success: true, message: response.data.message || 'เพิ่มลงตะกร้าเรียบร้อย' };
     } catch (error: any) {
       console.error('Error adding to cart:', error);
@@ -287,10 +306,11 @@ export const cartAPI = {
     }
   },
 
-  // Remove item from cart
-  removeFromCart: async (postId: string): Promise<{ success: boolean; message: string }> => {
+  // Remove item from cart (id = cart item id or postId, cardId optional for individual card)
+  removeFromCart: async (id: string, cardId?: string): Promise<{ success: boolean; message: string }> => {
     try {
-      await axios.delete(`/api/cart/${postId}`);
+      const url = cardId ? `/api/cart/${id}?cardId=${encodeURIComponent(cardId)}` : `/api/cart/${id}`;
+      await axios.delete(url);
       return { success: true, message: 'ลบออกจากตะกร้าเรียบร้อย' };
     } catch (error: any) {
       console.error('Error removing from cart:', error);

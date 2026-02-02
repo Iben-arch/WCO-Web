@@ -1,11 +1,10 @@
-# Server API - Firebase & Cloudinary Middleware
+# Server API - Supabase Middleware
 
-API ที่ทำหน้าที่เป็น Middleware ระหว่าง Client กับ Firebase และ Cloudinary
+API ที่ทำหน้าที่เป็น Middleware ระหว่าง Client กับ Supabase
 
 ## คุณสมบัติ
 
-- ✅ **Firebase Integration** - เชื่อมต่อกับ Firebase Firestore สำหรับเก็บข้อมูล
-- ✅ **Cloudinary Integration** - อัปโหลดและจัดการรูปภาพผ่าน Cloudinary
+- ✅ **Supabase Integration** - เชื่อมต่อกับ Supabase สำหรับเก็บข้อมูลและ Storage
 - ✅ **Authentication** - รองรับ Firebase Authentication (JWT)
 - ✅ **Posts Management** - จัดการ Posts (Create, Read, Update, Delete)
 - ✅ **Profile Management** - จัดการ User Profiles และอัปโหลดรูปโปรไฟล์
@@ -21,8 +20,7 @@ server-api/
 │   ├── AuthController.cs       # จัดการ Authentication และ Profile
 │   └── QueueApiController.cs   # Queue/Middleware สำหรับ Create/Edit
 ├── Services/
-│   ├── FirebaseService.cs      # Service สำหรับเชื่อมต่อ Firebase Firestore
-│   └── CloudinaryService.cs    # Service สำหรับอัปโหลดรูปภาพไปยัง Cloudinary
+│   └── SupabaseService.cs      # Service สำหรับเชื่อมต่อ Supabase
 ├── Program.cs                  # Application configuration
 ├── ServerApi.csproj           # Project file
 └── appsettings.json           # Configuration file
@@ -32,8 +30,7 @@ server-api/
 
 ### Prerequisites
 - .NET 8.0 SDK หรือสูงกว่า
-- Firebase Project (สำหรับ Firestore)
-- Cloudinary Account (สำหรับ Image Upload)
+- Supabase Project (สำหรับ Database และ Storage)
 
 ### 1. ติดตั้ง Dependencies
 
@@ -42,36 +39,22 @@ cd server-api
 dotnet restore
 ```
 
-### 2. ตั้งค่า Firebase
+### 2. ตั้งค่า Supabase
 
-1. สร้าง Firebase Project ที่ [Firebase Console](https://console.firebase.google.com/)
-2. เปิดใช้งาน Firestore Database
-3. ดาวน์โหลด Service Account Key (JSON)
-4. ตั้งค่า Environment Variable:
-   ```bash
-   export GOOGLE_APPLICATION_CREDENTIALS="path/to/service-account-key.json"
-   ```
-   หรือใน Windows:
-   ```powershell
-   $env:GOOGLE_APPLICATION_CREDENTIALS="path/to/service-account-key.json"
-   ```
-
-### 3. ตั้งค่า Cloudinary
-
-1. สร้าง Account ที่ [Cloudinary](https://cloudinary.com/)
-2. ดู API Credentials จาก Dashboard
+1. สร้าง Supabase Project ที่ [Supabase](https://supabase.com/)
+2. ดู Supabase URL, Service Role Key จาก Project Settings
 3. แก้ไข `appsettings.json`:
    ```json
    {
-     "Cloudinary": {
-       "CloudName": "your-cloud-name",
-       "ApiKey": "your-api-key",
-       "ApiSecret": "your-api-secret"
+     "Supabase": {
+       "Url": "https://your-project.supabase.co",
+       "ServiceRoleKey": "your-service-role-key",
+       "JwtSecret": "your-jwt-secret"
      }
    }
    ```
 
-### 4. รัน Application
+### 3. รัน Application
 
 ```bash
 dotnet run
@@ -227,8 +210,7 @@ const token = await userCredential.user.getIdToken();
 - `title` - ชื่อโพสต์
 - `description` - รายละเอียด
 - `category` - หมวดหมู่
-- `images` - Array ของ Image URLs จาก Cloudinary
-- `cloudinaryPublicIds` - Array ของ Public IDs จาก Cloudinary
+- `images` - Array ของ Image URLs
 - `sellerId` - User ID ของผู้ขาย
 - `sellerName` - ชื่อผู้ขาย
 - `status` - สถานะ (pending, active, sold, inactive, rejected)
@@ -242,14 +224,8 @@ const token = await userCredential.user.getIdToken();
 - `displayName` - ชื่อที่แสดง
 - `email` - อีเมล
 - `photoURL` - URL ของรูปโปรไฟล์
-- `cloudinaryPublicId` - Public ID ของรูปใน Cloudinary
 - `createdAt` - วันที่สร้าง
 - `updatedAt` - วันที่อัปเดตล่าสุด
-
-## ข้อมูลที่ Server ส่งไปยัง Cloudinary
-
-- รูปภาพจาก Posts → Folder: `wco-uploads/posts`
-- รูปโปรไฟล์ → Folder: `wco-uploads/profiles`
 
 ## Environment Variables
 
@@ -263,13 +239,10 @@ GOOGLE_APPLICATION_CREDENTIALS=path/to/service-account-key.json
 
 ```json
 {
-  "Firebase": {
-    "ProjectId": "your-project-id"
-  },
-  "Cloudinary": {
-    "CloudName": "your-cloud-name",
-    "ApiKey": "your-api-key",
-    "ApiSecret": "your-api-secret"
+  "Supabase": {
+    "Url": "https://your-project.supabase.co",
+    "ServiceRoleKey": "your-service-role-key",
+    "JwtSecret": "your-jwt-secret"
   }
 }
 ```

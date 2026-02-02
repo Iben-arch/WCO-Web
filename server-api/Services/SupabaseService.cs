@@ -146,9 +146,9 @@ namespace ServerApi.Services
                         }
                     }
                     
-                    if (errorDoc.TryGetProperty("msg", out var msgProp))
+                    if (errorDoc.TryGetProperty("msg", out var msgProperty))
                     {
-                        var msg = msgProp.GetString() ?? "";
+                        var msg = msgProperty.GetString() ?? "";
                         errorDetails.Add($"msg: {msg}");
                         
                         if (string.IsNullOrEmpty(errorMessage) || errorMessage.Contains("Failed to create"))
@@ -292,6 +292,89 @@ namespace ServerApi.Services
         }
 
         /// <summary>
+        /// ดึง posts พร้อม filter, sort, pagination ใน database (แก้ปัญหา GetAllAsync ที่โหลดทั้งหมด)
+        /// </summary>
+        public async Task<(List<Dictionary<string, object>> posts, int total)> GetPostsFilteredAsync(
+            string? category,
+            string? search,
+            string? sortBy,
+            int page,
+            int limit,
+            string? postType,
+            string? status,
+            bool useServiceRole = false)
+        {
+            var keyToUse = (useServiceRole && !string.IsNullOrEmpty(_serviceRoleKey)) ? _serviceRoleKey : _supabaseKey;
+            var queryParams = new List<string> { "select=*" };
+
+            // Filter: category
+            if (!string.IsNullOrEmpty(category))
+                queryParams.Add($"category=eq.{Uri.EscapeDataString(category)}");
+
+            // Filter: postType
+            if (!string.IsNullOrEmpty(postType))
+                queryParams.Add($"postType=eq.{Uri.EscapeDataString(postType)}");
+
+            // Filter: status
+            if (!string.IsNullOrEmpty(status))
+                queryParams.Add($"status=eq.{Uri.EscapeDataString(status)}");
+
+            // Filter: search (title or description contains - ใช้ % สำหรับ SQL LIKE wildcard)
+            if (!string.IsNullOrEmpty(search))
+            {
+                var term = Uri.EscapeDataString($"%{search}%");
+                queryParams.Add($"or=(title.ilike.{term},description.ilike.{term})");
+            }
+
+            // Order (price column มีใน posts table)
+            var orderCol = sortBy?.ToLower() switch
+            {
+                "priceasc" => "price.asc",
+                "pricedesc" => "price.desc",
+                _ => "createdAt.desc"
+            };
+            queryParams.Add($"order={orderCol}");
+
+            // Pagination - ใช้ limit+offset สำหรับ page
+            var offset = (page - 1) * limit;
+            queryParams.Add($"limit={limit}");
+            queryParams.Add($"offset={offset}");
+
+            var url = $"/rest/v1/posts?{string.Join("&", queryParams)}";
+
+            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Add("apikey", keyToUse);
+            request.Headers.Add("Authorization", $"Bearer {keyToUse}");
+            request.Headers.Add("Prefer", "count=exact"); // เพื่อได้ total count
+
+            var response = await _httpClient.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+                return (new List<Dictionary<string, object>>(), 0);
+
+            var totalHeader = response.Headers.TryGetValues("Content-Range", out var rangeValues)
+                ? rangeValues.FirstOrDefault()?.Split('/').LastOrDefault()
+                : null;
+            var total = int.TryParse(totalHeader, out var t) ? t : 0;
+
+            var content = await response.Content.ReadAsStringAsync();
+            var doc = JsonSerializer.Deserialize<JsonElement>(content);
+
+            var results = new List<Dictionary<string, object>>();
+            if (doc.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in doc.EnumerateArray())
+                {
+                    var dict = new Dictionary<string, object>();
+                    foreach (var prop in item.EnumerateObject())
+                        dict[prop.Name] = ConvertJsonElement(prop.Value);
+                    results.Add(dict);
+                }
+            }
+
+            return (results, total);
+        }
+
+        /// <summary>
         /// อ่านข้อมูลทั้งหมดจาก table
         /// </summary>
         public async Task<List<Dictionary<string, object>>> GetAllAsync(string table)
@@ -337,6 +420,89 @@ namespace ServerApi.Services
             
             var response = await _httpClient.SendAsync(request);
             response.EnsureSuccessStatusCode();
+        }
+
+        /// <summary>
+        /// ค้นหา likes ของ user สำหรับหลาย postIds (batch query - แก้ N+1)
+        /// </summary>
+        public async Task<List<string>> QueryLikedPostIdsAsync(string userId, List<string> postIds, bool useServiceRole = false)
+        {
+            if (postIds == null || postIds.Count == 0)
+                return new List<string>();
+
+            // Supabase PostgREST: ?userId=eq.X&postId=in.(id1,id2,id3)&select=postId
+            var postIdsParam = string.Join(",", postIds.Select(id => id.Trim()));
+            var url = $"/rest/v1/likes?userId=eq.{Uri.EscapeDataString(userId)}&postId=in.({postIdsParam})&select=postId";
+            
+            var keyToUse = (useServiceRole && !string.IsNullOrEmpty(_serviceRoleKey)) ? _serviceRoleKey : _supabaseKey;
+            
+            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Add("apikey", keyToUse);
+            request.Headers.Add("Authorization", $"Bearer {keyToUse}");
+            
+            var response = await _httpClient.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+                return new List<string>();
+
+            var content = await response.Content.ReadAsStringAsync();
+            var doc = JsonSerializer.Deserialize<JsonElement>(content);
+            
+            var result = new List<string>();
+            if (doc.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in doc.EnumerateArray())
+                {
+                    if (item.TryGetProperty("postId", out var postIdProp))
+                    {
+                        var postId = postIdProp.GetString();
+                        if (!string.IsNullOrEmpty(postId))
+                            result.Add(postId);
+                    }
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// เพิ่ม like (insert into likes table)
+        /// </summary>
+        public async Task<bool> AddLikeAsync(string userId, string postId, bool useServiceRole = false)
+        {
+            try
+            {
+                var data = new Dictionary<string, object>
+                {
+                    ["postId"] = postId,
+                    ["userId"] = userId
+                };
+                await CreateAsync("likes", data, useServiceRole);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// ลบ like (delete from likes table)
+        /// </summary>
+        public async Task<bool> RemoveLikeAsync(string userId, string postId, bool useServiceRole = false)
+        {
+            try
+            {
+                var keyToUse = (useServiceRole && !string.IsNullOrEmpty(_serviceRoleKey)) ? _serviceRoleKey : _supabaseKey;
+                var url = $"/rest/v1/likes?userId=eq.{Uri.EscapeDataString(userId)}&postId=eq.{Uri.EscapeDataString(postId)}";
+                var request = new HttpRequestMessage(HttpMethod.Delete, url);
+                request.Headers.Add("apikey", keyToUse);
+                request.Headers.Add("Authorization", $"Bearer {keyToUse}");
+                var response = await _httpClient.SendAsync(request);
+                return response.IsSuccessStatusCode;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         /// <summary>
@@ -418,6 +584,31 @@ namespace ServerApi.Services
                     return dict;
                 default:
                     return element.ToString();
+            }
+        }
+
+        /// <summary>
+        /// ลบไฟล์จาก Supabase Storage
+        /// </summary>
+        public async Task DeleteStorageObjectsAsync(string bucketName, List<string> paths)
+        {
+            if (paths == null || paths.Count == 0) return;
+
+            var keyToUse = !string.IsNullOrEmpty(_serviceRoleKey) ? _serviceRoleKey : _supabaseKey;
+
+            foreach (var path in paths)
+            {
+                var url = $"/storage/v1/object/{bucketName}/{path}";
+                var request = new HttpRequestMessage(HttpMethod.Delete, url);
+                request.Headers.Add("apikey", keyToUse);
+                request.Headers.Add("Authorization", $"Bearer {keyToUse}");
+
+                var response = await _httpClient.SendAsync(request);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    Console.WriteLine($"⚠️ Failed to delete storage object {path}: {response.StatusCode} - {errorContent}");
+                }
             }
         }
 

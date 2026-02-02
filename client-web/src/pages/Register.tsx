@@ -263,10 +263,7 @@ const Register: React.FC = () => {
                       กำลังสมัครสมาชิก...
                     </>
                   ) : (
-                    <>
-                      <span className="btn-icon-dollar">$</span>
-                      <span className="btn-text">สมัครสมาชิก</span>
-                    </>
+                    <span className="btn-text">สมัครสมาชิก</span>
                   )}
                 </Button>
               </Form>

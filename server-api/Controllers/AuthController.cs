@@ -354,6 +354,94 @@ namespace ServerApi.Controllers
         }
 
         /// <summary>
+        /// ตรวจสอบว่า user ถูกใจ post หรือไม่ (สำหรับ PostDetail)
+        /// </summary>
+        [HttpGet("check-like/{postId}")]
+        public async Task<IActionResult> CheckLike(string postId)
+        {
+            try
+            {
+                var userId = GetUserId();
+                if (string.IsNullOrEmpty(userId))
+                    return Ok(new { liked = false });
+
+                var likedPostIds = await _supabaseService.QueryLikedPostIdsAsync(userId, new List<string> { postId }, useServiceRole: true);
+                return Ok(new { liked = likedPostIds.Contains(postId) });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error checking like status");
+                return Ok(new { liked = false });
+            }
+        }
+
+        /// <summary>
+        /// ตรวจสอบว่า user ถูกใจ posts ใดบ้าง (batch - แก้ N+1 สำหรับหน้า Home)
+        /// GET /api/auth/check-likes?postIds=id1,id2,id3
+        /// </summary>
+        [HttpGet("check-likes")]
+        public async Task<IActionResult> CheckLikes([FromQuery] string? postIds)
+        {
+            try
+            {
+                var userId = GetUserId();
+                if (string.IsNullOrEmpty(userId))
+                    return Ok(new { likedPostIds = Array.Empty<string>() });
+
+                if (string.IsNullOrWhiteSpace(postIds))
+                    return Ok(new { likedPostIds = Array.Empty<string>() });
+
+                var postIdList = postIds.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Where(id => !string.IsNullOrEmpty(id))
+                    .ToList();
+
+                if (postIdList.Count == 0)
+                    return Ok(new { likedPostIds = Array.Empty<string>() });
+
+                var likedPostIds = await _supabaseService.QueryLikedPostIdsAsync(userId, postIdList, useServiceRole: true);
+                return Ok(new { likedPostIds });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error checking likes batch");
+                return Ok(new { likedPostIds = Array.Empty<string>() });
+            }
+        }
+
+        /// <summary>
+        /// Toggle like บน post (เพิ่มหรือลบ)
+        /// </summary>
+        [HttpPost("like/{postId}")]
+        public async Task<IActionResult> ToggleLike(string postId)
+        {
+            try
+            {
+                var userId = GetUserId();
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(new { success = false, error = "กรุณาเข้าสู่ระบบ", liked = false });
+
+                var likedPostIds = await _supabaseService.QueryLikedPostIdsAsync(userId, new List<string> { postId }, useServiceRole: true);
+                var isLiked = likedPostIds.Contains(postId);
+
+                if (isLiked)
+                {
+                    await _supabaseService.RemoveLikeAsync(userId, postId, useServiceRole: true);
+                    return Ok(new { liked = false, message = "ลบออกจากรายการโปรดแล้ว" });
+                }
+                else
+                {
+                    await _supabaseService.AddLikeAsync(userId, postId, useServiceRole: true);
+                    return Ok(new { liked = true, message = "เพิ่มในรายการโปรดแล้ว" });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error toggling like");
+                return StatusCode(500, new { success = false, error = "เกิดข้อผิดพลาด", liked = false });
+            }
+        }
+
+        /// <summary>
         /// อัปเดต User Profile
         /// </summary>
         [HttpPost("profile")]

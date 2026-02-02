@@ -67,8 +67,6 @@ catch (Exception ex)
     throw;
 }
 
-builder.Services.AddScoped<CloudinaryService>();
-
 // Add HttpClient for Supabase REST API calls with timeout
 builder.Services.AddHttpClient("Supabase", client =>
 {

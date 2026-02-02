@@ -1,8 +1,9 @@
-import React, { useState, FormEvent, ChangeEvent } from 'react';
-import { Container, Row, Col, Card, Form, Button, Alert, ProgressBar, Spinner } from 'react-bootstrap';
+import React, { useState, FormEvent, ChangeEvent, useEffect } from 'react';
+import { Container, Row, Col, Card, Form, Button, Alert, ProgressBar, Spinner, Modal } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import axios from '../utils/axiosInterceptor';
+import { supabase } from '../config/supabase';
 import { toast } from 'react-toastify';
 import { 
   TCGButton, 
@@ -11,6 +12,42 @@ import {
 } from '../components/common/ButtonComponents';
 import { Category, PostType, SaleType, CreatePostFormData, DetectedCard } from '../types';
 import '../styles/individual-card.css';
+
+const ImagePreviewThumbnail: React.FC<{ file: File; index: number; onClick: () => void }> = ({ file, index, onClick }) => {
+  const [url, setUrl] = useState<string>(() => URL.createObjectURL(file));
+  React.useEffect(() => {
+    const newUrl = URL.createObjectURL(file);
+    setUrl((prev) => {
+      URL.revokeObjectURL(prev);
+      return newUrl;
+    });
+    return () => URL.revokeObjectURL(newUrl);
+  }, [file]);
+  return (
+    <div className="position-relative" style={{ cursor: 'pointer', flex: '0 0 auto' }} onClick={onClick}>
+      <img
+        src={url}
+        alt={`รูป ${index + 1}`}
+        className="rounded"
+        style={{
+          width: '120px',
+          height: '168px',
+          objectFit: 'cover',
+          border: '2px solid var(--gray-300)',
+          transition: 'border-color 0.2s'
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--gray-300)'; }}
+      />
+      <div
+        className="position-absolute bottom-0 start-0 end-0 text-center py-1 rounded-bottom"
+        style={{ background: 'rgba(0,0,0,0.6)', color: 'white', fontSize: '0.75rem' }}
+      >
+        #{index + 1} · {(file.size / 1024).toFixed(0)} KB
+      </div>
+    </div>
+  );
+};
 
 const categories: Category[] = [
   'Pokemon',
@@ -24,9 +61,17 @@ const categories: Category[] = [
   'อื่นๆ'
 ];
 
+const STEPS = [
+  { id: 1, label: 'ประเภท', icon: '📋' },
+  { id: 2, label: 'รูปภาพ', icon: '📷' },
+  { id: 3, label: 'ข้อมูล', icon: '📝' },
+  { id: 4, label: 'สรุป', icon: '✅' }
+];
+
 const CreatePost: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
+  const [currentStep, setCurrentStep] = useState<number>(1);
   const [formData, setFormData] = useState<CreatePostFormData>({
     title: '',
     description: '',
@@ -48,6 +93,17 @@ const CreatePost: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [processingCards, setProcessingCards] = useState<boolean>(false);
   const [detectedCards, setDetectedCards] = useState<DetectedCard[]>([]);
+  const [previewImageIndex, setPreviewImageIndex] = useState<number | null>(null);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (previewImageIndex !== null && formData.images[previewImageIndex]) {
+      const url = URL.createObjectURL(formData.images[previewImageIndex]);
+      setPreviewImageUrl(url);
+      return () => URL.revokeObjectURL(url);
+    }
+    setPreviewImageUrl(null);
+  }, [previewImageIndex, formData.images]);
 
   const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>): void => {
     const { name, value } = e.target;
@@ -66,9 +122,32 @@ const CreatePost: React.FC = () => {
       ...formData,
       images: imageFiles
     });
-    
-    // Reset detected cards when new images are selected
     setDetectedCards([]);
+  };
+
+  const canProceedFromStep1 = (): boolean => true;
+  const canProceedFromStep2 = (): boolean => formData.images.length > 0;
+  const canProceedFromStep3 = (): boolean => {
+    if (formData.postType === 'sale') {
+      if (formData.saleType === 'deck') {
+        return !!(formData.cardCount && parseInt(formData.cardCount) > 0 && formData.price && parseFloat(formData.price) > 0);
+      }
+      if (detectedCards.length > 0) {
+        return detectedCards.every(c => c.price && parseFloat(String(c.price)) > 0 && c.quantity && parseInt(String(c.quantity)) > 0);
+      }
+      return !!(formData.individualPrice && parseFloat(formData.individualPrice) > 0 && formData.availableQuantity && parseInt(formData.availableQuantity) > 0);
+    }
+    if (formData.postType === 'auction') {
+      return !!(formData.startingBid && parseFloat(formData.startingBid) > 0 && formData.auctionEndDate && new Date(formData.auctionEndDate) > new Date());
+    }
+    return false;
+  };
+
+  const goNextStep = (): void => {
+    if (currentStep < 4) setCurrentStep(s => s + 1);
+  };
+  const goPrevStep = (): void => {
+    if (currentStep > 1) setCurrentStep(s => s - 1);
   };
 
   const normalizeCardType = (category: string): string => {
@@ -226,89 +305,139 @@ const CreatePost: React.FC = () => {
       return;
     }
 
+    if (!currentUser) {
+      setError('กรุณาเข้าสู่ระบบก่อนสร้างโพสต์');
+      toast.error('กรุณาเข้าสู่ระบบก่อนสร้างโพสต์');
+      return;
+    }
+
+    const imageStoragePaths: string[] = [];
     try {
       setError('');
       setLoading(true);
       setUploadProgress(0);
 
-      const submitData = new FormData();
-      submitData.append('title', formData.title);
-      submitData.append('description', formData.description);
-      submitData.append('category', formData.category);
-      if (formData.condition) submitData.append('condition', formData.condition);
-      if (formData.game) submitData.append('game', formData.game);
-      submitData.append('postType', formData.postType);
-      
-      // Add sale type and related fields
+      // 1. อัปโหลดรูปไปยัง Supabase Storage
+      const imageUrls: string[] = [];
+
+      for (let i = 0; i < formData.images.length; i++) {
+        const file = formData.images[i];
+        const fileExt = file.name.split('.').pop() || 'jpg';
+        const fileName = `${currentUser.id}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('posts')
+          .upload(fileName, file, { cacheControl: '3600', upsert: false });
+
+        if (uploadError) {
+          throw uploadError;
+        }
+
+        const { data: { publicUrl } } = supabase.storage.from('posts').getPublicUrl(fileName);
+        imageUrls.push(publicUrl);
+        imageStoragePaths.push(fileName);
+
+        // จำลอง progress (imageStoragePaths ใช้สำหรับ rollback ถ้าสร้างโพสต์ไม่สำเร็จ)
+        setUploadProgress(Math.round(((i + 1) / formData.images.length) * 100));
+      }
+
+      // 2. อัปโหลด individualCards imageUrl ถ้าเป็น base64
+      let individualCardsPayload = detectedCards.length > 0
+        ? detectedCards.map(c => ({
+            id: c.id,
+            imageUrl: c.imageUrl,
+            price: parseFloat(String(c.price)),
+            quantity: parseInt(String(c.quantity))
+          }))
+        : null;
+
+      if (individualCardsPayload && individualCardsPayload.some(c => String(c.imageUrl).startsWith('data:'))) {
+        const uploaded = await Promise.all(
+          individualCardsPayload.map(async (c, idx) => {
+            const imgUrl = String(c.imageUrl);
+            if (!imgUrl.startsWith('data:')) return c;
+            try {
+              const res = await fetch(imgUrl);
+              const blob = await res.blob();
+              const ext = blob.type.split('/')[1] || 'jpg';
+              const fileName = `${currentUser.id}/cards/${Date.now()}-${idx}-${Math.random().toString(36).substring(7)}.${ext}`;
+              const file = new File([blob], `card-${idx}.${ext}`, { type: blob.type });
+              const { error } = await supabase.storage.from('posts').upload(fileName, file, { cacheControl: '3600', upsert: false });
+              if (error) return c;
+              imageStoragePaths.push(fileName);
+              const { data: { publicUrl } } = supabase.storage.from('posts').getPublicUrl(fileName);
+              return { ...c, imageUrl: publicUrl };
+            } catch {
+              return c;
+            }
+          })
+        );
+        individualCardsPayload = uploaded;
+      }
+
+      // 3. สร้าง JSON payload
+      const payload: Record<string, unknown> = {
+        title: formData.title || 'การ์ดเกม',
+        description: formData.description || '',
+        category: formData.category || '',
+        imageUrls,
+        imageStoragePaths,
+        postType: formData.postType
+      };
+
+      if (formData.condition) payload.condition = formData.condition;
+      if (formData.game) payload.game = formData.game;
+
       if (formData.postType === 'sale') {
-        if (formData.saleType) submitData.append('saleType', formData.saleType);
-        
+        if (formData.saleType) payload.saleType = formData.saleType;
         if (formData.saleType === 'deck') {
-          submitData.append('cardCount', formData.cardCount);
-          submitData.append('deckDescription', formData.deckDescription || '');
-          submitData.append('price', formData.price);
+          payload.cardCount = formData.cardCount;
+          payload.deckDescription = formData.deckDescription || '';
+          payload.price = formData.price;
         } else if (formData.saleType === 'individual') {
-          if (detectedCards.length > 0) {
-            const payload = detectedCards.map(c => ({
-              id: c.id,
-              imageUrl: c.imageUrl,
-              price: parseFloat(String(c.price)),
-              quantity: parseInt(String(c.quantity))
-            }));
-            submitData.append('individualCards', JSON.stringify(payload));
-            // derive headline price as min
-            const minPrice = Math.min(...payload.map(p => p.price));
-            const totalQty = payload.reduce((s, p) => s + (p.quantity || 0), 0);
-            submitData.append('price', String(minPrice));
-            submitData.append('availableQuantity', String(totalQty));
+          if (individualCardsPayload && individualCardsPayload.length > 0) {
+            payload.individualCards = individualCardsPayload;
+            payload.price = String(Math.min(...individualCardsPayload.map(p => p.price)));
+            payload.availableQuantity = String(individualCardsPayload.reduce((s, p) => s + (p.quantity || 0), 0));
           } else {
-            submitData.append('individualPrice', formData.individualPrice);
-            submitData.append('availableQuantity', formData.availableQuantity);
-            submitData.append('price', formData.individualPrice);
+            payload.individualPrice = formData.individualPrice;
+            payload.availableQuantity = formData.availableQuantity;
+            payload.price = formData.individualPrice;
           }
         }
       } else if (formData.postType === 'auction') {
-        if (formData.saleType) submitData.append('saleType', formData.saleType);
-        submitData.append('startingBid', formData.startingBid);
-        submitData.append('auctionEndDate', formData.auctionEndDate);
-        
-        if (formData.saleType === 'deck') {
-          submitData.append('cardCount', formData.cardCount);
-        } else if (formData.saleType === 'individual') {
-          submitData.append('availableQuantity', formData.availableQuantity);
-        }
-        
-        if (formData.buyNowPrice) {
-          submitData.append('buyNowPrice', formData.buyNowPrice);
-        }
+        if (formData.saleType) payload.saleType = formData.saleType;
+        payload.startingBid = formData.startingBid;
+        payload.auctionEndDate = formData.auctionEndDate;
+        if (formData.saleType === 'deck') payload.cardCount = formData.cardCount;
+        if (formData.saleType === 'individual') payload.availableQuantity = formData.availableQuantity;
+        if (formData.buyNowPrice) payload.buyNowPrice = formData.buyNowPrice;
       }
 
-      formData.images.forEach((image) => {
-        submitData.append('images', image);
+      const response = await axios.post('/api/posts', payload, {
+        headers: { 'Content-Type': 'application/json' }
       });
 
-      const response = await axios.post('/api/posts', submitData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        onUploadProgress: (progressEvent) => {
-          if (progressEvent.total) {
-            const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-            setUploadProgress(progress);
-          }
-        },
-      });
-
-      const successMessage = formData.postType === 'auction' 
-        ? 'สร้างการประมูลสำเร็จ! 🔨' 
+      const successMessage = formData.postType === 'auction'
+        ? 'สร้างการประมูลสำเร็จ! 🔨'
         : 'สร้างโพสต์ขายสำเร็จ! 🛒';
       toast.success(successMessage);
       navigate(`/post/${response.data.id}`);
     } catch (error: any) {
       console.error('Error creating post:', error);
-      const errorMessage = error.response?.data?.error || 'เกิดข้อผิดพลาดในการสร้างโพสต์';
+      const res = error.response?.data;
+      const errorMessage = res?.error || res?.message || res?.title || res?.detail || (res?.errors ? JSON.stringify(res.errors) : null) || 'เกิดข้อผิดพลาดในการสร้างโพสต์';
       setError(errorMessage);
       toast.error(errorMessage);
+
+      // ลบรูปที่อัปโหลดแล้วออกจาก Storage เพราะโพสต์สร้างไม่สำเร็จ
+      if (imageStoragePaths.length > 0) {
+        try {
+          await supabase.storage.from('posts').remove(imageStoragePaths);
+        } catch (deleteErr) {
+          console.warn('Could not delete uploaded images after post failure:', deleteErr);
+        }
+      }
     } finally {
       setLoading(false);
       setUploadProgress(0);
@@ -378,8 +507,28 @@ const CreatePost: React.FC = () => {
                   </Alert>
                 )}
 
+                {/* Stepper */}
+                <div className="create-post-stepper mb-4">
+                  <div className="stepper-track">
+                    {STEPS.map((step, idx) => (
+                      <div
+                        key={step.id}
+                        className={`stepper-step ${currentStep >= step.id ? 'active' : ''} ${currentStep === step.id ? 'current' : ''}`}
+                        onClick={() => currentStep > step.id && setCurrentStep(step.id)}
+                      >
+                        <div className="stepper-circle">
+                          <span>{currentStep > step.id ? '✓' : step.icon}</span>
+                        </div>
+                        <span className="stepper-label">{step.label}</span>
+                        {idx < STEPS.length - 1 && <div className="stepper-line" />}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 <Form onSubmit={handleSubmit} className="create-post-form">
-                  {/* Section 1: Post Type Selection */}
+                  {/* Step 1: Post Type Selection */}
+                  {currentStep === 1 && (
                   <div className="form-section mb-4">
                     <div className="section-header mb-3">
                       <h5 className="section-title">
@@ -427,9 +576,127 @@ const CreatePost: React.FC = () => {
                         className="radio-option-modern"
                       />
                     </div>
+                    <div className="stepper-actions mt-4">
+                      <PrimaryActionButton type="button" onClick={goNextStep}>
+                        ถัดไป: อัปโหลดรูป
+                      </PrimaryActionButton>
+                    </div>
                   </div>
+                  )}
 
-                  {/* Section 2: Sale Type Selection */}
+                  {/* Step 2: Images (Image-First) */}
+                  {currentStep === 2 && (
+                  <div className="form-section mb-4">
+                    <div className="section-header mb-3">
+                      <h5 className="section-title">
+                        <span className="section-icon">📷</span>
+                        รูปภาพการ์ด
+                        <span className="required-badge">*</span>
+                      </h5>
+                      <p className="section-description">อัปโหลดรูปภาพการ์ดของคุณ (อย่างน้อย 1 รูป) - ลากวางได้</p>
+                    </div>
+                    <Form.Group className="mb-3 form-group-sakura">
+                      <div className="file-upload-wrapper">
+                        <Form.Control
+                          type="file"
+                          multiple
+                          accept="image/*"
+                          onChange={handleImageChange}
+                          className="form-control-sakura file-input-modern"
+                          id="image-upload"
+                        />
+                        <label htmlFor="image-upload" className="file-upload-label">
+                          <div className="file-upload-content">
+                            <span className="file-upload-icon">📤</span>
+                            <div>
+                              <div className="file-upload-text">
+                                คลิกเพื่อเลือกไฟล์ หรือลากไฟล์มาวางที่นี่
+                              </div>
+                              <div className="file-upload-hint">
+                                รองรับ JPG, PNG, GIF (สูงสุด 5 ไฟล์, ไม่เกิน 10MB ต่อไฟล์)
+                              </div>
+                            </div>
+                          </div>
+                        </label>
+                      </div>
+                      {formData.images.length > 0 && (
+                        <div className="file-selected-info mt-3">
+                          <div className="file-count-badge">
+                            <span className="file-count-icon">✅</span>
+                            <span>เลือกแล้ว {formData.images.length} ไฟล์ - คลิกดูรูปเพื่อตรวจสอบ</span>
+                          </div>
+                          <div className="d-flex flex-wrap gap-3 mt-3">
+                            {Array.from(formData.images).map((file, index) => (
+                              <ImagePreviewThumbnail
+                                key={index}
+                                file={file}
+                                index={index}
+                                onClick={() => setPreviewImageIndex(index)}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </Form.Group>
+                    {formData.postType === 'sale' && formData.saleType === 'individual' && formData.images.length > 0 && (
+                      <div className="card-detection-section mt-4">
+                        <div className="detection-header">
+                          <div>
+                            <h6 className="detection-title">
+                              <span className="detection-icon">✨</span>
+                              การแยกการ์ดอัตโนมัติ
+                            </h6>
+                            <p className="detection-description">
+                              ใช้ AI ในการแยกการ์ดแต่ละใบจากภาพอัตโนมัติ
+                            </p>
+                          </div>
+                          <Button
+                            variant="outline-primary"
+                            size="sm"
+                            onClick={processImagesForCards}
+                            disabled={processingCards}
+                            className="detection-button"
+                          >
+                            {processingCards ? (
+                              <>
+                                <Spinner size="sm" className="me-2" />
+                                กำลังประมวลผล...
+                              </>
+                            ) : (
+                              <>
+                                <span className="me-2">🔍</span>
+                                แยกการ์ดอัตโนมัติ
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                        {detectedCards.length > 0 && (
+                          <div className="detected-cards-preview mt-4">
+                            <div className="detected-cards-header">
+                              <div className="success-badge">
+                                <span className="success-icon">✅</span>
+                                <span>พบการ์ด {detectedCards.length} ใบ - กรอกราคาในขั้นตอนถัดไป</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div className="stepper-actions mt-4 d-flex gap-2">
+                      <SecondaryActionButton type="button" onClick={goPrevStep}>
+                        ย้อนกลับ
+                      </SecondaryActionButton>
+                      <PrimaryActionButton type="button" onClick={goNextStep} disabled={!canProceedFromStep2()}>
+                        ถัดไป: กรอกข้อมูล
+                      </PrimaryActionButton>
+                    </div>
+                  </div>
+                  )}
+
+                  {/* Step 3: Form Data */}
+                  {currentStep === 3 ? (
+                  <div className="step-3-content">
+                  <div className="form-section mb-4">
                   {(formData.postType === 'sale' || formData.postType === 'auction') && (
                     <div className="form-section mb-4">
                       <div className="section-header mb-3">
@@ -850,159 +1117,126 @@ const CreatePost: React.FC = () => {
                     </Form.Group>
                   </div>
 
-                  {/* Section 8: Images */}
+                  {/* Detected cards - per-card price/quantity (Step 3) */}
+                  {detectedCards.length > 0 && (
+                    <div className="detected-cards-preview mt-4">
+                      <div className="detected-cards-header">
+                        <div className="success-badge">
+                          <span className="success-icon">✅</span>
+                          <span>พบการ์ด {detectedCards.length} ใบ - กรอกราคาและจำนวนต่อใบ</span>
+                        </div>
+                      </div>
+                      <div className="cards-preview-grid">
+                        {detectedCards.map((card, index) => (
+                          <div key={card.id} className="card-preview-item">
+                            <div className="card-preview-image-wrapper">
+                              <img
+                                src={card.imageUrl}
+                                alt={`การ์ด ${index + 1}`}
+                                className="card-preview-image"
+                              />
+                              <div className="card-preview-number">#{index + 1}</div>
+                            </div>
+                            <div className="card-preview-form">
+                              <Form.Group className="mb-2">
+                                <Form.Label className="card-form-label">จำนวน</Form.Label>
+                                <Form.Control
+                                  type="number"
+                                  placeholder="1"
+                                  min="1"
+                                  value={card.quantity}
+                                  onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                                    const val = e.target.value;
+                                    setDetectedCards(prev => prev.map(c => c.id === card.id ? { ...c, quantity: val } : c));
+                                  }}
+                                  className="form-control-sakura"
+                                />
+                              </Form.Group>
+                              <Form.Group>
+                                <Form.Label className="card-form-label">ราคา (บาท)</Form.Label>
+                                <div className="input-with-icon">
+                                  <span className="input-icon-left">฿</span>
+                                  <Form.Control
+                                    type="number"
+                                    placeholder="0.00"
+                                    min="0"
+                                    step="0.01"
+                                    value={card.price}
+                                    onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                                      const val = e.target.value;
+                                      setDetectedCards(prev => prev.map(c => c.id === card.id ? { ...c, price: val } : c));
+                                    }}
+                                    className="form-control-sakura"
+                                  />
+                                </div>
+                              </Form.Group>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                    <div className="stepper-actions mt-4 d-flex gap-2">
+                      <SecondaryActionButton type="button" onClick={goPrevStep}>
+                        ย้อนกลับ
+                      </SecondaryActionButton>
+                      <PrimaryActionButton type="button" onClick={goNextStep} disabled={!canProceedFromStep3()}>
+                        ถัดไป: สรุป
+                      </PrimaryActionButton>
+                    </div>
+                  </div>
+                  </div>
+                  ) : null}
+
+                  {/* Step 4: Summary */}
+                  {currentStep === 4 && (
                   <div className="form-section mb-4">
                     <div className="section-header mb-3">
                       <h5 className="section-title">
-                        <span className="section-icon">📷</span>
-                        รูปภาพการ์ด
-                        <span className="required-badge">*</span>
+                        <span className="section-icon">✅</span>
+                        สรุปข้อมูล
                       </h5>
-                      <p className="section-description">อัปโหลดรูปภาพการ์ดของคุณ (อย่างน้อย 1 รูป)</p>
+                      <p className="section-description">ตรวจสอบข้อมูลก่อนส่ง</p>
                     </div>
-                    <Form.Group className="mb-3 form-group-sakura">
-                      <div className="file-upload-wrapper">
-                        <Form.Control
-                          type="file"
-                          multiple
-                          accept="image/*"
-                          onChange={handleImageChange}
-                          className="form-control-sakura file-input-modern"
-                          id="image-upload"
-                        />
-                        <label htmlFor="image-upload" className="file-upload-label">
-                          <div className="file-upload-content">
-                            <span className="file-upload-icon">📤</span>
-                            <div>
-                              <div className="file-upload-text">
-                                คลิกเพื่อเลือกไฟล์ หรือลากไฟล์มาวางที่นี่
-                              </div>
-                              <div className="file-upload-hint">
-                                รองรับ JPG, PNG, GIF (สูงสุด 5 ไฟล์, ไม่เกิน 10MB ต่อไฟล์)
-                              </div>
-                            </div>
-                          </div>
-                        </label>
-                      </div>
-                      {formData.images.length > 0 && (
-                        <div className="file-selected-info mt-3">
-                          <div className="file-count-badge">
-                            <span className="file-count-icon">✅</span>
-                            <span>เลือกแล้ว {formData.images.length} ไฟล์</span>
-                          </div>
-                          <div className="file-list mt-2">
-                            {Array.from(formData.images).map((file, index) => (
-                              <div key={index} className="file-item">
-                                <span className="file-item-icon">🖼️</span>
-                                <span className="file-item-name">{file.name}</span>
-                                <span className="file-item-size">
-                                  ({(file.size / 1024 / 1024).toFixed(2)} MB)
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </Form.Group>
-                  
-                    {/* Card Detection Section - Only show for individual sale */}
-                    {formData.postType === 'sale' && formData.saleType === 'individual' && formData.images.length > 0 && (
-                      <div className="card-detection-section mt-4">
-                        <div className="detection-header">
-                          <div>
-                            <h6 className="detection-title">
-                              <span className="detection-icon">✨</span>
-                              การแยกการ์ดอัตโนมัติ
-                            </h6>
-                            <p className="detection-description">
-                              ใช้ AI ในการแยกการ์ดแต่ละใบจากภาพอัตโนมัติ
-                            </p>
-                          </div>
-                          <Button
-                            variant="outline-primary"
-                            size="sm"
-                            onClick={processImagesForCards}
-                            disabled={processingCards}
-                            className="detection-button"
-                          >
-                            {processingCards ? (
-                              <>
-                                <Spinner size="sm" className="me-2" />
-                                กำลังประมวลผล...
-                              </>
-                            ) : (
-                              <>
-                                <span className="me-2">🔍</span>
-                                แยกการ์ดอัตโนมัติ
-                              </>
-                            )}
-                          </Button>
-                        </div>
-                        
-                        {detectedCards.length > 0 && (
-                          <div className="detected-cards-preview mt-4">
-                            <div className="detected-cards-header">
-                              <div className="success-badge">
-                                <span className="success-icon">✅</span>
-                                <span>พบการ์ด {detectedCards.length} ใบ</span>
-                              </div>
-                              <p className="detected-cards-hint">
-                                กรุณากรอกราคาและจำนวนต่อใบให้ครบทุกการ์ด
-                              </p>
-                            </div>
-                            <div className="cards-preview-grid">
-                              {detectedCards.map((card, index) => (
-                                <div key={card.id} className="card-preview-item">
-                                  <div className="card-preview-image-wrapper">
-                                    <img
-                                      src={card.imageUrl}
-                                      alt={`การ์ด ${index + 1}`}
-                                      className="card-preview-image"
-                                    />
-                                    <div className="card-preview-number">#{index + 1}</div>
-                                  </div>
-                                  <div className="card-preview-form">
-                                    <Form.Group className="mb-2">
-                                      <Form.Label className="card-form-label">จำนวน</Form.Label>
-                                      <Form.Control
-                                        type="number"
-                                        placeholder="1"
-                                        min="1"
-                                        value={card.quantity}
-                                        onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                                          const val = e.target.value;
-                                          setDetectedCards(prev => prev.map(c => c.id === card.id ? { ...c, quantity: val } : c));
-                                        }}
-                                        className="form-control-sakura"
-                                      />
-                                    </Form.Group>
-                                    <Form.Group>
-                                      <Form.Label className="card-form-label">ราคา (บาท)</Form.Label>
-                                      <div className="input-with-icon">
-                                        <span className="input-icon-left">฿</span>
-                                        <Form.Control
-                                          type="number"
-                                          placeholder="0.00"
-                                          min="0"
-                                          step="0.01"
-                                          value={card.price}
-                                          onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                                            const val = e.target.value;
-                                            setDetectedCards(prev => prev.map(c => c.id === card.id ? { ...c, price: val } : c));
-                                          }}
-                                          className="form-control-sakura"
-                                        />
-                                      </div>
-                                    </Form.Group>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
+                    <Card className="mb-4" style={{ background: 'var(--gray-100)', border: 'none' }}>
+                      <Card.Body>
+                        <p><strong>ประเภท:</strong> {formData.postType === 'auction' ? 'ประมูล' : 'ขาย'} - {formData.saleType === 'deck' ? 'เด็ค' : 'แยกใบ'}</p>
+                        <p><strong>รูปภาพ:</strong> {formData.images.length} ไฟล์</p>
+                        <p><strong>ชื่อ:</strong> {formData.title || '-'}</p>
+                        <p><strong>หมวดหมู่:</strong> {formData.category || '-'}</p>
+                        {formData.postType === 'sale' && formData.saleType === 'deck' && (
+                          <p><strong>ราคาเด็ค:</strong> {formData.price} บาท | จำนวน {formData.cardCount} ใบ</p>
                         )}
-                      </div>
-                    )}
+                        {formData.postType === 'sale' && formData.saleType === 'individual' && detectedCards.length === 0 && (
+                          <p><strong>ราคาต่อใบ:</strong> {formData.individualPrice} บาท | จำนวน {formData.availableQuantity} ใบ</p>
+                        )}
+                        {formData.postType === 'auction' && (
+                          <p><strong>ราคาเริ่มต้น:</strong> {formData.startingBid} บาท | สิ้นสุด: {formData.auctionEndDate ? new Date(formData.auctionEndDate).toLocaleString('th-TH') : '-'}</p>
+                        )}
+                      </Card.Body>
+                    </Card>
+                    <div className="stepper-actions mt-4 d-flex gap-2 flex-wrap">
+                      <SecondaryActionButton type="button" onClick={goPrevStep}>
+                        ย้อนกลับ
+                      </SecondaryActionButton>
+                      <PrimaryActionButton
+                        type="submit"
+                        disabled={loading}
+                        className="submit-button"
+                      >
+                        {loading ? (
+                          <>
+                            <Spinner size="sm" className="me-2" />
+                            {formData.postType === 'auction' ? 'กำลังสร้างการประมูล...' : 'กำลังสร้างโพสต์...'}
+                          </>
+                        ) : (
+                          formData.postType === 'auction' ? 'สร้างการประมูล' : 'สร้างโพสต์'
+                        )}
+                      </PrimaryActionButton>
+                    </div>
                   </div>
+                  )}
 
                   {/* Upload Progress */}
                   {uploadProgress > 0 && uploadProgress < 100 && (
@@ -1024,27 +1258,9 @@ const CreatePost: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Submit Buttons */}
-                  <div className="form-actions">
-                    <PrimaryActionButton
-                      type="submit"
-                      disabled={loading}
-                      className="submit-button"
-                    >
-                      {loading ? (
-                        <>
-                          <Spinner size="sm" className="me-2" />
-                          {formData.postType === 'auction' ? 'กำลังสร้างการประมูล...' : 'กำลังสร้างโพสต์...'}
-                        </>
-                      ) : (
-                        <>
-                          <span className="me-2">
-                            {formData.postType === 'auction' ? '🔨' : '✅'}
-                          </span>
-                          {formData.postType === 'auction' ? 'สร้างการประมูล' : 'สร้างโพสต์'}
-                        </>
-                      )}
-                    </PrimaryActionButton>
+                  {/* Cancel button - show when not on step 4 */}
+                  {currentStep !== 4 && (
+                  <div className="form-actions mt-3">
                     <SecondaryActionButton
                       type="button"
                       onClick={() => navigate('/')}
@@ -1053,7 +1269,30 @@ const CreatePost: React.FC = () => {
                       ยกเลิก
                     </SecondaryActionButton>
                   </div>
+                  )}
                 </Form>
+
+                {/* Modal สำหรับดูรูปเต็ม */}
+                <Modal
+                  show={previewImageIndex !== null}
+                  onHide={() => setPreviewImageIndex(null)}
+                  centered
+                  size="lg"
+                  style={{ backdropFilter: 'blur(4px)' }}
+                >
+                  <Modal.Header closeButton>
+                    <Modal.Title>รูปที่ {previewImageIndex !== null ? previewImageIndex + 1 : ''}</Modal.Title>
+                  </Modal.Header>
+                  <Modal.Body className="text-center p-0">
+                    {previewImageUrl && (
+                      <img
+                        src={previewImageUrl}
+                        alt={`รูป ${previewImageIndex !== null ? previewImageIndex + 1 : ''}`}
+                        style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain' }}
+                      />
+                    )}
+                  </Modal.Body>
+                </Modal>
               </Card.Body>
             </Card>
           </div>

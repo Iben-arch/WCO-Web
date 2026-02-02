@@ -62,7 +62,6 @@ CREATE TABLE IF NOT EXISTS users (
   "displayName" TEXT,
   accountname TEXT,
   "photoURL" TEXT,
-  "cloudinaryPublicId" TEXT,
   phone TEXT,
   address TEXT,
   passwordhash TEXT NOT NULL,
@@ -78,7 +77,6 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS uid UUID;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS "displayName" TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS accountname TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS "photoURL" TEXT;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS "cloudinaryPublicId" TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMPTZ DEFAULT NOW();
@@ -136,31 +134,35 @@ CREATE POLICY "Public can read users" ON users
 
 #### Table: posts
 ```sql
--- สร้างตาราง posts
-CREATE TABLE IF NOT EXISTS posts (
+-- ลบตารางเก่า (ระวัง: จะลบข้อมูลทั้งหมด!)
+DROP TABLE IF EXISTS posts CASCADE;
+
+-- สร้างตาราง posts ใหม่ (เก็บรูปใน Supabase Storage)
+CREATE TABLE posts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  title TEXT NOT NULL,
+  title TEXT,
   description TEXT,
   category TEXT,
-  images TEXT[],
-  cloudinaryPublicIds TEXT[],
-  sellerId UUID NOT NULL,
-  sellerName TEXT,
+  images TEXT[] DEFAULT '{}',
+  "imageStoragePaths" TEXT[] DEFAULT '{}',
+  "sellerId" UUID NOT NULL,
+  "sellerName" TEXT,
   status TEXT DEFAULT 'pending',
-  postType TEXT DEFAULT 'sale',
+  "postType" TEXT DEFAULT 'sale',
+  "saleType" TEXT,
   price NUMERIC,
-  startingBid NUMERIC,
-  buyNowPrice NUMERIC,
-  auctionEndDate TIMESTAMPTZ,
-  saleType TEXT,
-  cardCount INTEGER,
-  deckDescription TEXT,
-  individualPrice NUMERIC,
-  availableQuantity INTEGER,
+  "individualPrice" NUMERIC,
+  "startingBid" NUMERIC,
+  "buyNowPrice" NUMERIC,
+  "auctionEndDate" TIMESTAMPTZ,
+  "cardCount" INTEGER,
+  "deckDescription" TEXT,
+  "availableQuantity" INTEGER,
+  "individualCards" JSONB DEFAULT '[]',
   condition TEXT,
   game TEXT,
-  createdAt TIMESTAMPTZ DEFAULT NOW(),
-  updatedAt TIMESTAMPTZ DEFAULT NOW()
+  "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+  "updatedAt" TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Enable Row Level Security
@@ -183,16 +185,18 @@ CREATE POLICY "Anyone can read posts" ON posts
 
 -- Policy: Users can create their own posts (ถ้าใช้ Supabase Auth)
 CREATE POLICY "Users can create own posts" ON posts
-  FOR INSERT WITH CHECK (auth.uid()::text = sellerId::text);
+  FOR INSERT WITH CHECK (auth.uid()::text = "sellerId"::text);
 
 -- Policy: Users can update their own posts (ถ้าใช้ Supabase Auth)
 CREATE POLICY "Users can update own posts" ON posts
-  FOR UPDATE USING (auth.uid()::text = sellerId::text);
+  FOR UPDATE USING (auth.uid()::text = "sellerId"::text);
 
 -- Policy: Users can delete their own posts (ถ้าใช้ Supabase Auth)
 CREATE POLICY "Users can delete own posts" ON posts
-  FOR DELETE USING (auth.uid()::text = sellerId::text);
+  FOR DELETE USING (auth.uid()::text = "sellerId"::text);
 ```
+
+**หมายเหตุ:** รูปโพสต์เก็บใน Supabase Storage bucket `posts` (ดู `client-web/supabase-posts-storage-setup.sql`)
 
 #### Table: likes
 ```sql

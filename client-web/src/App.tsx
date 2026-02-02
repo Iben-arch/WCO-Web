@@ -85,6 +85,11 @@ const App: React.FC = () => {
                           <Profile />
                         </ProtectedRoute>
                       } />
+                      <Route path="/buy-request" element={
+                        <ProtectedRoute>
+                          <CardBuying />
+                        </ProtectedRoute>
+                      } />
                       <Route path="/post/:id" element={<PostDetail />} />
                       <Route path="/seller/:sellerId" element={<SellerProfile />} />
                       <Route path="/create-post" element={
@@ -92,7 +97,11 @@ const App: React.FC = () => {
                           <CreatePost />
                         </ProtectedRoute>
                       } />
-                      <Route path="/my-posts" element={<CardBuying />} />
+                      <Route path="/my-posts" element={
+                        <ProtectedRoute>
+                          <Profile initialTab="my-posts" />
+                        </ProtectedRoute>
+                      } />
                       <Route path="/admin" element={
                         <ProtectedRoute adminOnly>
                           <AdminDashboard />

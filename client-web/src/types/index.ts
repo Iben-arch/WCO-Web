@@ -63,7 +63,6 @@ export interface Post {
   createdAt: Date | FirestoreTimestamp | string;
   updatedAt?: Date | FirestoreTimestamp | string;
   bidCount?: number;
-  cloudinaryPublicIds?: string[];
   individualCards?: Array<{
     id?: string;
     imageUrl: string;
@@ -92,8 +91,11 @@ export type Category =
 
 // Cart Types
 export interface CartItem {
+  id?: string; // Cart item id (for remove)
   postId: string;
   post: Post;
+  cardId?: string; // Optional - for individual card
+  quantity?: number;
   addedAt?: Date | FirestoreTimestamp | string;
 }
 
@@ -113,10 +115,10 @@ export interface CartContextType {
   cartItems: CartItem[];
   loading: boolean;
   error: string | null;
-  addToCart: (post: Post) => Promise<{ success: boolean; message: string }>;
-  removeFromCart: (postId: string) => Promise<{ success: boolean; message: string }>;
+  addToCart: (post: Post, cardId?: string, quantity?: number) => Promise<{ success: boolean; message: string }>;
+  removeFromCart: (itemId: string, cardId?: string) => Promise<{ success: boolean; message: string }>;
   clearCart: () => Promise<{ success: boolean; message: string }>;
-  isInCart: (postId: string) => boolean;
+  isInCart: (postId: string, cardId?: string) => boolean;
   getCartCount: () => number;
   getTotalPrice: () => number;
   formatPrice: (price: number) => string;

@@ -53,13 +53,13 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     }
   };
 
-  const addToCart = async (post: Post): Promise<{ success: boolean; message: string }> => {
+  const addToCart = async (post: Post, cardId?: string, quantity?: number): Promise<{ success: boolean; message: string }> => {
     if (!currentUser) {
       throw new Error('กรุณาเข้าสู่ระบบก่อน');
     }
 
     try {
-      const result = await cartAPI.addToCart(post.id);
+      const result = await cartAPI.addToCart(post.id, cardId, quantity);
       if (result.success) {
         // Refresh cart items
         await fetchCartItems();
@@ -71,11 +71,11 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     }
   };
 
-  const removeFromCart = async (postId: string): Promise<{ success: boolean; message: string }> => {
+  const removeFromCart = async (itemId: string, cardId?: string): Promise<{ success: boolean; message: string }> => {
     if (!currentUser) return { success: false, message: 'กรุณาเข้าสู่ระบบ' };
 
     try {
-      const result = await cartAPI.removeFromCart(postId);
+      const result = await cartAPI.removeFromCart(itemId, cardId);
       if (result.success) {
         // Refresh cart items
         await fetchCartItems();
@@ -102,8 +102,11 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     }
   };
 
-  const isInCart = (postId: string): boolean => {
-    return cartItems.some(item => item.postId === postId);
+  const isInCart = (postId: string, cardId?: string): boolean => {
+    if (cardId) {
+      return cartItems.some(item => item.postId === postId && item.cardId === cardId);
+    }
+    return cartItems.some(item => item.postId === postId && !item.cardId);
   };
 
   const getCartCount = (): number => {
@@ -112,8 +115,9 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
 
   const getTotalPrice = (): number => {
     return cartItems.reduce((total, item) => {
-      const price = item.post.price || item.post.startingBid || item.post.maxPrice || 0;
-      return total + price;
+      const price = item.post.individualPrice || item.post.price || item.post.startingBid || item.post.maxPrice || 0;
+      const qty = item.quantity ?? 1;
+      return total + price * qty;
     }, 0);
   };
 

@@ -10,11 +10,13 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 // Create and export Supabase client singleton
+// ใช้ sessionStorage แทน localStorage เพื่อให้ token หายเมื่อปิดแท็บ/เบราว์เซอร์
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: true
+    detectSessionInUrl: true,
+    storage: typeof window !== 'undefined' ? window.sessionStorage : undefined
   }
 });
 

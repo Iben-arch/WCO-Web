@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, UserProfile, Profile, AuthContextType } from '../types';
 import { supabase } from '../config/supabase';
+import { clearSessionCache } from '../utils/axiosInterceptor';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -90,8 +91,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       setCurrentUser(data.user);
       
-      // Fetch profile after login
-      await fetchProfile(data.user.id);
+      // โหลด profile ในพื้นหลัง ไม่บล็อกการ navigate (แก้ปัญหา loading ค้าง)
+      fetchProfile(data.user.id).catch((err) => console.error('Profile fetch after login:', err));
 
       return data.user;
     } catch (error: any) {
@@ -150,8 +151,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       setCurrentUser(data.user);
       
-      // Fetch profile if available
-      await fetchProfile(data.user.id);
+      // โหลด profile ในพื้นหลัง ไม่บล็อกการ navigate
+      fetchProfile(data.user.id).catch((err) => console.error('Profile fetch after register:', err));
 
       return data.user;
     } catch (error: any) {
@@ -162,6 +163,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const logout = async (): Promise<void> => {
     try {
+      clearSessionCache();
       const { error } = await supabase.auth.signOut();
       if (error) {
         throw error;
@@ -251,9 +253,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   useEffect(() => {
     let mounted = true;
 
+    // Timeout fallback - prevent blank screen if Supabase is slow/unreachable (5 วินาที)
+    const timeoutId = setTimeout(() => {
+      if (mounted) {
+        console.warn('Auth session check timed out - showing app anyway');
+        setLoading(false);
+      }
+    }, 5000);
+
     // Get initial session
     supabase.auth.getSession().then(({ data: { session }, error }) => {
       if (!mounted) return;
+      clearTimeout(timeoutId);
       
       if (error) {
         console.error('Error getting session:', error);
@@ -282,6 +293,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!mounted) return;
+        clearTimeout(timeoutId);
 
         // Handle token refresh
         if (event === 'TOKEN_REFRESHED' && session?.user) {
@@ -309,6 +321,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     return () => {
       mounted = false;
+      clearTimeout(timeoutId);
       subscription.unsubscribe();
     };
   }, []);
@@ -326,7 +339,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   return (
     <AuthContext.Provider value={value}>
-      {!loading && children}
+      {children}
     </AuthContext.Provider>
   );
 };

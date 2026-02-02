@@ -1,6 +1,6 @@
-# คู่มือการตั้งค่า Supabase Storage สำหรับรูปโปรไฟล์
+# คู่มือการตั้งค่า Supabase Storage
 
-## ขั้นตอนการตั้งค่า
+## Bucket: avatars (รูปโปรไฟล์)
 
 ### 1. สร้าง Storage Bucket
 
@@ -89,6 +89,13 @@ avatars/
 2. ระบบจะลบรูปเก่าถ้ามี (ถ้ามี `avatar_url` เก่า)
 3. ระบบจะอัปเดต `avatar_url` ในตาราง `profiles` ด้วย public URL
 4. รูปจะแสดงในหน้า Profile ทันที
+
+## Bucket: posts (รูปโพสต์)
+
+1. สร้าง bucket ชื่อ `posts` ผ่าน Dashboard
+2. ตั้งค่าเป็น Public bucket
+3. File size limit: 10MB
+4. รัน SQL policies จาก `supabase-posts-storage-setup.sql`
 
 ## หมายเหตุ
 

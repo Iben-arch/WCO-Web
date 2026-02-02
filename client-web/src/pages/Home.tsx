@@ -65,9 +65,15 @@ const Home: React.FC = () => {
   const fetchPosts = async (): Promise<void> => {
     try {
       setLoading(true);
+      setError(null);
       
-      // ใช้ postsAPI แทน axios โดยตรง - server จะทำ sorting และ pagination
-      const fetched = await postsAPI.getPosts({
+      // ใช้ timeout ป้องกัน loading ค้างตลอด (เช่น API ช้าหรือไม่ตอบ)
+      const FETCH_TIMEOUT_MS = 12000;
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Request timeout')), FETCH_TIMEOUT_MS)
+      );
+      
+      const fetchPromise = postsAPI.getPosts({
         category: category || undefined,
         search: searchTerm || undefined,
         sortBy: sortBy || 'newest',
@@ -75,10 +81,13 @@ const Home: React.FC = () => {
         limit: 12
       });
 
+      const fetched = await Promise.race([fetchPromise, timeoutPromise]);
+
       setPosts(fetched);
     } catch (error) {
       console.error('Error fetching posts:', error);
-      setError('เกิดข้อผิดพลาดในการโหลดข้อมูล');
+      setError('เกิดข้อผิดพลาดในการโหลดข้อมูล กรุณาลองรีเฟรชอีกครั้ง');
+      setPosts([]);
     } finally {
       setLoading(false);
     }
@@ -86,18 +95,10 @@ const Home: React.FC = () => {
 
   const checkLikedStatus = async (): Promise<void> => {
     try {
-      const likedSet = new Set<string>();
-      for (const post of posts) {
-        try {
-          const likeStatus = await authAPI.checkLike(post.id);
-          if (likeStatus.liked) {
-            likedSet.add(post.id);
-          }
-        } catch (error) {
-          console.error(`Error checking like status for post ${post.id}:`, error);
-        }
-      }
-      setLikedPosts(likedSet);
+      if (posts.length === 0) return;
+      // ใช้ batch API แทน N+1 - 1 request แทน N requests
+      const { likedPostIds } = await authAPI.checkLikes(posts.map(p => p.id));
+      setLikedPosts(new Set(likedPostIds));
     } catch (error) {
       console.error('Error checking liked status:', error);
     }
@@ -497,9 +498,9 @@ const Home: React.FC = () => {
           </div>
           <Row className="g-3">
           {posts.map((post) => (
-              <Col key={post.id} lg={3} md={4} sm={6} xs={12}>
+              <Col key={post.id} lg={4} md={4} sm={6} xs={12}>
                 <div className="card-wrapper">
-                  <Card className="h-100 modern-card">
+                  <Card className={`h-100 modern-card ${post.status === 'sold' ? 'sold-card' : ''}`}>
                     <div className="card-image-container">
                   {post.images && post.images.length > 0 ? (
                     <Card.Img
@@ -513,47 +514,6 @@ const Home: React.FC = () => {
                           <span>ไม่มีรูปภาพ</span>
                     </div>
                   )}
-                  
-                      {/* Card Overlay with Actions */}
-                  <div className="card-overlay">
-                        <div className="overlay-actions">
-                          <button 
-                            className="action-btn primary-action"
-                            onClick={() => handleQuickView(post.id)}
-                          >
-                            👁️ ดูรายละเอียด
-                          </button>
-                          <div className="secondary-actions">
-                            <button 
-                              className="action-btn secondary-action"
-                              onClick={() => handleAddToWishlist(post)}
-                              title="เพิ่มในรายการที่ชอบ"
-                            >
-                              ❤️
-                            </button>
-                            <button 
-                              className="action-btn secondary-action"
-                              onClick={() => handleAddToCart(post)}
-                              title="เพิ่มในตะกร้า"
-                              disabled={addingToCart === post.id || currentUser?.id === post.sellerId || post.status === 'sold'}
-                            >
-                              {addingToCart === post.id ? '⏳' : '🛒'}
-                            </button>
-                            <button 
-                              className="action-btn secondary-action"
-                              onClick={() => {
-                                if (navigator.share) {
-                                  navigator.share({ title: post.title, url: window.location.href });
-                                }
-                              }}
-                              title="แชร์"
-                            >
-                              📤
-                            </button>
-                          </div>
-                  </div>
-                </div>
-                
                       {/* Post Type Badge */}
                       <div className="post-type-badge">
                         {post.status === 'sold' ? (
@@ -564,7 +524,7 @@ const Home: React.FC = () => {
                           <span className="badge sale-badge">💰 ขาย</span>
                         )}
                       </div>
-                    </div>
+                </div>
                     
                     <Card.Body className="card-content">
                       <div className="card-header">

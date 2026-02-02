@@ -156,10 +156,7 @@ const Login: React.FC = () => {
                       กำลังเข้าสู่ระบบ...
                     </>
                   ) : (
-                    <>
-                      <span className="btn-icon-key">🔑</span>
-                      <span className="btn-text">เข้าสู่ระบบ</span>
-                    </>
+                    <span className="btn-text">เข้าสู่ระบบ</span>
                   )}
                 </Button>
               </Form>

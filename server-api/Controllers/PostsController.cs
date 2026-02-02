@@ -1,76 +1,70 @@
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
-// REMOVED: using Microsoft.AspNetCore.Authorization; - Token system is no longer used
 using ServerApi.Services;
-using System.ComponentModel.DataAnnotations;
 
 namespace ServerApi.Controllers
 {
     /// <summary>
-    /// Controller สำหรับจัดการ Posts - ทำหน้าที่เป็น Middleware ระหว่าง Client กับ Supabase/Cloudinary
+    /// Controller สำหรับจัดการ Posts - รูปโพสต์เก็บใน Supabase Storage (อัปโหลดจาก Client โดยตรง)
     /// </summary>
     [ApiController]
     [Route("api/[controller]")]
     public class PostsController : BaseController
     {
         private readonly SupabaseService _supabaseService;
-        private readonly CloudinaryService _cloudinaryService;
         private readonly ILogger<PostsController> _logger;
 
         public PostsController(
             SupabaseService supabaseService,
-            CloudinaryService cloudinaryService,
             ILogger<PostsController> logger)
         {
             _supabaseService = supabaseService;
-            _cloudinaryService = cloudinaryService;
             _logger = logger;
         }
 
         /// <summary>
-        /// สร้าง Post ใหม่ - รับข้อมูลจาก Client แล้วส่งต่อไปยัง Supabase และ Cloudinary
+        /// สร้าง Post ใหม่ - รับ imageUrls จาก Client (อัปโหลดไป Supabase Storage แล้ว)
         /// </summary>
         [HttpPost]
-        // REMOVED: [Authorize] - Token system is no longer used
-        public async Task<IActionResult> CreatePost([FromForm] CreatePostRequest request)
+        public async Task<IActionResult> CreatePost([FromBody] CreatePostRequest? request)
         {
             try
             {
-                // 1. อัปโหลดรูปภาพไปยัง Cloudinary
-                var imageUrls = new List<string>();
-                var cloudinaryPublicIds = new List<string>();
-
-                if (request.Images != null && request.Images.Count > 0)
+                if (request == null)
                 {
-                    _logger.LogInformation($"Uploading {request.Images.Count} images to Cloudinary...");
-                    
-                    var uploadResults = await _cloudinaryService.UploadImagesAsync(
-                        request.Images, 
-                        "wco-uploads/posts"
-                    );
-
-                    foreach (var result in uploadResults)
-                    {
-                        if (result.StatusCode == System.Net.HttpStatusCode.OK)
-                        {
-                            imageUrls.Add(result.SecureUrl.ToString());
-                            cloudinaryPublicIds.Add(result.PublicId);
-                        }
-                    }
-
-                    _logger.LogInformation($"Successfully uploaded {imageUrls.Count} images");
+                    return BadRequest(new { success = false, error = "ข้อมูลไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง" });
                 }
 
-                // 2. เตรียมข้อมูลสำหรับ Supabase
+                var imageUrls = request.ImageUrls ?? new List<string>();
+                var imageStoragePaths = request.ImageStoragePaths ?? new List<string>();
+
+                _logger.LogInformation($"CreatePost received: imageUrls={imageUrls.Count}, imageStoragePaths={imageStoragePaths.Count}");
+
+                if (imageUrls.Count == 0)
+                {
+                    return BadRequest(new { success = false, error = "กรุณาอัปโหลดรูปภาพอย่างน้อย 1 รูป" });
+                }
+
                 var userId = GetUserId() ?? "unknown";
-                var userName = User.FindFirst("name")?.Value ?? "Unknown User";
+                var userName = "Unknown User";
+
+                // ดึง username จาก profiles table (เพราะ JWT ไม่มี claim "name")
+                if (userId != "unknown")
+                {
+                    var profile = await _supabaseService.GetAsync("profiles", userId, useServiceRole: true);
+                    if (profile != null && profile.TryGetValue("username", out var usernameObj) && usernameObj != null)
+                    {
+                        userName = usernameObj.ToString() ?? userName;
+                    }
+                }
 
                 var postData = new Dictionary<string, object>
                 {
-                    ["title"] = request.Title,
+                    ["title"] = request.Title ?? "การ์ดเกม",
                     ["description"] = request.Description ?? "",
-                    ["category"] = request.Category,
+                    ["category"] = request.Category ?? "",
                     ["images"] = imageUrls,
-                    ["cloudinaryPublicIds"] = cloudinaryPublicIds,
+                    ["imageStoragePaths"] = imageStoragePaths,
                     ["sellerId"] = userId,
                     ["sellerName"] = userName,
                     ["status"] = "pending",
@@ -79,7 +73,6 @@ namespace ServerApi.Controllers
                     ["updatedAt"] = DateTime.UtcNow
                 };
 
-                // เพิ่มข้อมูลตาม postType
                 if (request.PostType == "sale")
                 {
                     if (!string.IsNullOrEmpty(request.Price))
@@ -133,12 +126,15 @@ namespace ServerApi.Controllers
                 if (!string.IsNullOrEmpty(request.Game))
                     postData["game"] = request.Game;
 
-                // 3. บันทึกข้อมูลลง Supabase
+                if (request.IndividualCards != null && request.IndividualCards.Count > 0)
+                {
+                    postData["individualCards"] = request.IndividualCards;
+                }
+
                 _logger.LogInformation("Saving post to Supabase...");
-                var postId = await _supabaseService.CreateAsync("posts", postData);
+                var postId = await _supabaseService.CreateAsync("posts", postData, useServiceRole: true);
                 _logger.LogInformation($"Post created with ID: {postId}");
 
-                // 4. ดึงข้อมูลที่บันทึกแล้วเพื่อส่งกลับ
                 var createdPost = await _supabaseService.GetAsync("posts", postId);
 
                 return Ok(new
@@ -176,59 +172,15 @@ namespace ServerApi.Controllers
         {
             try
             {
-                List<Dictionary<string, object>> posts;
+                // ใช้ database-level filter, sort, pagination แทนการโหลดทั้งหมด
+                var (posts, total) = await _supabaseService.GetPostsFilteredAsync(
+                    category, search, sortBy, page, limit, postType, status, useServiceRole: true);
 
-                // ดึงข้อมูล posts
-                if (!string.IsNullOrEmpty(category))
-                {
-                    posts = await _supabaseService.QueryAsync("posts", "category", category);
-                }
-                else
-                {
-                    posts = await _supabaseService.GetAllAsync("posts");
-                }
-
-                // Filter by postType
-                if (!string.IsNullOrEmpty(postType))
-                {
-                    posts = posts.Where(p =>
-                        p.ContainsKey("postType") && p["postType"]?.ToString() == postType
-                    ).ToList();
-                }
-
-                // Filter by status
-                if (!string.IsNullOrEmpty(status))
-                {
-                    posts = posts.Where(p =>
-                        p.ContainsKey("status") && p["status"]?.ToString() == status
-                    ).ToList();
-                }
-
-                // Filter by search term
-                if (!string.IsNullOrEmpty(search))
-                {
-                    posts = posts.Where(p =>
-                        (p.ContainsKey("title") && p["title"]?.ToString()?.Contains(search, StringComparison.OrdinalIgnoreCase) == true) ||
-                        (p.ContainsKey("description") && p["description"]?.ToString()?.Contains(search, StringComparison.OrdinalIgnoreCase) == true)
-                    ).ToList();
-                }
-
-                // Server-side sorting
-                posts = sortBy?.ToLower() switch
-                {
-                    "priceasc" => posts.OrderBy(p => GetPostPrice(p)).ToList(),
-                    "pricedesc" => posts.OrderByDescending(p => GetPostPrice(p)).ToList(),
-                    _ => posts.OrderByDescending(p => GetPostDate(p)).ToList()
-                };
-
-                // Pagination
-                var total = posts.Count;
                 var totalPages = (int)Math.Ceiling(total / (double)limit);
-                var paginatedPosts = posts.Skip((page - 1) * limit).Take(limit).ToList();
 
                 return Ok(new
                 {
-                    posts = paginatedPosts,
+                    posts,
                     pagination = new
                     {
                         page,
@@ -432,15 +384,22 @@ namespace ServerApi.Controllers
                     return Forbid("คุณไม่มีสิทธิ์ลบโพสต์นี้");
                 }
 
-                // ลบรูปภาพจาก Cloudinary ถ้ามี
-                if (existingPost.ContainsKey("cloudinaryPublicIds"))
+                // ลบรูปภาพจาก Supabase Storage ถ้ามี
+                if (existingPost.ContainsKey("imageStoragePaths"))
                 {
-                    var publicIds = existingPost["cloudinaryPublicIds"] as List<object>;
-                    if (publicIds != null && publicIds.Count > 0)
+                    var paths = existingPost["imageStoragePaths"];
+                    var pathList = new List<string>();
+                    if (paths is List<object> listObj)
                     {
-                        var stringIds = publicIds.Select(p => p.ToString()!).ToList();
-                        await _cloudinaryService.DeleteImagesAsync(stringIds);
+                        pathList = listObj.Select(p => p?.ToString() ?? "").Where(s => !string.IsNullOrEmpty(s)).ToList();
                     }
+                    else if (paths is System.Text.Json.JsonElement je && je.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    {
+                        foreach (var item in je.EnumerateArray())
+                            pathList.Add(item.GetString() ?? "");
+                    }
+                    if (pathList.Count > 0)
+                        await _supabaseService.DeleteStorageObjectsAsync("posts", pathList);
                 }
 
                 // ลบข้อมูลจาก Supabase
@@ -476,7 +435,7 @@ namespace ServerApi.Controllers
                 var userId = GetUserId() ?? "";
                 var posts = await _supabaseService.QueryAsync("posts", "sellerId", userId);
 
-                return Ok(posts);
+                return Ok(new { posts });
             }
             catch (Exception ex)
             {
@@ -493,14 +452,13 @@ namespace ServerApi.Controllers
 
     public class CreatePostRequest
     {
-        [Required]
-        public string Title { get; set; } = string.Empty;
+        public string? Title { get; set; }
         public string? Description { get; set; }
-        [Required]
-        public string Category { get; set; } = string.Empty;
-        public List<IFormFile>? Images { get; set; }
-        public string? PostType { get; set; } // "sale" or "auction"
-        public string? SaleType { get; set; } // "deck" or "individual"
+        public string? Category { get; set; }
+        public List<string>? ImageUrls { get; set; }
+        public List<string>? ImageStoragePaths { get; set; }
+        public string? PostType { get; set; }
+        public string? SaleType { get; set; }
         public string? Price { get; set; }
         public string? IndividualPrice { get; set; }
         public string? StartingBid { get; set; }
@@ -509,8 +467,21 @@ namespace ServerApi.Controllers
         public string? CardCount { get; set; }
         public string? DeckDescription { get; set; }
         public string? AvailableQuantity { get; set; }
+        public List<IndividualCardDto>? IndividualCards { get; set; }
         public string? Condition { get; set; }
         public string? Game { get; set; }
+    }
+
+    public class IndividualCardDto
+    {
+        [JsonPropertyName("id")]
+        public string? Id { get; set; }
+        [JsonPropertyName("imageUrl")]
+        public string ImageUrl { get; set; } = string.Empty;
+        [JsonPropertyName("price")]
+        public double Price { get; set; }
+        [JsonPropertyName("quantity")]
+        public int Quantity { get; set; }
     }
 
     public class UpdatePostRequest
