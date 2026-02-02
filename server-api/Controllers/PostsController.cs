@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Authorization;
+// REMOVED: using Microsoft.AspNetCore.Authorization; - Token system is no longer used
 using ServerApi.Services;
 using System.ComponentModel.DataAnnotations;
 
@@ -10,7 +10,7 @@ namespace ServerApi.Controllers
     /// </summary>
     [ApiController]
     [Route("api/[controller]")]
-    public class PostsController : ControllerBase
+    public class PostsController : BaseController
     {
         private readonly SupabaseService _supabaseService;
         private readonly CloudinaryService _cloudinaryService;
@@ -30,7 +30,7 @@ namespace ServerApi.Controllers
         /// สร้าง Post ใหม่ - รับข้อมูลจาก Client แล้วส่งต่อไปยัง Supabase และ Cloudinary
         /// </summary>
         [HttpPost]
-        [Authorize]
+        // REMOVED: [Authorize] - Token system is no longer used
         public async Task<IActionResult> CreatePost([FromForm] CreatePostRequest request)
         {
             try
@@ -61,7 +61,7 @@ namespace ServerApi.Controllers
                 }
 
                 // 2. เตรียมข้อมูลสำหรับ Supabase
-                var userId = User.FindFirst("uid")?.Value ?? User.Identity?.Name ?? "unknown";
+                var userId = GetUserId() ?? "unknown";
                 var userName = User.FindFirst("name")?.Value ?? "Unknown User";
 
                 var postData = new Dictionary<string, object>
@@ -162,15 +162,23 @@ namespace ServerApi.Controllers
         }
 
         /// <summary>
-        /// อ่าน Post ทั้งหมด
+        /// อ่าน Post ทั้งหมด - รองรับ pagination, filtering, และ sorting
         /// </summary>
         [HttpGet]
-        public async Task<IActionResult> GetPosts([FromQuery] string? category, [FromQuery] string? search)
+        public async Task<IActionResult> GetPosts(
+            [FromQuery] string? category,
+            [FromQuery] string? search,
+            [FromQuery] int page = 1,
+            [FromQuery] int limit = 12,
+            [FromQuery] string? sortBy = "newest",
+            [FromQuery] string? postType = null,
+            [FromQuery] string? status = null)
         {
             try
             {
                 List<Dictionary<string, object>> posts;
 
+                // ดึงข้อมูล posts
                 if (!string.IsNullOrEmpty(category))
                 {
                     posts = await _supabaseService.QueryAsync("posts", "category", category);
@@ -180,7 +188,23 @@ namespace ServerApi.Controllers
                     posts = await _supabaseService.GetAllAsync("posts");
                 }
 
-                // Filter by search term if provided
+                // Filter by postType
+                if (!string.IsNullOrEmpty(postType))
+                {
+                    posts = posts.Where(p =>
+                        p.ContainsKey("postType") && p["postType"]?.ToString() == postType
+                    ).ToList();
+                }
+
+                // Filter by status
+                if (!string.IsNullOrEmpty(status))
+                {
+                    posts = posts.Where(p =>
+                        p.ContainsKey("status") && p["status"]?.ToString() == status
+                    ).ToList();
+                }
+
+                // Filter by search term
                 if (!string.IsNullOrEmpty(search))
                 {
                     posts = posts.Where(p =>
@@ -189,7 +213,30 @@ namespace ServerApi.Controllers
                     ).ToList();
                 }
 
-                return Ok(posts);
+                // Server-side sorting
+                posts = sortBy?.ToLower() switch
+                {
+                    "priceasc" => posts.OrderBy(p => GetPostPrice(p)).ToList(),
+                    "pricedesc" => posts.OrderByDescending(p => GetPostPrice(p)).ToList(),
+                    _ => posts.OrderByDescending(p => GetPostDate(p)).ToList()
+                };
+
+                // Pagination
+                var total = posts.Count;
+                var totalPages = (int)Math.Ceiling(total / (double)limit);
+                var paginatedPosts = posts.Skip((page - 1) * limit).Take(limit).ToList();
+
+                return Ok(new
+                {
+                    posts = paginatedPosts,
+                    pagination = new
+                    {
+                        page,
+                        limit,
+                        total,
+                        totalPages
+                    }
+                });
             }
             catch (Exception ex)
             {
@@ -201,6 +248,76 @@ namespace ServerApi.Controllers
                     message = ex.Message
                 });
             }
+        }
+
+        /// <summary>
+        /// Helper method สำหรับดึงราคาของ post
+        /// </summary>
+        private double GetPostPrice(Dictionary<string, object> post)
+        {
+            try
+            {
+                if (post.ContainsKey("postType") && post["postType"]?.ToString() == "sale")
+                {
+                    if (post.ContainsKey("saleType") && post["saleType"]?.ToString() == "individual")
+                    {
+                        if (post.ContainsKey("individualPrice"))
+                        {
+                            return Convert.ToDouble(post["individualPrice"]);
+                        }
+                    }
+                    if (post.ContainsKey("price"))
+                    {
+                        return Convert.ToDouble(post["price"]);
+                    }
+                }
+                else if (post.ContainsKey("postType") && post["postType"]?.ToString() == "auction")
+                {
+                    if (post.ContainsKey("currentBid"))
+                    {
+                        return Convert.ToDouble(post["currentBid"]);
+                    }
+                    if (post.ContainsKey("startingBid"))
+                    {
+                        return Convert.ToDouble(post["startingBid"]);
+                    }
+                }
+            }
+            catch
+            {
+                // Return 0 if conversion fails
+            }
+            return 0;
+        }
+
+        /// <summary>
+        /// Helper method สำหรับดึงวันที่ของ post
+        /// </summary>
+        private DateTime GetPostDate(Dictionary<string, object> post)
+        {
+            try
+            {
+                if (post.ContainsKey("createdAt"))
+                {
+                    var dateValue = post["createdAt"];
+                    if (dateValue is DateTime dt)
+                        return dt;
+                    if (dateValue is string str && DateTime.TryParse(str, out var parsed))
+                        return parsed;
+                    if (dateValue != null)
+                    {
+                        // Try to convert from various formats
+                        var dateStr = dateValue.ToString();
+                        if (DateTime.TryParse(dateStr, out var parsed2))
+                            return parsed2;
+                    }
+                }
+            }
+            catch
+            {
+                // Return MinValue if conversion fails
+            }
+            return DateTime.MinValue;
         }
 
         /// <summary>
@@ -236,12 +353,12 @@ namespace ServerApi.Controllers
         /// อัปเดต Post
         /// </summary>
         [HttpPut("{id}")]
-        [Authorize]
+        // REMOVED: [Authorize] - Token system is no longer used
         public async Task<IActionResult> UpdatePost(string id, [FromBody] UpdatePostRequest request)
         {
             try
             {
-                var userId = User.FindFirst("uid")?.Value ?? User.Identity?.Name;
+                var userId = GetUserId();
                 var existingPost = await _supabaseService.GetAsync("posts", id);
 
                 if (existingPost == null)
@@ -250,7 +367,7 @@ namespace ServerApi.Controllers
                 }
 
                 // ตรวจสอบว่าเป็นเจ้าของโพสต์
-                if (existingPost.ContainsKey("sellerId") && existingPost["sellerId"]?.ToString() != userId)
+                if (string.IsNullOrEmpty(userId) || (existingPost.ContainsKey("sellerId") && existingPost["sellerId"]?.ToString() != userId))
                 {
                     return Forbid("คุณไม่มีสิทธิ์แก้ไขโพสต์นี้");
                 }
@@ -296,12 +413,12 @@ namespace ServerApi.Controllers
         /// ลบ Post
         /// </summary>
         [HttpDelete("{id}")]
-        [Authorize]
+        // REMOVED: [Authorize] - Token system is no longer used
         public async Task<IActionResult> DeletePost(string id)
         {
             try
             {
-                var userId = User.FindFirst("uid")?.Value ?? User.Identity?.Name;
+                var userId = GetUserId();
                 var existingPost = await _supabaseService.GetAsync("posts", id);
 
                 if (existingPost == null)
@@ -310,7 +427,7 @@ namespace ServerApi.Controllers
                 }
 
                 // ตรวจสอบว่าเป็นเจ้าของโพสต์
-                if (existingPost.ContainsKey("sellerId") && existingPost["sellerId"]?.ToString() != userId)
+                if (string.IsNullOrEmpty(userId) || (existingPost.ContainsKey("sellerId") && existingPost["sellerId"]?.ToString() != userId))
                 {
                     return Forbid("คุณไม่มีสิทธิ์ลบโพสต์นี้");
                 }
@@ -351,13 +468,13 @@ namespace ServerApi.Controllers
         /// ดึงโพสต์ของ User
         /// </summary>
         [HttpGet("my-posts")]
-        [Authorize]
+        // REMOVED: [Authorize] - Token system is no longer used
         public async Task<IActionResult> GetMyPosts()
         {
             try
             {
-                var userId = User.FindFirst("uid")?.Value ?? User.Identity?.Name;
-                var posts = await _supabaseService.QueryAsync("posts", "sellerId", userId ?? "");
+                var userId = GetUserId() ?? "";
+                var posts = await _supabaseService.QueryAsync("posts", "sellerId", userId);
 
                 return Ok(posts);
             }

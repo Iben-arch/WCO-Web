@@ -11,7 +11,7 @@ const ProfileButton: React.FC = () => {
   };
 
   const profileImage = userProfile?.profileImage || userProfile?.photoURL;
-  const displayName = userProfile?.displayName || currentUser?.displayName || 'ผู้ใช้';
+  const displayName = userProfile?.displayName || 'ผู้ใช้';
 
   return (
     <button 

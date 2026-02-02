@@ -39,7 +39,7 @@ const IndividualCard: React.FC<IndividualCardProps> = ({
       return;
     }
 
-    if (currentUser.uid === post.sellerId) {
+    if (currentUser.id === post.sellerId) {
       toast.error('ไม่สามารถเพิ่มโพสต์ของตัวเองในตะกร้าได้');
       return;
     }

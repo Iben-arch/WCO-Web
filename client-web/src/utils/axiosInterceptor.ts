@@ -1,86 +1,78 @@
-import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { AuthContextType } from '../types';
+import axios from 'axios';
+import { supabase } from '../config/supabase';
 
-let authContext: AuthContextType | null = null;
+// Create axios instance
+const axiosInstance = axios.create();
 
-export const setAuthContext = (context: AuthContextType): void => {
-  authContext = context;
-};
-
-// Request interceptor to add Authorization header
-axios.interceptors.request.use(
-  (config) => {
-    // Skip adding Authorization header for refresh token endpoint
-    if (config.url?.includes('/auth/refresh-token')) {
-      return config;
-    }
-
-    // Get token from localStorage
-    const token = localStorage.getItem('authToken');
-    if (token) {
-      // สร้าง headers object ถ้ายังไม่มี
-      if (!config.headers) {
-        config.headers = {} as any;
+// Add request interceptor to include Supabase session token
+axiosInstance.interceptors.request.use(
+  async (config) => {
+    try {
+      // Get Supabase session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.warn('Error getting session in request interceptor:', sessionError);
       }
       
-      // เพิ่ม Authorization header
-      // สำหรับ FormData axios จะไม่ลบ headers ที่มีอยู่
-      config.headers.Authorization = `Bearer ${token}`;
+      if (session?.access_token) {
+        // Send Supabase JWT token for backend validation
+        config.headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+      
+      // Also send user ID for backward compatibility (if backend still needs it)
+      if (session?.user?.id) {
+        config.headers['X-User-Id'] = session.user.id;
+      } else if (session && !session.user?.id) {
+        console.warn('Session exists but user.id is missing');
+      }
+      
+      return config;
+    } catch (error) {
+      console.error('Error in request interceptor:', error);
+      return Promise.reject(error);
     }
-    return config;
   },
   (error) => {
     return Promise.reject(error);
   }
 );
 
-// Response interceptor to handle token refresh
-axios.interceptors.response.use(
-  (response) => response,
-  async (error: AxiosError) => {
-    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
-
-    // Skip token refresh for refresh token endpoint itself to avoid infinite loop
-    if (originalRequest.url?.includes('/auth/refresh-token')) {
-      return Promise.reject(error);
-    }
-
-    // Check if the error is due to expired token
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-
+// Add response interceptor to handle errors
+axiosInstance.interceptors.response.use(
+  (response) => {
+    return response;
+  },
+  async (error) => {
+    // If unauthorized, check if session is still valid
+    if (error.response?.status === 401) {
       try {
-        // Try to refresh the token
-        if (authContext && authContext.refreshToken) {
-          const newToken = await authContext.refreshToken();
-          
-          if (newToken) {
-            // Update Authorization header with new token
-            if (originalRequest.headers) {
-              originalRequest.headers.Authorization = `Bearer ${newToken}`;
-            } else {
-              originalRequest.headers = {
-                Authorization: `Bearer ${newToken}`
-              } as any;
-            }
-            
-            // Retry the original request with new token
-            return axios(originalRequest);
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        // Check if session is actually invalid/expired
+        const isSessionExpired = !session || 
+          (session.expires_at && session.expires_at * 1000 < Date.now());
+        
+        // Only sign out if session is truly invalid/expired
+        if (sessionError || isSessionExpired) {
+          await supabase.auth.signOut();
+          // Only redirect if not already on auth pages
+          if (window.location.pathname !== '/login' && 
+              window.location.pathname !== '/register' && 
+              window.location.pathname !== '/forgot-password') {
+            window.location.href = '/login';
           }
         }
-      } catch (refreshError) {
-        console.error('Token refresh failed:', refreshError);
-        // If refresh fails, redirect to login or handle as needed
-        if (authContext && authContext.logout) {
-          await authContext.logout();
-        }
-        return Promise.reject(refreshError);
+        // If session exists and is valid but API returns 401, 
+        // it might be a backend authentication issue (e.g., backend doesn't support Supabase JWT)
+        // Don't sign out, just let the error propagate so components can handle it
+      } catch (err) {
+        console.error('Error checking session in interceptor:', err);
+        // If we can't check session, don't sign out - let the error propagate
       }
     }
-
     return Promise.reject(error);
   }
 );
 
-export default axios;
-
+export default axiosInstance;

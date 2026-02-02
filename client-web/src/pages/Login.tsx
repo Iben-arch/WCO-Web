@@ -28,21 +28,7 @@ const Login: React.FC = () => {
     } catch (error: any) {
       console.error('Login error:', error);
       
-      // Handle different types of errors from server API
-      if (error.response?.data?.error) {
-        // Server API error
-        setError(error.response.data.error);
-      } else if (error.message?.includes('Firebase authentication is not configured')) {
-        setError('ระบบยังไม่ได้ตั้งค่า Firebase กรุณาติดต่อผู้ดูแลระบบ');
-      } else if (error.code === 'auth/user-not-found' || error.message?.includes('ไม่พบผู้ใช้นี้ในระบบ')) {
-        setError('ไม่พบผู้ใช้นี้ในระบบ');
-      } else if (error.code === 'auth/wrong-password' || error.message?.includes('รหัสผ่านไม่ถูกต้อง') || error.message?.includes('อีเมลหรือรหัสผ่านไม่ถูกต้อง')) {
-        setError('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
-      } else if (error.code === 'auth/invalid-email' || error.message?.includes('รูปแบบอีเมลไม่ถูกต้อง')) {
-        setError('รูปแบบอีเมลไม่ถูกต้อง');
-      } else if (error.code === 'auth/too-many-requests' || error.message?.includes('พยายามเข้าสู่ระบบบ่อยเกินไป')) {
-        setError('พยายามเข้าสู่ระบบบ่อยเกินไป กรุณารอสักครู่');
-      } else if (error.message) {
+      if (error.message) {
         setError(error.message);
       } else {
         setError('เกิดข้อผิดพลาดในการเข้าสู่ระบบ กรุณาลองใหม่อีกครั้ง');
@@ -159,22 +145,6 @@ const Login: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="form-options">
-                  <div className="form-check">
-                    <input
-                      type="checkbox"
-                      className="form-check-input"
-                      id="rememberMe"
-                    />
-                    <label className="form-check-label" htmlFor="rememberMe">
-                      จดจำการเข้าสู่ระบบ
-                    </label>
-                  </div>
-                  <Link to="#" className="forgot-password-link">
-                    ลืมรหัสผ่าน?
-                  </Link>
-                </div>
-
                 <Button
                   type="submit"
                   className="auth-submit-btn btn-tcg-primary btn-tcg-lg w-100"
@@ -193,6 +163,14 @@ const Login: React.FC = () => {
                   )}
                 </Button>
               </Form>
+
+              <div className="auth-footer">
+                <p className="auth-footer-text">
+                  <Link to="/forgot-password" className="auth-footer-link">
+                    ลืมรหัสผ่าน?
+                  </Link>
+                </p>
+              </div>
 
               <div className="auth-divider">
                 <span>หรือ</span>
@@ -222,4 +200,3 @@ const Login: React.FC = () => {
 };
 
 export default Login;
-

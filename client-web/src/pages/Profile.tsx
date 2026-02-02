@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Row, Col, Card, Form, Modal, Button } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../config/supabase';
 import axios from '../utils/axiosInterceptor';
 import { toast } from 'react-toastify';
 import ProfileSidebar from '../components/layout/ProfileSidebar';
@@ -12,8 +13,7 @@ import {
 import { Post, FirestoreTimestamp } from '../types';
 
 interface ProfileFormData {
-  accountName: string; // ชื่อบัญชี
-  displayName: string; // ชื่อ-นามสกุล
+  displayName: string; // ชื่อที่ใช้แสดง
   phone: string; // เบอร์โทรศัพท์
   address: string; // ที่อยู่
   photoURL: string; // รูปโปรไฟล์
@@ -36,7 +36,6 @@ const Profile: React.FC = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<ActiveTab>('personal-info');
   const [formData, setFormData] = useState<ProfileFormData>({
-    accountName: '',
     displayName: '',
     phone: '',
     address: '',
@@ -50,7 +49,6 @@ const Profile: React.FC = () => {
   const [myPosts, setMyPosts] = useState<Post[]>([]);
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
   const [originalFormData, setOriginalFormData] = useState<ProfileFormData>({
-    accountName: '',
     displayName: '',
     phone: '',
     address: '',
@@ -78,7 +76,6 @@ const Profile: React.FC = () => {
   useEffect(() => {
     if (userProfile) {
       const newFormData = {
-        accountName: userProfile.accountName || userProfile.displayName || '',
         displayName: userProfile.displayName || '',
         phone: userProfile.phone || '',
         address: userProfile.address || '',
@@ -117,8 +114,12 @@ const Profile: React.FC = () => {
     try {
       const response = await axios.get('/api/auth/my-auctions');
       setAuctions(response.data);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching auctions:', error);
+      // If user is not authenticated or API error, set empty array
+      if (error.response?.status === 401) {
+        setAuctions([]);
+      }
     }
   };
 
@@ -126,8 +127,12 @@ const Profile: React.FC = () => {
     try {
       const response = await axios.get('/api/auth/watchlist');
       setWatchlist(response.data);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching watchlist:', error);
+      // If user is not authenticated or API error, set empty array
+      if (error.response?.status === 401) {
+        setWatchlist([]);
+      }
     }
   };
 
@@ -135,8 +140,12 @@ const Profile: React.FC = () => {
     try {
       const response = await axios.get('/api/auth/orders');
       setOrders(response.data);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching orders:', error);
+      // If user is not authenticated or API error, set empty array
+      if (error.response?.status === 401) {
+        setOrders([]);
+      }
     }
   };
 
@@ -144,8 +153,12 @@ const Profile: React.FC = () => {
     try {
       const response = await axios.get('/api/posts/my-posts');
       setMyPosts(response.data.posts);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching my posts:', error);
+      // If user is not authenticated or API error, set empty array
+      if (error.response?.status === 401) {
+        setMyPosts([]);
+      }
     }
   };
 
@@ -176,9 +189,6 @@ const Profile: React.FC = () => {
       const updateData: any = {};
       
       // ตรวจสอบและเพิ่มฟิลด์ที่เปลี่ยนแปลง
-      if (formData.accountName !== originalFormData.accountName) {
-        updateData.accountName = formData.accountName;
-      }
       if (formData.displayName !== originalFormData.displayName) {
         updateData.displayName = formData.displayName;
       }
@@ -270,57 +280,81 @@ const Profile: React.FC = () => {
       setLoading(true);
       setUploadProgress(0);
       
-      // ตรวจสอบว่ามี token หรือไม่
-      const token = localStorage.getItem('authToken');
-      if (!token) {
+      // ตรวจสอบว่าผู้ใช้เข้าสู่ระบบแล้วหรือไม่
+      if (!currentUser) {
         toast.error('กรุณาเข้าสู่ระบบก่อนอัปโหลดรูปโปรไฟล์');
         setLoading(false);
         return;
       }
-      
-      const formData = new FormData();
-      formData.append('profileImage', file);
 
-      // ไม่ต้องตั้ง Content-Type ให้ axios จัดการเอง
-      // axios จะตั้ง multipart/form-data อัตโนมัติเมื่อส่ง FormData
-      // และ interceptor จะเพิ่ม Authorization header ให้อัตโนมัติ
-      const response = await axios.post('/api/auth/upload-profile-image', formData, {
-        // ไม่ต้องตั้ง headers เพราะ interceptor จะจัดการให้
-        // และ axios จะตั้ง Content-Type: multipart/form-data อัตโนมัติ
-        onUploadProgress: (progressEvent) => {
-          const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1));
-          setUploadProgress(percentCompleted);
+      // สร้างชื่อไฟล์: userId/timestamp-filename
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${currentUser.id}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const filePath = `avatars/${fileName}`;
+
+      // ลบรูปเก่าถ้ามี (ถ้ามี avatar_url เก่าใน Supabase Storage)
+      if (userProfile?.avatar_url) {
+        try {
+          // แยก path จาก URL
+          const oldUrl = userProfile.avatar_url;
+          const urlParts = oldUrl.split('/storage/v1/object/public/avatars/');
+          if (urlParts.length > 1) {
+            const oldPath = urlParts[1];
+            await supabase.storage
+              .from('avatars')
+              .remove([oldPath]);
+          }
+        } catch (deleteError) {
+          // ไม่ต้องแสดง error ถ้าลบรูปเก่าไม่สำเร็จ (อาจจะไม่มีรูปเก่า)
+          console.warn('Could not delete old avatar:', deleteError);
         }
-      });
+      }
 
-      await updateProfile({ profileImage: response.data.imageUrl });
+      // อัปโหลดรูปไปยัง Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      // จำลอง progress (Supabase Storage ไม่มี progress callback)
+      // ใช้ setTimeout เพื่อแสดง progress animation
+      for (let i = 0; i <= 100; i += 10) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+        setUploadProgress(i);
+      }
+
+      // ดึง public URL ของรูปที่อัปโหลด
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(fileName);
+
+      // อัปเดต avatar_url ในตาราง profiles
+      await updateProfile({ avatar_url: publicUrl });
+      
       setPreviewImage(null); // Clear preview after successful upload
       setUploadProgress(0);
-      
-      // Show success message with database confirmation
-      if (response.data.savedToDatabase) {
-        toast.success('อัปโหลดรูปโปรไฟล์และบันทึกลงฐานข้อมูลสำเร็จ');
-      } else {
-        toast.success('อัปโหลดรูปโปรไฟล์สำเร็จ');
-      }
+      toast.success('อัปโหลดรูปโปรไฟล์และบันทึกลงฐานข้อมูลสำเร็จ');
     } catch (error: any) {
       console.error('Error uploading profile image:', error);
       setPreviewImage(null);
       setUploadProgress(0);
       
-      // Handle 401 Unauthorized - token หมดอายุหรือไม่ถูกต้อง
-      if (error.response?.status === 401) {
+      // Handle different error types
+      if (error.message?.includes('JWT')) {
         toast.error('เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง');
-        // อาจจะ redirect ไปหน้า login
         setTimeout(() => {
           window.location.href = '/login';
         }, 2000);
-      } else if (error.response?.data?.error) {
-        toast.error(`เกิดข้อผิดพลาด: ${error.response.data.error}`);
-      } else if (error.code === 'ECONNREFUSED') {
-        toast.error('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้');
-      } else if (error.code === 'NETWORK_ERROR') {
-        toast.error('เกิดปัญหากับเครือข่าย');
+      } else if (error.message?.includes('Bucket not found')) {
+        toast.error('ไม่พบ Storage bucket กรุณาติดต่อผู้ดูแลระบบ');
+      } else if (error.message?.includes('new row violates row-level security')) {
+        toast.error('ไม่มีสิทธิ์อัปโหลดรูป กรุณาตรวจสอบการตั้งค่า Storage policies');
       } else {
         toast.error('เกิดข้อผิดพลาดในการอัปโหลดรูป: ' + (error.message || 'ไม่ทราบสาเหตุ'));
       }
@@ -376,11 +410,8 @@ const Profile: React.FC = () => {
   const renderPersonalInfo = (): JSX.Element => {
     // Get the best available display name
     const getDisplayName = (): string => {
-      if (formData.accountName) return formData.accountName;
-      if (userProfile?.accountName) return userProfile.accountName;
       if (formData.displayName) return formData.displayName;
       if (userProfile?.displayName) return userProfile.displayName;
-      if (currentUser?.displayName) return currentUser.displayName;
       if (currentUser?.email) return currentUser.email.split('@')[0];
       return 'ผู้ใช้';
     };
@@ -578,36 +609,7 @@ const Profile: React.FC = () => {
                 <path d="M20 21V19C20 17.9391 19.5786 16.9217 18.8284 16.1716C18.0783 15.4214 17.0609 15 16 15H8C6.93913 15 5.92172 15.4214 5.17157 16.1716C4.42143 16.9217 4 17.9391 4 19V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 <path d="M12 11C14.2091 11 16 9.20914 16 7C16 4.79086 14.2091 3 12 3C9.79086 3 8 4.79086 8 7C8 9.20914 9.79086 11 12 11Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
-              ชื่อบัญชี
-            </label>
-            <div className="profile-field-input-group">
-              <input
-                type="text"
-                className="profile-field-input"
-                value={formData.accountName}
-                onChange={(e) => setFormData({...formData, accountName: e.target.value})}
-                placeholder="กรอกชื่อบัญชี"
-                disabled={!isEditMode}
-                readOnly={!isEditMode}
-              />
-            </div>
-            <small className="profile-field-hint">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: '0.25rem', verticalAlign: 'middle' }}>
-                <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M12 16V12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M12 8H12.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              ชื่อบัญชีที่ใช้แสดงในระบบ
-            </small>
-          </div>
-
-          <div className="profile-field">
-            <label className="profile-field-label">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: '0.5rem', verticalAlign: 'middle' }}>
-                <path d="M20 21V19C20 17.9391 19.5786 16.9217 18.8284 16.1716C18.0783 15.4214 17.0609 15 16 15H8C6.93913 15 5.92172 15.4214 5.17157 16.1716C4.42143 16.9217 4 17.9391 4 19V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M12 11C14.2091 11 16 9.20914 16 7C16 4.79086 14.2091 3 12 3C9.79086 3 8 4.79086 8 7C8 9.20914 9.79086 11 12 11Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              ชื่อ - นามสกุล
+              ชื่อที่ใช้แสดง
             </label>
             <div className="profile-field-input-group">
               <input

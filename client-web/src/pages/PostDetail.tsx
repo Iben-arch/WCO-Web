@@ -4,7 +4,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
 import IndividualCardsGrid from '../components/common/IndividualCardsGrid';
-import axios from '../utils/axiosInterceptor';
+import { postsAPI, authAPI, auctionAPI, chatAPI } from '../api/api';
 import { toast } from 'react-toastify';
 import '../styles/auction-bids.css';
 import { Post, Message, AuctionBid, DetectedCard, FirestoreTimestamp, IndividualCardItem } from '../types';
@@ -54,19 +54,19 @@ const PostDetail: React.FC = () => {
   const fetchPost = async (): Promise<void> => {
     try {
       setLoading(true);
-      const response = await axios.get(`/api/posts/${id}`);
-      setPost(response.data);
+      const postData = await postsAPI.getPost(id!);
+      setPost(postData);
       
       // Load individual cards if available
-      if (response.data.individualCards) {
-        setIndividualCards(response.data.individualCards);
+      if (postData.individualCards && Array.isArray(postData.individualCards)) {
+        setIndividualCards(postData.individualCards as DetectedCard[]);
       }
       
       // Check if user has liked this post
       if (currentUser) {
         try {
-          const likeResponse = await axios.get(`/api/auth/check-like/${id}`);
-          setLiked(likeResponse.data.liked);
+          const likeStatus = await authAPI.checkLike(id!);
+          setLiked(likeStatus.liked);
         } catch (error) {
           console.error('Error checking like status:', error);
         }
@@ -81,8 +81,8 @@ const PostDetail: React.FC = () => {
 
   const fetchMessages = async (): Promise<void> => {
     try {
-      const response = await axios.get(`/api/chat/${id}`);
-      setMessages(response.data);
+      const messages = await chatAPI.getMessages(id!);
+      setMessages(messages);
     } catch (error) {
       console.error('Error fetching messages:', error);
     }
@@ -93,8 +93,8 @@ const PostDetail: React.FC = () => {
     
     try {
       setLoadingBids(true);
-      const response = await axios.get(`/api/posts/${id}/bids`);
-      setAuctionBids(response.data.bids);
+      const bids = await auctionAPI.getBids(id!);
+      setAuctionBids(bids);
     } catch (error) {
       console.error('Error fetching auction bids:', error);
       toast.error('เกิดข้อผิดพลาดในการโหลดข้อมูลผู้ประมูล');
@@ -114,7 +114,7 @@ const PostDetail: React.FC = () => {
 
     try {
       setSendingMessage(true);
-      await axios.post(`/api/chat/${id}`, { message: newMessage });
+      await chatAPI.sendMessage(id!, newMessage);
       setNewMessage('');
     } catch (error) {
       console.error('Error sending message:', error);
@@ -160,8 +160,8 @@ const PostDetail: React.FC = () => {
     
     setLikingPost(true);
     try {
-      const response = await axios.post(`/api/auth/like-post/${id}`);
-      const { liked: newLikedStatus } = response.data;
+      const result = await authAPI.toggleLike(id!);
+      const newLikedStatus = result.liked;
       setLiked(newLikedStatus);
       
       if (newLikedStatus) {
@@ -183,7 +183,7 @@ const PostDetail: React.FC = () => {
       return;
     }
 
-    if (!post || currentUser.uid === post.sellerId) {
+    if (!post || currentUser.id === post.sellerId) {
       toast.error('ไม่สามารถเพิ่มโพสต์ของตัวเองในตะกร้าได้');
       return;
     }
@@ -212,7 +212,7 @@ const PostDetail: React.FC = () => {
   const handleMarkAsSold = async (): Promise<void> => {
     setMarkingSold(true);
     try {
-      const response = await axios.put(`/api/posts/${id}/mark-sold`);
+      await postsAPI.markAsSold(id!);
       setPost(prev => ({ ...prev, status: 'sold' }));
       setShowSoldModal(false);
       toast.success('ทำเครื่องหมายโพสต์เป็นขายแล้วแล้ว ✅');
@@ -242,7 +242,7 @@ const PostDetail: React.FC = () => {
       return;
     }
 
-    if (!post || currentUser.uid === post.sellerId) {
+    if (!post || currentUser.id === post.sellerId) {
       toast.error('ไม่สามารถประมูลโพสต์ของตัวเองได้');
       return;
     }
@@ -267,16 +267,14 @@ const PostDetail: React.FC = () => {
 
     setPlacingBid(true);
     try {
-      const response = await axios.post(`/api/posts/${id}/bid`, {
-        bidAmount: bidValue
-      });
+      await auctionAPI.placeBid(id!, bidValue);
       
       // Update post data
       setPost(prev => ({
         ...prev,
         currentBid: bidValue,
         bidCount: (prev.bidCount || 0) + 1,
-        highestBidder: currentUser.uid
+        highestBidder: currentUser.id
       }));
       
       setShowBidModal(false);
@@ -303,7 +301,7 @@ const PostDetail: React.FC = () => {
       return;
     }
 
-    if (!post || currentUser.uid === post.sellerId) {
+    if (!post || currentUser.id === post.sellerId) {
       toast.error('ไม่สามารถซื้อโพสต์ของตัวเองได้');
       return;
     }
@@ -316,8 +314,9 @@ const PostDetail: React.FC = () => {
     }
 
     try {
-      const response = await axios.post(`/api/posts/${id}/buy-now`);
-      toast.success('ซื้อเลยสำเร็จ! กรุณาติดต่อผู้ขายเพื่อดำเนินการต่อ');
+      // TODO: Implement buyNow API endpoint in backend
+      // await auctionAPI.buyNow(id!);
+      toast.info('ฟีเจอร์ซื้อเลยกำลังพัฒนา');
       // Navigate to chat or show success message
     } catch (error) {
       console.error('Error buying now:', error);
@@ -385,7 +384,7 @@ const PostDetail: React.FC = () => {
     );
   }
 
-  const isOwner = currentUser && currentUser.uid === post.sellerId;
+  const isOwner = currentUser && currentUser.id === post.sellerId;
   const isSold = post.status === 'sold';
 
   return (
@@ -611,7 +610,7 @@ const PostDetail: React.FC = () => {
                           🛒 ราคาซื้อเลย: {formatPrice(post.buyNowPrice)}
                         </div>
                       )}
-                      {post.highestBidder && post.highestBidder === currentUser?.uid && (
+                      {post.highestBidder && post.highestBidder === currentUser?.id && (
                         <div className="highest-bidder-notice">
                           <Badge bg="warning">👑 คุณเป็นผู้ประมูลสูงสุด</Badge>
                         </div>
@@ -864,7 +863,7 @@ const PostDetail: React.FC = () => {
                     {messages.map((message) => (
                       <div
                         key={message.id}
-                        className={`message ${message.senderId === currentUser.uid ? 'own' : 'other'}`}
+                        className={`message ${message.senderId === currentUser.id ? 'own' : 'other'}`}
                       >
                         <div className="message-content">
                           <div className="message-text">{message.message}</div>

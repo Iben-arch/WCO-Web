@@ -28,7 +28,7 @@ if (apiBaseUrl) {
 // ==================== AUTH API ====================
 export const authAPI = {
   // Login
-  login: async (email: string, password: string): Promise<{ token: string; refreshToken: string; userId: string; email: string }> => {
+  login: async (email: string, password: string): Promise<{ userId: string; email: string; user?: any }> => {
     try {
       const response = await axios.post('/api/auth/login', { email, password });
       return response.data;
@@ -39,12 +39,24 @@ export const authAPI = {
   },
 
   // Register
-  register: async (email: string, password: string, displayName?: string): Promise<{ token: string; refreshToken: string; userId: string; email: string; user: any }> => {
+  register: async (email: string, password: string, displayName?: string): Promise<{ userId: string; email: string; user: any }> => {
     try {
-      const response = await axios.post('/api/auth/register', { email, password, displayName });
+      const payload: any = {
+        email,
+        password
+      };
+      
+      if (displayName) {
+        payload.displayName = displayName;
+      }
+      
+      const response = await axios.post('/api/auth/register', payload);
       return response.data;
     } catch (error: any) {
       console.error('Register error:', error);
+      if (error.response?.data) {
+        console.error('Error response:', error.response.data);
+      }
       throw error;
     }
   },
@@ -105,30 +117,25 @@ export const authAPI = {
   },
 
   // Refresh token
-  refreshToken: async (refreshToken: string): Promise<{ token: string; refreshToken: string; userId: string; email: string }> => {
-    try {
-      const response = await axios.post('/api/auth/refresh-token', { refreshToken });
-      return response.data;
-    } catch (error: any) {
-      console.error('Error refreshing token:', error);
-      throw error;
-    }
-  },
+  // REMOVED: refreshToken - Token system is no longer used
 };
 
 // ==================== POSTS API ====================
 export const postsAPI = {
-  // Get all posts with filters
+  // Get all posts with filters, pagination, and sorting
   getPosts: async (params?: {
     category?: string;
     search?: string;
     sortBy?: string;
     postType?: string;
     status?: string;
+    page?: number;
+    limit?: number;
   }): Promise<Post[]> => {
     try {
       const response = await axios.get('/api/posts', { params });
-      return response.data;
+      // Backend returns { posts: [...], pagination: {...} }
+      return response.data.posts || response.data || [];
     } catch (error: any) {
       console.error('Error fetching posts:', error);
       // Return empty array if server is not available (for frontend-only mode)

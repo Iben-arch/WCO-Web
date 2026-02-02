@@ -1,8 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import axios from '../utils/axiosInterceptor';
-import { setAuthContext } from '../utils/axiosInterceptor';
-import { User, UserProfile, AuthContextType } from '../types';
-import { authAPI } from '../api/api';
+import { User, UserProfile, Profile, AuthContextType } from '../types';
+import { supabase } from '../config/supabase';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -21,287 +19,310 @@ interface AuthProviderProps {
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
-  const login = async (email: string, password: string): Promise<User> => {
+  // Fetch profile from profiles table
+  const fetchProfile = async (userId: string): Promise<void> => {
     try {
-      // ใช้ backend API สำหรับ login
-      const response = await authAPI.login(email, password);
-      
-      // Store token and user info in localStorage
-      localStorage.setItem('authToken', response.token);
-      localStorage.setItem('refreshToken', response.refreshToken);
-      localStorage.setItem('userId', response.userId);
-      localStorage.setItem('userEmail', response.email);
-      
-      // Set axios default header
-      axios.defaults.headers.common['Authorization'] = `Bearer ${response.token}`;
-      
-      // Create a user object
-      const user: User = {
-        uid: response.userId,
-        email: response.email,
-        displayName: undefined
-      };
-      
-      // Update current user state
-      setCurrentUser(user);
-      
-      // ดึงข้อมูล user profile จาก Supabase ผ่าน backend API
-      try {
-        await fetchUserProfile(user);
-      } catch (profileError: any) {
-        console.warn('Could not fetch user profile from Supabase:', profileError);
-        // ถ้าไม่มี profile ใน Supabase อาจเป็น user เก่าที่ยังไม่มี profile
-        // ไม่ throw error เพื่อให้ login ผ่านได้
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          // Profile not found - this is okay for new users
+          console.warn('Profile not found for user:', userId);
+          setProfile(null);
+          setUserProfile(null);
+          return;
+        }
+        throw error;
       }
-      
-      return user;
+
+      if (data) {
+      setProfile(data);
+      // Also update userProfile for backward compatibility
+      setUserProfile({
+        id: data.id,
+        username: data.username,
+        displayName: data.username, // Map username to displayName for backward compatibility
+        avatar_url: data.avatar_url,
+        photoURL: data.avatar_url, // Map avatar_url to photoURL for backward compatibility
+        role: data.role,
+        isAdmin: data.role === 'admin',
+        phone: data.phone || undefined,
+        address: data.address || undefined,
+        email: currentUser?.email || undefined
+      });
+      }
     } catch (error: any) {
-      console.error('Login error:', error);
-      
-      // Handle API errors
-      let errorMessage = 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ';
-      if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      
-      const authError = new Error(errorMessage);
-      throw authError;
+      console.error('Error fetching profile:', error);
+      setProfile(null);
+      setUserProfile(null);
     }
   };
 
-  const register = async (email: string, password: string, displayName: string, profileImage?: string): Promise<User> => {
+  const login = async (email: string, password: string): Promise<User> => {
     try {
-      // ใช้ backend API สำหรับ register
-      const response = await authAPI.register(email, password, displayName);
-      
-      // Store token and user info in localStorage
-      localStorage.setItem('authToken', response.token);
-      localStorage.setItem('refreshToken', response.refreshToken);
-      localStorage.setItem('userId', response.userId);
-      localStorage.setItem('userEmail', response.email);
-      
-      // Set axios default header
-      axios.defaults.headers.common['Authorization'] = `Bearer ${response.token}`;
-      
-      // Create a user object
-      const user: User = {
-        uid: response.userId,
-        email: response.email,
-        displayName: displayName
-      };
-      
-      // Update current user state
-      setCurrentUser(user);
-      
-      // สร้าง profile ใน Supabase ผ่าน backend API
-      // กำหนด accountName - ใช้ displayName ถ้ามี หรือใช้ email แทน
-      const accountName = displayName || email.split('@')[0];
-      
-      try {
-        // เรียก API เพื่อสร้าง profile ใน Supabase
-        const profileData: any = {
-          accountName: accountName,
-          displayName: displayName || accountName,
-          email: response.email || email,
-        };
-        
-        // ถ้ามี profileImage ให้ส่งไปด้วย
-        if (profileImage) {
-          profileData.profileImage = profileImage;
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (error) {
+        let errorMessage = 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ';
+        if (error.message.includes('Invalid login credentials')) {
+          errorMessage = 'อีเมลหรือรหัสผ่านไม่ถูกต้อง';
+        } else if (error.message.includes('Email not confirmed')) {
+          errorMessage = 'กรุณายืนยันอีเมลก่อนเข้าสู่ระบบ';
+        } else {
+          errorMessage = error.message;
         }
-        
-        // สร้าง profile ใน Supabase (backend จะสร้าง createdAt, updatedAt, registrationDate, isActive, uid ให้อัตโนมัติ)
-        await authAPI.updateProfile(profileData);
-        
-        // Fetch profile ที่สร้างเสร็จแล้ว
-        const createdProfile = await authAPI.getProfile();
-        setUserProfile(createdProfile);
-      } catch (profileError: any) {
-        console.warn('Could not create user profile in Supabase:', profileError);
-        // ถ้าไม่สามารถสร้าง profile ได้ ให้ตั้งค่า profile ชั่วคราว
-        // Profile อาจถูกสร้างในภายหลังเมื่อ user login หรือแก้ไข profile
-        setUserProfile({
-          displayName: displayName,
-          accountName: accountName,
-          email: response.email || '',
-          photoURL: profileImage,
-          isAdmin: false
-        });
+        throw new Error(errorMessage);
       }
+
+      if (!data.user) {
+        throw new Error('ไม่พบข้อมูลผู้ใช้');
+      }
+
+      setCurrentUser(data.user);
       
-      return user;
+      // Fetch profile after login
+      await fetchProfile(data.user.id);
+
+      return data.user;
+    } catch (error: any) {
+      console.error('Login error:', error);
+      throw error;
+    }
+  };
+
+  const register = async (email: string, password: string, username: string): Promise<User> => {
+    try {
+      // Sign up with Supabase Auth
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            username: username
+          }
+        }
+      });
+
+      if (error) {
+        let errorMessage = 'เกิดข้อผิดพลาดในการสมัครสมาชิก';
+        if (error.message.includes('User already registered')) {
+          errorMessage = 'อีเมลนี้ถูกใช้งานแล้ว';
+        } else if (error.message.includes('Password')) {
+          errorMessage = 'รหัสผ่านไม่ตรงตามข้อกำหนด';
+        } else {
+          errorMessage = error.message;
+        }
+        throw new Error(errorMessage);
+      }
+
+      if (!data.user) {
+        throw new Error('ไม่สามารถสร้างบัญชีได้');
+      }
+
+      // Create profile row
+      try {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: data.user.id,
+            username: username,
+            role: 'user'
+          });
+
+        if (profileError) {
+          // If profile creation fails, log but don't fail registration
+          // The trigger should handle this, but we try manually as backup
+          console.warn('Could not create profile automatically:', profileError);
+        }
+      } catch (profileError: any) {
+        console.warn('Profile creation error (non-critical):', profileError);
+      }
+
+      setCurrentUser(data.user);
+      
+      // Fetch profile if available
+      await fetchProfile(data.user.id);
+
+      return data.user;
     } catch (error: any) {
       console.error('Register error:', error);
-      
-      // Handle API errors
-      let errorMessage = 'เกิดข้อผิดพลาดในการสมัครสมาชิก';
-      if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      
-      const authError = new Error(errorMessage);
-      throw authError;
+      throw error;
     }
   };
 
   const logout = async (): Promise<void> => {
     try {
-      // Clear all stored data
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('refreshToken');
-      localStorage.removeItem('userId');
-      localStorage.removeItem('userEmail');
-      delete axios.defaults.headers.common['Authorization'];
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        throw error;
+      }
+      
       setCurrentUser(null);
       setUserProfile(null);
+      setProfile(null);
     } catch (error) {
       console.error('Logout error:', error);
       throw error;
     }
   };
 
-  const updateProfile = async (profileData: any): Promise<any> => {
+  const updateProfile = async (profileData: any): Promise<Profile> => {
     try {
-      const response = await authAPI.updateProfile(profileData);
-      setUserProfile(response.user);
-      return response;
+      if (!currentUser) {
+        throw new Error('ต้องเข้าสู่ระบบก่อน');
+      }
+
+      // Map old field names to new schema for backward compatibility
+      const updateData: Partial<Profile> = {
+        updated_at: new Date().toISOString()
+      };
+
+      if (profileData.username !== undefined) {
+        updateData.username = profileData.username;
+      }
+      if (profileData.avatar_url !== undefined) {
+        updateData.avatar_url = profileData.avatar_url;
+      }
+      // Map photoURL to avatar_url for backward compatibility
+      if (profileData.photoURL !== undefined) {
+        updateData.avatar_url = profileData.photoURL;
+      }
+      if (profileData.profileImage !== undefined) {
+        updateData.avatar_url = profileData.profileImage;
+      }
+      if (profileData.phone !== undefined) {
+        updateData.phone = profileData.phone;
+      }
+      if (profileData.address !== undefined) {
+        updateData.address = profileData.address;
+      }
+      // Map displayName to username for backward compatibility
+      if (profileData.displayName !== undefined && !profileData.username) {
+        updateData.username = profileData.displayName;
+      }
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .update(updateData)
+        .eq('id', currentUser.id)
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data) {
+        throw new Error('ไม่พบข้อมูลโปรไฟล์');
+      }
+
+      setProfile(data);
+      setUserProfile({
+        id: data.id,
+        username: data.username,
+        displayName: data.username, // Map username to displayName for backward compatibility
+        avatar_url: data.avatar_url,
+        photoURL: data.avatar_url, // Map avatar_url to photoURL for backward compatibility
+        role: data.role,
+        isAdmin: data.role === 'admin',
+        phone: data.phone || undefined,
+        address: data.address || undefined,
+        email: currentUser.email || undefined
+      });
+
+      return data;
     } catch (error) {
+      console.error('Update profile error:', error);
       throw error;
     }
   };
 
-  const fetchUserProfile = async (user: User): Promise<void> => {
-    try {
-      const profile = await authAPI.getProfile();
-      if (profile) {
-        setUserProfile(profile);
-      } else {
-        console.warn('Profile not found in Supabase for user:', user.uid);
-        setUserProfile(null);
-      }
-    } catch (error: any) {
-      // ถ้า profile ไม่มีใน Supabase (404) ก็ไม่ใช่ error ร้ายแรง
-      if (error.response?.status === 404) {
-        console.warn('Profile not found in Supabase for user:', user.uid);
-        setUserProfile(null);
-        return;
-      }
-      
-      console.error('Error fetching user profile:', error);
-      // Only log error if it's not a network error (server might be down)
-      if (error.response) {
-        console.error('Server returned error:', error.response.status, error.response.data);
-      } else if (error.request) {
-        console.warn('No response from server - server might be down');
-      }
-      setUserProfile(null);
-      // ไม่ throw error เพื่อให้ login ผ่านได้แม้จะดึง profile ไม่ได้
-    }
-  };
-
-  const refreshToken = async (): Promise<string | null> => {
-    try {
-      const storedRefreshToken = localStorage.getItem('refreshToken');
-      if (!storedRefreshToken || !currentUser) {
-        console.warn('No refresh token or user available for token refresh');
-        await logout();
-        return null;
-      }
-
-      // ใช้ backend API เพื่อ refresh token
-      const response = await authAPI.refreshToken(storedRefreshToken);
-      
-      // Update token in localStorage
-      localStorage.setItem('authToken', response.token);
-      localStorage.setItem('refreshToken', response.refreshToken);
-      localStorage.setItem('userId', response.userId);
-      localStorage.setItem('userEmail', response.email);
-      
-      // Update axios default header with new token
-      axios.defaults.headers.common['Authorization'] = `Bearer ${response.token}`;
-      
-      console.log('Token refreshed successfully');
-      return response.token;
-    } catch (error: any) {
-      console.error('Token refresh error:', error);
-      // If refresh fails, logout the user
-      await logout();
-      throw error;
-    }
-  };
-
+  // Check auth state on mount and listen for changes
   useEffect(() => {
-    // Check if user is already logged in (has token in localStorage)
-    const checkAuthState = async () => {
-      try {
-        const token = localStorage.getItem('authToken');
-        const userId = localStorage.getItem('userId');
-        const userEmail = localStorage.getItem('userEmail');
+    let mounted = true;
 
-        if (token && userId) {
-          // Set axios header
-          axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-          
-          // Create user object
-          const user: User = {
-            uid: userId,
-            email: userEmail || undefined,
-            displayName: undefined
-          };
-          
-          setCurrentUser(user);
-          
-          // ดึงข้อมูล user profile จาก Supabase ผ่าน backend API
-          try {
-            await fetchUserProfile(user);
-          } catch (profileError: any) {
-            console.warn('Could not fetch user profile on mount:', profileError);
-            // ถ้าไม่มี profile ใน Supabase อาจเป็น user เก่าที่ยังไม่มี profile
-          }
-        } else {
-          // No token found, user is not logged in
-          setCurrentUser(null);
-          setUserProfile(null);
-        }
-      } catch (error: any) {
-        console.error('Error checking auth state:', error);
-        // If there's an error, clear everything
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('refreshToken');
-        localStorage.removeItem('userId');
-        localStorage.removeItem('userEmail');
-        delete axios.defaults.headers.common['Authorization'];
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (!mounted) return;
+      
+      if (error) {
+        console.error('Error getting session:', error);
         setCurrentUser(null);
         setUserProfile(null);
-      } finally {
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+
+      if (session?.user) {
+        setCurrentUser(session.user);
+        fetchProfile(session.user.id).catch((err) => {
+          console.error('Error fetching profile on mount:', err);
+          // Don't clear user if profile fetch fails - user is still authenticated
+        });
+      } else {
+        setCurrentUser(null);
+        setUserProfile(null);
+        setProfile(null);
+      }
+      setLoading(false);
+    });
+
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (!mounted) return;
+
+        // Handle token refresh
+        if (event === 'TOKEN_REFRESHED' && session?.user) {
+          setCurrentUser(session.user);
+          return;
+        }
+
+        if (session?.user) {
+          setCurrentUser(session.user);
+          await fetchProfile(session.user.id).catch((err) => {
+            console.error('Error fetching profile on auth change:', err);
+            // Don't clear user if profile fetch fails
+          });
+        } else {
+          // Only clear user on explicit sign out or session expiration
+          if (event === 'SIGNED_OUT' || event === 'USER_UPDATED') {
+            setCurrentUser(null);
+            setUserProfile(null);
+            setProfile(null);
+          }
+        }
         setLoading(false);
       }
-    };
+    );
 
-    checkAuthState();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const value: AuthContextType = {
     currentUser,
     userProfile,
+    profile,
     login,
     register,
     logout,
     updateProfile,
-    refreshToken,
     loading
   };
-
-  // Set auth context for axios interceptor
-  useEffect(() => {
-    setAuthContext(value);
-  }, [value]);
 
   return (
     <AuthContext.Provider value={value}>

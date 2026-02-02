@@ -1,16 +1,31 @@
-// User Types
-export interface User {
-  uid: string;
-  email: string | null;
-  displayName?: string;
-  name?: string;
+// Supabase User Types
+import type { User as SupabaseUser } from '@supabase/supabase-js';
+
+// User type matching Supabase User
+export type User = SupabaseUser;
+
+// Profile type matching profiles table schema
+export interface Profile {
+  id: string;
+  username: string;
+  avatar_url?: string | null;
+  role: string;
+  phone?: string | null;
+  address?: string | null;
+  created_at: string;
+  updated_at?: string;
 }
 
+// Extended UserProfile for backward compatibility
 export interface UserProfile {
+  id?: string;
+  username?: string;
   displayName?: string;
   email?: string;
   photoURL?: string;
+  avatar_url?: string;
   isAdmin?: boolean;
+  role?: string;
   [key: string]: any;
 }
 
@@ -86,11 +101,11 @@ export interface CartItem {
 export interface AuthContextType {
   currentUser: User | null;
   userProfile: UserProfile | null;
-  login: (email: string, password: string) => Promise<any>;
-  register: (email: string, password: string, displayName: string, profileImage?: string) => Promise<any>;
+  profile: Profile | null;
+  login: (email: string, password: string) => Promise<User>;
+  register: (email: string, password: string, username: string) => Promise<User>;
   logout: () => Promise<void>;
-  updateProfile: (profileData: any) => Promise<any>;
-  refreshToken: () => Promise<string | null>;
+  updateProfile: (profileData: any) => Promise<Profile>;
   loading: boolean;
 }
 

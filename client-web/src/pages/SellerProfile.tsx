@@ -185,7 +185,7 @@ const SellerProfile: React.FC = () => {
                     </div>
                   </div>
 
-                  {currentUser && currentUser.uid !== sellerId && (
+                  {currentUser && currentUser.id !== sellerId && (
                     <Button
                       className="btn-tcg-primary btn-tcg-lg w-100 mb-3"
                       onClick={handleStartChat}

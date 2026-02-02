@@ -1,7 +1,7 @@
 import React, { useState, useEffect, FormEvent, ChangeEvent } from 'react';
 import { Container, Row, Col, Card, Form, Button, Spinner, Alert } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
-import axios from '../utils/axiosInterceptor';
+import { postsAPI, authAPI } from '../api/api';
 import { toast } from 'react-toastify';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
@@ -65,39 +65,14 @@ const Home: React.FC = () => {
   const fetchPosts = async (): Promise<void> => {
     try {
       setLoading(true);
-      const params = new URLSearchParams({
-        page: currentPage.toString(),
-        limit: '12'
-      });
       
-      if (category) params.append('category', category);
-      if (searchTerm) params.append('search', searchTerm);
-
-      const response = await axios.get(`/api/posts?${params}`);
-      let fetched: Post[] = response.data.posts || [];
-
-      // Client-side sort for better UX
-      fetched = [...fetched].sort((a, b) => {
-        if (sortBy === 'priceAsc') {
-          const pa = (a.postType === 'sale' ? (a.saleType === 'individual' ? (a.individualPrice || a.price || 0) : (a.price || 0)) : (a.currentBid || a.startingBid || a.price || 0));
-          const pb = (b.postType === 'sale' ? (b.saleType === 'individual' ? (b.individualPrice || b.price || 0) : (b.price || 0)) : (b.currentBid || b.startingBid || b.price || 0));
-          return pa - pb;
-        }
-        if (sortBy === 'priceDesc') {
-          const pa = (a.postType === 'sale' ? (a.saleType === 'individual' ? (a.individualPrice || a.price || 0) : (a.price || 0)) : (a.currentBid || a.startingBid || a.price || 0));
-          const pb = (b.postType === 'sale' ? (b.saleType === 'individual' ? (b.individualPrice || b.price || 0) : (b.price || 0)) : (b.currentBid || b.startingBid || b.price || 0));
-          return pb - pa;
-        }
-        // newest
-        const convertToDate = (dateInput: Date | string | FirestoreTimestamp): Date => {
-          if (typeof dateInput === 'object' && 'seconds' in dateInput) {
-            return new Date(dateInput.seconds * 1000);
-          }
-          return new Date(dateInput);
-        };
-        const da = convertToDate(a.createdAt);
-        const db = convertToDate(b.createdAt);
-        return db.getTime() - da.getTime();
+      // ใช้ postsAPI แทน axios โดยตรง - server จะทำ sorting และ pagination
+      const fetched = await postsAPI.getPosts({
+        category: category || undefined,
+        search: searchTerm || undefined,
+        sortBy: sortBy || 'newest',
+        page: currentPage,
+        limit: 12
       });
 
       setPosts(fetched);
@@ -114,8 +89,8 @@ const Home: React.FC = () => {
       const likedSet = new Set<string>();
       for (const post of posts) {
         try {
-          const response = await axios.get(`/api/auth/check-like/${post.id}`);
-          if (response.data.liked) {
+          const likeStatus = await authAPI.checkLike(post.id);
+          if (likeStatus.liked) {
             likedSet.add(post.id);
           }
         } catch (error) {
@@ -170,7 +145,7 @@ const Home: React.FC = () => {
       return;
     }
 
-    if (currentUser.uid === post.sellerId) {
+    if (currentUser.id === post.sellerId) {
       toast.error('ไม่สามารถเพิ่มโพสต์ของตัวเองในตะกร้าได้');
       return;
     }
@@ -268,8 +243,8 @@ const Home: React.FC = () => {
     
     setLikingPost(post.id);
     try {
-      const response = await axios.post(`/api/auth/like-post/${post.id}`);
-      const { liked } = response.data;
+      const result = await authAPI.toggleLike(post.id);
+      const liked = result.liked;
       
       // Update liked posts state
       setLikedPosts(prev => {
@@ -296,7 +271,7 @@ const Home: React.FC = () => {
     
     setMarkingSold(post.id);
     try {
-      await axios.put(`/api/posts/${post.id}/mark-sold`);
+      await postsAPI.markAsSold(post.id);
       
       // Update posts state
       setPosts(prev => prev.map(p => 
@@ -560,7 +535,7 @@ const Home: React.FC = () => {
                               className="action-btn secondary-action"
                               onClick={() => handleAddToCart(post)}
                               title="เพิ่มในตะกร้า"
-                              disabled={addingToCart === post.id || currentUser?.uid === post.sellerId || post.status === 'sold'}
+                              disabled={addingToCart === post.id || currentUser?.id === post.sellerId || post.status === 'sold'}
                             >
                               {addingToCart === post.id ? '⏳' : '🛒'}
                             </button>
@@ -704,7 +679,7 @@ const Home: React.FC = () => {
                           >
                             ดูรายละเอียด
                           </button>
-                          {currentUser && currentUser.uid === post.sellerId ? (
+                          {currentUser && currentUser.id === post.sellerId ? (
                             // Show "Mark as Sold" button for own posts
                             <button 
                               className={`btn-mark-sold ${post.status === 'sold' ? 'sold' : ''}`}

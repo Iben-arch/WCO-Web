@@ -1,20 +1,59 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
 using ServerApi.Services;
-using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        // Configure JSON serializer options
+        options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+        options.JsonSerializerOptions.AllowTrailingCommas = true; // Allow trailing commas in JSON
+        options.JsonSerializerOptions.ReadCommentHandling = System.Text.Json.JsonCommentHandling.Skip;
+    });
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    // เพิ่ม Bearer token authentication ใน Swagger UI
+    options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+    {
+        Description = "JWT Authorization header using the Bearer scheme. Enter 'Bearer' [space] and then your token in the text input below.\n\nExample: \"Bearer 12345abcdef\"",
+        Name = "Authorization",
+        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+        Type = Microsoft.OpenApi.Models.SecuritySchemeType.ApiKey,
+        Scheme = "Bearer"
+    });
+    
+    options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+    {
+        {
+            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+            {
+                Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                {
+                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
 
 // Get Supabase configuration
 var supabaseUrl = builder.Configuration["Supabase:Url"];
+var jwtSecret = builder.Configuration["Supabase:JwtSecret"];
+var serviceRoleKey = builder.Configuration["Supabase:ServiceRoleKey"];
+
+// ถ้าไม่มี JWT Secret ให้ลองใช้ ServiceRoleKey แทน (บาง Supabase projects ใช้ ServiceRoleKey เป็น JWT secret)
+if (string.IsNullOrEmpty(jwtSecret) && !string.IsNullOrEmpty(serviceRoleKey))
+{
+    jwtSecret = serviceRoleKey;
+    Console.WriteLine("⚠️ JWT Secret not found, using ServiceRoleKey as fallback");
+}
 
 // Register custom services
 try
@@ -31,29 +70,10 @@ catch (Exception ex)
 builder.Services.AddScoped<CloudinaryService>();
 
 // Add HttpClient for Supabase REST API calls with timeout
-builder.Services.AddHttpClient()
-    .ConfigureHttpClient(client =>
-    {
-        client.Timeout = TimeSpan.FromSeconds(10); // Timeout 10 วินาที
-    });
-
-// Add Supabase Authentication (JWT Bearer)
-if (!string.IsNullOrEmpty(supabaseUrl))
+builder.Services.AddHttpClient("Supabase", client =>
 {
-    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-        .AddJwtBearer(options =>
-        {
-            options.Authority = $"{supabaseUrl}/auth/v1";
-            options.TokenValidationParameters = new TokenValidationParameters
-            {
-                ValidateIssuer = true,
-                ValidIssuer = $"{supabaseUrl}/auth/v1",
-                ValidateAudience = false, // Supabase doesn't use audience validation
-                ValidateLifetime = true,
-                ClockSkew = TimeSpan.Zero
-            };
-        });
-}
+    client.Timeout = TimeSpan.FromSeconds(10); // Timeout 10 วินาที
+});
 
 // Add CORS support
 builder.Services.AddCors(options =>
@@ -77,8 +97,6 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseCors("AllowAll");
-app.UseAuthentication();
-app.UseAuthorization();
 
 // Add default route that redirects to Swagger in development
 if (app.Environment.IsDevelopment())

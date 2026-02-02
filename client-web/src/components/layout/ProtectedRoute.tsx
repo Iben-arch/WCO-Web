@@ -10,6 +10,7 @@ interface ProtectedRouteProps {
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, adminOnly = false }) => {
   const { currentUser, userProfile, loading } = useAuth();
 
+  // Show loading spinner while checking auth state
   if (loading) {
     return (
       <div className="d-flex justify-content-center align-items-center" style={{ height: '50vh' }}>
@@ -20,11 +21,13 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, adminOnly = f
     );
   }
 
+  // Only redirect if we're sure there's no user (after loading is complete)
   if (!currentUser) {
     return <Navigate to="/login" replace />;
   }
 
-  if (adminOnly && !userProfile?.isAdmin) {
+  // Check admin access
+  if (adminOnly && userProfile?.role !== 'admin' && userProfile?.isAdmin !== true) {
     return <Navigate to="/" replace />;
   }
 

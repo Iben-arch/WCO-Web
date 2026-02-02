@@ -1,10 +1,10 @@
 import React, { useState, FormEvent, ChangeEvent } from 'react';
-import { Container, Row, Col, Form, Button, Alert } from 'react-bootstrap';
+import { Container, Row, Col, Form, Button, Alert, Modal } from 'react-bootstrap';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 interface RegisterFormData {
-  displayName: string;
+  username: string;
   email: string;
   password: string;
   confirmPassword: string;
@@ -12,7 +12,7 @@ interface RegisterFormData {
 
 const Register: React.FC = () => {
   const [formData, setFormData] = useState<RegisterFormData>({
-    displayName: '',
+    username: '',
     email: '',
     password: '',
     confirmPassword: ''
@@ -20,6 +20,7 @@ const Register: React.FC = () => {
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState<boolean>(false);
   const { register } = useAuth();
   const navigate = useNavigate();
 
@@ -33,8 +34,18 @@ const Register: React.FC = () => {
   const handleSubmit = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
     
-    if (!formData.displayName || !formData.email || !formData.password) {
+    if (!formData.username || !formData.email || !formData.password) {
       setError('กรุณากรอกข้อมูลให้ครบถ้วน');
+      return;
+    }
+
+    if (formData.username.length < 3) {
+      setError('ชื่อผู้ใช้ต้องมีอย่างน้อย 3 ตัวอักษร');
+      return;
+    }
+
+    if (!/^[a-zA-Z0-9_]+$/.test(formData.username)) {
+      setError('ชื่อผู้ใช้สามารถใช้ได้เฉพาะตัวอักษร ตัวเลข และ _ เท่านั้น');
       return;
     }
 
@@ -51,20 +62,16 @@ const Register: React.FC = () => {
     try {
       setError('');
       setLoading(true);
-      await register(formData.email, formData.password, formData.displayName);
-      navigate('/');
+      await register(
+        formData.email, 
+        formData.password, 
+        formData.username
+      );
+      setShowSuccessModal(true);
     } catch (error: any) {
       console.error('Register error:', error);
       
-      // Handle different types of errors from server API
-      if (error.response?.data?.error) {
-        // Server API error
-        setError(error.response.data.error);
-      } else if (error.code === 'auth/email-already-in-use' || error.message?.includes('อีเมลนี้ถูกใช้งานแล้ว')) {
-        setError('อีเมลนี้ถูกใช้งานแล้ว');
-      } else if (error.code === 'auth/weak-password' || error.message?.includes('รหัสผ่านไม่แข็งแรงพอ')) {
-        setError('รหัสผ่านไม่แข็งแรงพอ');
-      } else if (error.message) {
+      if (error.message) {
         setError(error.message);
       } else {
         setError('เกิดข้อผิดพลาดในการสมัครสมาชิก กรุณาลองใหม่อีกครั้ง');
@@ -130,10 +137,10 @@ const Register: React.FC = () => {
 
               <Form onSubmit={handleSubmit} className="auth-form">
                 <div className="form-group-modern">
-                  <label htmlFor="displayName" className="form-label-modern">
-                    ชื่อแสดง
+                  <label htmlFor="username" className="form-label-modern">
+                    ชื่อผู้ใช้
                   </label>
-                  <div className={`input-wrapper ${focusedField === 'displayName' || formData.displayName ? 'focused' : ''}`}>
+                  <div className={`input-wrapper ${focusedField === 'username' || formData.username ? 'focused' : ''}`}>
                     <span className="input-icon">
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M20 21V19C20 17.9391 19.5786 16.9217 18.8284 16.1716C18.0783 15.4214 17.0609 15 16 15H8C6.93913 15 5.92172 15.4214 5.17157 16.1716C4.42143 16.9217 4 17.9391 4 19V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -141,19 +148,24 @@ const Register: React.FC = () => {
                       </svg>
                     </span>
                     <Form.Control
-                      id="displayName"
+                      id="username"
                       type="text"
-                      name="displayName"
+                      name="username"
                       className="form-input-modern"
-                      placeholder="กรอกชื่อแสดงของคุณ"
-                      value={formData.displayName}
+                      placeholder="กรอกชื่อผู้ใช้ (อย่างน้อย 3 ตัวอักษร)"
+                      value={formData.username}
                       onChange={handleChange}
-                      onFocus={() => setFocusedField('displayName')}
+                      onFocus={() => setFocusedField('username')}
                       onBlur={() => setFocusedField(null)}
                       required
-                      autoComplete="name"
+                      minLength={3}
+                      pattern="[a-zA-Z0-9_]+"
+                      autoComplete="username"
                     />
                   </div>
+                  <small className="form-help-text">
+                    ชื่อผู้ใช้ต้องมีอย่างน้อย 3 ตัวอักษร และใช้ได้เฉพาะตัวอักษร ตัวเลข และ _
+                  </small>
                 </div>
 
                 <div className="form-group-modern">
@@ -240,23 +252,6 @@ const Register: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="form-terms">
-                  <div className="form-check">
-                    <input
-                      type="checkbox"
-                      className="form-check-input"
-                      id="agreeTerms"
-                      required
-                    />
-                    <label className="form-check-label" htmlFor="agreeTerms">
-                      ฉันยอมรับ{' '}
-                      <Link to="#" className="terms-link">ข้อตกลงและเงื่อนไข</Link>
-                      {' '}และ{' '}
-                      <Link to="#" className="terms-link">นโยบายความเป็นส่วนตัว</Link>
-                    </label>
-                  </div>
-                </div>
-
                 <Button
                   type="submit"
                   className="auth-submit-btn btn-tcg-primary btn-tcg-lg w-100"
@@ -299,9 +294,69 @@ const Register: React.FC = () => {
           </Col>
         </Row>
       </Container>
+
+      {/* Success Modal */}
+      <Modal 
+        show={showSuccessModal} 
+        onHide={() => {
+          setShowSuccessModal(false);
+          navigate('/login');
+        }}
+        centered
+        backdrop="static"
+        keyboard={false}
+      >
+        <Modal.Body className="text-center p-5" style={{
+          background: 'var(--bg-card)',
+          borderRadius: 'var(--radius-xl)',
+          border: 'none'
+        }}>
+          <div style={{ 
+            fontSize: '5rem', 
+            marginBottom: '1.5rem',
+            display: 'inline-block'
+          }}>
+            ✅
+          </div>
+          <h3 style={{ 
+            color: 'var(--deep-twilight)', 
+            marginBottom: '1rem',
+            fontWeight: '700',
+            fontSize: '1.75rem'
+          }}>
+            สมัครสมาชิกสำเร็จ!
+          </h3>
+          <p style={{ 
+            color: 'var(--text-secondary)', 
+            marginBottom: '2.5rem',
+            fontSize: '1.1rem',
+            lineHeight: '1.6'
+          }}>
+            ยินดีต้อนรับสู่ <strong style={{ color: 'var(--deep-twilight)' }}>WCO Thailand</strong><br />
+            กรุณาเข้าสู่ระบบเพื่อเริ่มใช้งาน
+          </p>
+          <Button
+            className="btn-tcg-primary btn-tcg-lg"
+            onClick={() => {
+              setShowSuccessModal(false);
+              navigate('/login');
+            }}
+            style={{
+              minWidth: '220px',
+              padding: '0.875rem 2rem',
+              fontSize: '1.1rem',
+              fontWeight: '600',
+              borderRadius: 'var(--radius-lg)',
+              boxShadow: 'var(--shadow-md)',
+              transition: 'all 0.3s ease'
+            }}
+          >
+            ไปที่หน้าล็อกอิน →
+          </Button>
+        </Modal.Body>
+      </Modal>
     </div>
   );
 };
 
 export default Register;
-
