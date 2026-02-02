@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using ServerApi.Services;
+using System.Linq;
 using System.Text.Json;
 
 namespace ServerApi.Controllers
@@ -126,6 +127,17 @@ namespace ServerApi.Controllers
 
                 var cartItemId = await _supabaseService.CreateAsync("cart_items", cartData, useServiceRole: true);
 
+                // อัปเดตสถานะโพสต์เป็น pending เมื่อมีคนเพิ่มลงตะกร้า (รอการชำระเงิน)
+                if (status == "active")
+                {
+                    var updateData = new Dictionary<string, object>
+                    {
+                        ["status"] = "pending",
+                        ["updatedAt"] = DateTime.UtcNow
+                    };
+                    await _supabaseService.UpdateAsync("posts", request.PostId, updateData, null, true);
+                }
+
                 return Ok(new
                 {
                     success = true,
@@ -185,12 +197,33 @@ namespace ServerApi.Controllers
                 }
 
                 var itemId = item["id"]?.ToString();
+                var postId = item.ContainsKey("post_id") ? item["post_id"]?.ToString() : null;
                 if (string.IsNullOrEmpty(itemId))
                 {
                     return NotFound(new { success = false, message = "ไม่พบรายการในตะกร้า" });
                 }
 
                 await _supabaseService.DeleteAsync("cart_items", itemId);
+
+                // ถ้าไม่มีใครมีโพสต์นี้ในตะกร้าแล้ว ให้เปลี่ยนสถานะกลับเป็น active
+                if (!string.IsNullOrEmpty(postId))
+                {
+                    var remainingCartItems = await _supabaseService.QueryAsync("cart_items", "post_id", postId, useServiceRole: true);
+                    if (remainingCartItems.Count == 0)
+                    {
+                        var post = await _supabaseService.GetAsync("posts", postId, useServiceRole: true);
+                        var postStatus = post?.ContainsKey("status") == true ? post["status"]?.ToString() : null;
+                        if (postStatus == "pending")
+                        {
+                            var updateData = new Dictionary<string, object>
+                            {
+                                ["status"] = "active",
+                                ["updatedAt"] = DateTime.UtcNow
+                            };
+                            await _supabaseService.UpdateAsync("posts", postId, updateData, null, true);
+                        }
+                    }
+                }
 
                 return Ok(new { success = true, message = "ลบออกจากตะกร้าเรียบร้อย" });
             }
@@ -220,13 +253,37 @@ namespace ServerApi.Controllers
             {
                 var userId = GetUserIdRequired();
                 var cartItems = await _supabaseService.QueryAsync("cart_items", "user_id", userId);
+                var postIdsToCheck = new List<string>();
 
                 foreach (var item in cartItems)
                 {
                     var itemId = item.ContainsKey("id") ? item["id"]?.ToString() : null;
+                    var postId = item.ContainsKey("post_id") ? item["post_id"]?.ToString() : null;
                     if (!string.IsNullOrEmpty(itemId))
                     {
                         await _supabaseService.DeleteAsync("cart_items", itemId);
+                        if (!string.IsNullOrEmpty(postId))
+                            postIdsToCheck.Add(postId);
+                    }
+                }
+
+                // ตรวจสอบโพสต์ที่ไม่มีใครมีในตะกร้าแล้ว ให้เปลี่ยนสถานะกลับเป็น active
+                foreach (var postId in postIdsToCheck.Distinct())
+                {
+                    var remainingCartItems = await _supabaseService.QueryAsync("cart_items", "post_id", postId, useServiceRole: true);
+                    if (remainingCartItems.Count == 0)
+                    {
+                        var post = await _supabaseService.GetAsync("posts", postId, useServiceRole: true);
+                        var postStatus = post?.ContainsKey("status") == true ? post["status"]?.ToString() : null;
+                        if (postStatus == "pending")
+                        {
+                            var updateData = new Dictionary<string, object>
+                            {
+                                ["status"] = "active",
+                                ["updatedAt"] = DateTime.UtcNow
+                            };
+                            await _supabaseService.UpdateAsync("posts", postId, updateData, null, true);
+                        }
                     }
                 }
 

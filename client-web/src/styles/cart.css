@@ -264,6 +264,10 @@
   border-color: var(--border-medium);
 }
 
+.cart-item-card:hover .cart-item-image img {
+  transform: scale(1.1);
+}
+
 .cart-item-image {
   position: relative;
   overflow: hidden;
@@ -279,9 +283,6 @@
   transition: transform var(--transition-slow);
 }
 
-.cart-item-card:hover .cart-item-image img {
-  transform: scale(1.1);
-}
 
 .no-image-placeholder {
   display: flex;
@@ -339,10 +340,6 @@
   transition: all var(--transition-base);
 }
 
-.seller-link:hover {
-  color: var(--primary-hover);
-  text-decoration: underline;
-}
 
 .cart-item-actions {
   text-align: right;

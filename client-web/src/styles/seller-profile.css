@@ -104,6 +104,22 @@
   box-shadow: var(--shadow-hover);
 }
 
+.seller-avatar-container:hover .seller-avatar-placeholder {
+  transform: scale(1.05);
+  box-shadow: var(--shadow-hover);
+  border-color: var(--primary-hover);
+}
+
+.seller-avatar-container:hover .seller-avatar-placeholder-icon {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.seller-avatar-container:hover .seller-avatar-placeholder-text {
+  opacity: 1;
+  color: var(--french-blue);
+}
+
 .seller-avatar-placeholder {
   width: 120px;
   height: 120px;
@@ -119,11 +135,6 @@
   transition: all var(--transition-base);
 }
 
-.seller-avatar-container:hover .seller-avatar-placeholder {
-  transform: scale(1.05);
-  box-shadow: var(--shadow-hover);
-  border-color: var(--primary-hover);
-}
 
 .seller-avatar-placeholder::before {
   content: '';
@@ -152,10 +163,6 @@
   transition: all 0.3s ease;
 }
 
-.seller-avatar-container:hover .seller-avatar-placeholder-icon {
-  opacity: 1;
-  transform: scale(1.1);
-}
 
 .seller-avatar-placeholder-text {
   font-size: 0.875rem;
@@ -167,10 +174,6 @@
   transition: all 0.3s ease;
 }
 
-.seller-avatar-container:hover .seller-avatar-placeholder-text {
-  opacity: 1;
-  color: var(--french-blue);
-}
 
 .seller-name {
   color: var(--text-primary);
@@ -340,11 +343,6 @@
   animation: fadeInUp var(--transition-slow) ease-out;
 }
 
-.trading-card:hover {
-  transform: translateY(-8px);
-  box-shadow: var(--shadow-hover);
-  border-color: var(--border-medium);
-}
 
 .trading-card .card-body {
   padding: 1.25rem;
@@ -366,9 +364,6 @@
   transition: color var(--transition-base);
 }
 
-.trading-card:hover .card-title {
-  color: var(--primary);
-}
 
 /* Price Section */
 .card-price-section {
@@ -425,6 +420,16 @@
 .status-active {
   background: rgba(16, 185, 129, 0.15);
   color: var(--success);
+}
+
+.status-pending {
+  background: rgba(245, 158, 11, 0.15);
+  color: #d97706;
+}
+
+.status-sold {
+  background: rgba(59, 130, 246, 0.15);
+  color: #2563eb;
 }
 
 .status-inactive {

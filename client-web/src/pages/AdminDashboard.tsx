@@ -109,9 +109,9 @@ const AdminDashboard: React.FC = () => {
   const getStatusBadge = (status: string): JSX.Element => {
     switch (status) {
       case 'active':
-        return <Badge bg="success">เผยแพร่</Badge>;
+        return <Badge bg="success">เปิดขาย</Badge>;
       case 'pending':
-        return <Badge bg="warning">รออนุมัติ</Badge>;
+        return <Badge bg="warning">รอการชำระเงิน</Badge>;
       case 'rejected':
         return <Badge bg="danger">ถูกปฏิเสธ</Badge>;
       default:
@@ -369,24 +369,6 @@ const AdminDashboard: React.FC = () => {
                     <td>{formatDate(post.createdAt as string)}</td>
                     <td>
                       <div className="d-flex gap-1">
-                        {post.status === 'pending' && (
-                          <>
-                            <Button
-                              size="sm"
-                              className="btn-tcg-primary btn-tcg-sm me-1"
-                              onClick={() => handlePostAction(post, 'active')}
-                            >
-                              อนุมัติ
-                            </Button>
-                            <Button
-                              size="sm"
-                              className="btn-tcg-outline btn-tcg-sm me-1"
-                              onClick={() => handlePostAction(post, 'rejected')}
-                            >
-                              ปฏิเสธ
-                            </Button>
-                          </>
-                        )}
                         <Button
                           size="sm"
                           className="btn-tcg-outline btn-tcg-sm"

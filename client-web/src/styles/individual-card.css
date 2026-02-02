@@ -18,6 +18,14 @@
   border-color: #0077B6;
 }
 
+.card-image-container:hover .card-image {
+  transform: scale(1.05);
+}
+
+.card-image-container:hover .card-overlay {
+  opacity: 1;
+}
+
 .card-image-container {
   position: relative;
   width: 100%;
@@ -37,9 +45,6 @@
   transition: transform 0.3s ease;
 }
 
-.card-image-container:hover .card-image {
-  transform: scale(1.05);
-}
 
 .card-overlay {
   position: absolute;
@@ -55,9 +60,6 @@
   transition: opacity 0.3s ease;
 }
 
-.card-image-container:hover .card-overlay {
-  opacity: 1;
-}
 
 .card-overlay-content {
   color: white;

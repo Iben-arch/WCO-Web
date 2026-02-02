@@ -6,14 +6,13 @@ import axios from '../utils/axiosInterceptor';
 import { supabase } from '../config/supabase';
 import { toast } from 'react-toastify';
 import { 
-  TCGButton, 
   PrimaryActionButton,
   SecondaryActionButton
 } from '../components/common/ButtonComponents';
 import { Category, PostType, SaleType, CreatePostFormData, DetectedCard } from '../types';
 import '../styles/individual-card.css';
 
-const ImagePreviewThumbnail: React.FC<{ file: File; index: number; onClick: () => void }> = ({ file, index, onClick }) => {
+const ImagePreviewThumbnail: React.FC<{ file: File; index: number; onClick: () => void; onRemove?: () => void }> = ({ file, index, onClick, onRemove }) => {
   const [url, setUrl] = useState<string>(() => URL.createObjectURL(file));
   React.useEffect(() => {
     const newUrl = URL.createObjectURL(file);
@@ -24,27 +23,39 @@ const ImagePreviewThumbnail: React.FC<{ file: File; index: number; onClick: () =
     return () => URL.revokeObjectURL(newUrl);
   }, [file]);
   return (
-    <div className="position-relative" style={{ cursor: 'pointer', flex: '0 0 auto' }} onClick={onClick}>
-      <img
-        src={url}
-        alt={`รูป ${index + 1}`}
-        className="rounded"
-        style={{
-          width: '120px',
-          height: '168px',
-          objectFit: 'cover',
-          border: '2px solid var(--gray-300)',
-          transition: 'border-color 0.2s'
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--gray-300)'; }}
-      />
-      <div
-        className="position-absolute bottom-0 start-0 end-0 text-center py-1 rounded-bottom"
-        style={{ background: 'rgba(0,0,0,0.6)', color: 'white', fontSize: '0.75rem' }}
-      >
-        #{index + 1} · {(file.size / 1024).toFixed(0)} KB
+    <div className="position-relative image-preview-thumbnail-wrapper" style={{ cursor: 'pointer', flex: '0 0 auto' }}>
+      <div onClick={onClick}>
+        <img
+          src={url}
+          alt={`รูป ${index + 1}`}
+          className="rounded"
+          style={{
+            width: '120px',
+            height: '168px',
+            objectFit: 'cover',
+            border: '2px solid var(--gray-300)',
+            transition: 'border-color 0.2s'
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--gray-300)'; }}
+        />
+        <div
+          className="position-absolute bottom-0 start-0 end-0 text-center py-1 rounded-bottom"
+          style={{ background: 'rgba(0,0,0,0.6)', color: 'white', fontSize: '0.75rem' }}
+        >
+          #{index + 1} · {(file.size / 1024).toFixed(0)} KB
+        </div>
       </div>
+      {onRemove && (
+        <button
+          type="button"
+          className="image-preview-remove-btn"
+          onClick={(e) => { e.stopPropagation(); onRemove(); }}
+          aria-label="ลบรูป"
+        >
+          ×
+        </button>
+      )}
     </div>
   );
 };
@@ -62,10 +73,10 @@ const categories: Category[] = [
 ];
 
 const STEPS = [
-  { id: 1, label: 'ประเภท', icon: '📋' },
-  { id: 2, label: 'รูปภาพ', icon: '📷' },
-  { id: 3, label: 'ข้อมูล', icon: '📝' },
-  { id: 4, label: 'สรุป', icon: '✅' }
+  { id: 1, label: 'ประเภท' },
+  { id: 2, label: 'รูปภาพ' },
+  { id: 3, label: 'ข้อมูล' },
+  { id: 4, label: 'สรุป' }
 ];
 
 const CreatePost: React.FC = () => {
@@ -123,6 +134,17 @@ const CreatePost: React.FC = () => {
       images: imageFiles
     });
     setDetectedCards([]);
+  };
+
+  const handleRemoveImage = (index: number): void => {
+    const newImages = formData.images.filter((_, i) => i !== index);
+    setFormData({ ...formData, images: newImages });
+    setDetectedCards([]);
+    if (previewImageIndex === index) {
+      setPreviewImageIndex(null);
+    } else if (previewImageIndex !== null && previewImageIndex > index) {
+      setPreviewImageIndex(previewImageIndex - 1);
+    }
   };
 
   const canProceedFromStep1 = (): boolean => true;
@@ -480,7 +502,7 @@ const CreatePost: React.FC = () => {
                     textShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
                     margin: 0
                   }}>
-                    {formData.postType === 'auction' ? '🔨 ประมูลการ์ดเกม' : '🃏 ขายการ์ดเกม'}
+                    {formData.postType === 'auction' ? 'ประมูลการ์ดเกม' : 'ขายการ์ดเกม'}
                   </h2>
                   <p className="mb-0" style={{
                     fontSize: '1rem',
@@ -503,7 +525,7 @@ const CreatePost: React.FC = () => {
                     color: '#991b1b',
                     boxShadow: 'var(--shadow-sm)'
                   }}>
-                    <strong>⚠️ เกิดข้อผิดพลาด:</strong> {error}
+                    <strong>เกิดข้อผิดพลาด:</strong> {error}
                   </Alert>
                 )}
 
@@ -517,7 +539,7 @@ const CreatePost: React.FC = () => {
                         onClick={() => currentStep > step.id && setCurrentStep(step.id)}
                       >
                         <div className="stepper-circle">
-                          <span>{currentStep > step.id ? '✓' : step.icon}</span>
+                          <span>{currentStep > step.id ? '✓' : step.id}</span>
                         </div>
                         <span className="stepper-label">{step.label}</span>
                         {idx < STEPS.length - 1 && <div className="stepper-line" />}
@@ -532,7 +554,6 @@ const CreatePost: React.FC = () => {
                   <div className="form-section mb-4">
                     <div className="section-header mb-3">
                       <h5 className="section-title">
-                        <span className="section-icon">📋</span>
                         ประเภทโพสต์
                         <span className="required-badge">*</span>
                       </h5>
@@ -548,7 +569,6 @@ const CreatePost: React.FC = () => {
                         onChange={handleChange}
                         label={
                           <div className="radio-label-content">
-                            <span className="radio-icon">🛒</span>
                             <div>
                               <div className="radio-title">ขายการ์ด</div>
                               <div className="radio-subtitle">Card Sale</div>
@@ -566,7 +586,6 @@ const CreatePost: React.FC = () => {
                         onChange={handleChange}
                         label={
                           <div className="radio-label-content">
-                            <span className="radio-icon">🔨</span>
                             <div>
                               <div className="radio-title">ประมูลการ์ด</div>
                               <div className="radio-subtitle">Auction</div>
@@ -577,7 +596,7 @@ const CreatePost: React.FC = () => {
                       />
                     </div>
                     <div className="stepper-actions mt-4">
-                      <PrimaryActionButton type="button" onClick={goNextStep}>
+                      <PrimaryActionButton type="button" onClick={goNextStep} icon={null}>
                         ถัดไป: อัปโหลดรูป
                       </PrimaryActionButton>
                     </div>
@@ -589,7 +608,6 @@ const CreatePost: React.FC = () => {
                   <div className="form-section mb-4">
                     <div className="section-header mb-3">
                       <h5 className="section-title">
-                        <span className="section-icon">📷</span>
                         รูปภาพการ์ด
                         <span className="required-badge">*</span>
                       </h5>
@@ -622,8 +640,7 @@ const CreatePost: React.FC = () => {
                       {formData.images.length > 0 && (
                         <div className="file-selected-info mt-3">
                           <div className="file-count-badge">
-                            <span className="file-count-icon">✅</span>
-                            <span>เลือกแล้ว {formData.images.length} ไฟล์ - คลิกดูรูปเพื่อตรวจสอบ</span>
+                            <span>เลือกแล้ว {formData.images.length} ไฟล์ - คลิกดูรูป · กด × เพื่อลบ</span>
                           </div>
                           <div className="d-flex flex-wrap gap-3 mt-3">
                             {Array.from(formData.images).map((file, index) => (
@@ -632,6 +649,7 @@ const CreatePost: React.FC = () => {
                                 file={file}
                                 index={index}
                                 onClick={() => setPreviewImageIndex(index)}
+                                onRemove={() => handleRemoveImage(index)}
                               />
                             ))}
                           </div>
@@ -643,7 +661,6 @@ const CreatePost: React.FC = () => {
                         <div className="detection-header">
                           <div>
                             <h6 className="detection-title">
-                              <span className="detection-icon">✨</span>
                               การแยกการ์ดอัตโนมัติ
                             </h6>
                             <p className="detection-description">
@@ -663,10 +680,7 @@ const CreatePost: React.FC = () => {
                                 กำลังประมวลผล...
                               </>
                             ) : (
-                              <>
-                                <span className="me-2">🔍</span>
-                                แยกการ์ดอัตโนมัติ
-                              </>
+                              'แยกการ์ดอัตโนมัติ'
                             )}
                           </Button>
                         </div>
@@ -674,7 +688,6 @@ const CreatePost: React.FC = () => {
                           <div className="detected-cards-preview mt-4">
                             <div className="detected-cards-header">
                               <div className="success-badge">
-                                <span className="success-icon">✅</span>
                                 <span>พบการ์ด {detectedCards.length} ใบ - กรอกราคาในขั้นตอนถัดไป</span>
                               </div>
                             </div>
@@ -683,10 +696,10 @@ const CreatePost: React.FC = () => {
                       </div>
                     )}
                     <div className="stepper-actions mt-4 d-flex gap-2">
-                      <SecondaryActionButton type="button" onClick={goPrevStep}>
+                      <SecondaryActionButton type="button" onClick={goPrevStep} icon={null}>
                         ย้อนกลับ
                       </SecondaryActionButton>
-                      <PrimaryActionButton type="button" onClick={goNextStep} disabled={!canProceedFromStep2()}>
+                      <PrimaryActionButton type="button" onClick={goNextStep} disabled={!canProceedFromStep2()} icon={null}>
                         ถัดไป: กรอกข้อมูล
                       </PrimaryActionButton>
                     </div>
@@ -700,11 +713,10 @@ const CreatePost: React.FC = () => {
                   {(formData.postType === 'sale' || formData.postType === 'auction') && (
                     <div className="form-section mb-4">
                       <div className="section-header mb-3">
-                        <h5 className="section-title">
-                          <span className="section-icon">🎯</span>
-                          ประเภทการขาย
-                          <span className="required-badge">*</span>
-                        </h5>
+                      <h5 className="section-title">
+                        ประเภทการขาย
+                        <span className="required-badge">*</span>
+                      </h5>
                         <p className="section-description">เลือกว่าต้องการขายเป็นเด็คหรือแยกใบ</p>
                       </div>
                       <div className="radio-group-modern">
@@ -717,7 +729,6 @@ const CreatePost: React.FC = () => {
                           onChange={handleChange}
                           label={
                             <div className="radio-label-content">
-                              <span className="radio-icon">🃏</span>
                               <div>
                                 <div className="radio-title">
                                   {formData.postType === 'auction' ? 'ประมูลเป็นเด็ค' : 'ขายเป็นเด็ค'}
@@ -739,7 +750,6 @@ const CreatePost: React.FC = () => {
                           onChange={handleChange}
                           label={
                             <div className="radio-label-content">
-                              <span className="radio-icon">🃏</span>
                               <div>
                                 <div className="radio-title">
                                   {formData.postType === 'auction' ? 'ประมูลแยกใบ' : 'ขายแยกใบ'}
@@ -769,7 +779,7 @@ const CreatePost: React.FC = () => {
                       <Col md={8}>
                         <Form.Group className="mb-3 form-group-sakura">
                           <Form.Label className="form-label-sakura">
-                            🃏 ชื่อการ์ด
+                            ชื่อการ์ด
                             <span className="optional-badge">(ไม่บังคับ)</span>
                           </Form.Label>
                           <Form.Control
@@ -790,7 +800,7 @@ const CreatePost: React.FC = () => {
                           formData.saleType === 'deck' ? (
                             <Form.Group className="mb-3 form-group-sakura">
                               <Form.Label className="form-label-sakura">
-                                💰 ราคาเด็ค (บาท)
+                                ราคาเด็ค (บาท)
                                 <span className="required-badge">*</span>
                               </Form.Label>
                               <div className="input-with-icon">
@@ -837,7 +847,7 @@ const CreatePost: React.FC = () => {
                           formData.saleType === 'deck' ? (
                             <Form.Group className="mb-3 form-group-sakura">
                               <Form.Label className="form-label-sakura">
-                                🚀 ราคาเริ่มต้นเด็ค (บาท)
+                                ราคาเริ่มต้นเด็ค (บาท)
                                 <span className="required-badge">*</span>
                               </Form.Label>
                               <div className="input-with-icon">
@@ -861,7 +871,7 @@ const CreatePost: React.FC = () => {
                           ) : (
                             <Form.Group className="mb-3 form-group-sakura">
                               <Form.Label className="form-label-sakura">
-                                🚀 ราคาเริ่มต้นต่อใบ (บาท)
+                                ราคาเริ่มต้นต่อใบ (บาท)
                                 <span className="required-badge">*</span>
                               </Form.Label>
                               <div className="input-with-icon">
@@ -902,7 +912,7 @@ const CreatePost: React.FC = () => {
                         <Col md={6}>
                           <Form.Group className="mb-3 form-group-sakura">
                             <Form.Label className="form-label-sakura">
-                              🔢 จำนวนการ์ดในเด็ค
+                              จำนวนการ์ดในเด็ค
                               <span className="required-badge">*</span>
                             </Form.Label>
                             <Form.Control
@@ -923,7 +933,7 @@ const CreatePost: React.FC = () => {
                         <Col md={6}>
                           <Form.Group className="mb-3 form-group-sakura">
                             <Form.Label className="form-label-sakura">
-                              📝 รายละเอียดเด็ค
+                              รายละเอียดเด็ค
                               <span className="optional-badge">(ไม่บังคับ)</span>
                             </Form.Label>
                             <Form.Control
@@ -947,10 +957,9 @@ const CreatePost: React.FC = () => {
                   {((formData.postType === 'sale' && formData.saleType === 'individual') || (formData.postType === 'auction' && formData.saleType === 'individual')) && (
                     <div className="form-section mb-4">
                       <div className="section-header mb-3">
-                        <h5 className="section-title">
-                          <span className="section-icon">🃏</span>
-                          ข้อมูลการ์ดแยกใบ
-                        </h5>
+                      <h5 className="section-title">
+                        ข้อมูลการ์ดแยกใบ
+                      </h5>
                         <p className="section-description">กรอกข้อมูลเกี่ยวกับการ์ดแยกใบ</p>
                       </div>
                       <Row>
@@ -978,7 +987,7 @@ const CreatePost: React.FC = () => {
                         <Col md={6}>
                           <Form.Group className="mb-3 form-group-sakura">
                             <Form.Label className="form-label-sakura">
-                              📂 หมวดหมู่
+                              หมวดหมู่
                               <span className="optional-badge">(ไม่บังคับ)</span>
                             </Form.Label>
                             <Form.Select
@@ -1008,7 +1017,7 @@ const CreatePost: React.FC = () => {
                         <Col md={6}>
                           <Form.Group className="mb-3 form-group-sakura">
                             <Form.Label className="form-label-sakura">
-                              📂 หมวดหมู่
+                              หมวดหมู่
                               <span className="optional-badge">(ไม่บังคับ)</span>
                             </Form.Label>
                             <Form.Select
@@ -1035,17 +1044,16 @@ const CreatePost: React.FC = () => {
                   {formData.postType === 'auction' && (
                     <div className="form-section mb-4">
                       <div className="section-header mb-3">
-                        <h5 className="section-title">
-                          <span className="section-icon">🔨</span>
-                          ข้อมูลการประมูล
-                        </h5>
+                      <h5 className="section-title">
+                        ข้อมูลการประมูล
+                      </h5>
                         <p className="section-description">กรอกข้อมูลเกี่ยวกับการประมูล</p>
                       </div>
                       <Row>
                         <Col md={6}>
                           <Form.Group className="mb-3 form-group-sakura">
-                            <Form.Label className="form-label-sakura">
-                              ⏰ วันสิ้นสุดการประมูล
+                              <Form.Label className="form-label-sakura">
+                                วันสิ้นสุดการประมูล
                               <span className="required-badge">*</span>
                             </Form.Label>
                             <Form.Control
@@ -1064,8 +1072,8 @@ const CreatePost: React.FC = () => {
                         </Col>
                         <Col md={6}>
                           <Form.Group className="mb-3 form-group-sakura">
-                            <Form.Label className="form-label-sakura">
-                              💎 ราคาซื้อทันที (บาท)
+                              <Form.Label className="form-label-sakura">
+                                ราคาซื้อทันที (บาท)
                               <span className="optional-badge">(ไม่บังคับ)</span>
                             </Form.Label>
                             <div className="input-with-icon">
@@ -1122,7 +1130,6 @@ const CreatePost: React.FC = () => {
                     <div className="detected-cards-preview mt-4">
                       <div className="detected-cards-header">
                         <div className="success-badge">
-                          <span className="success-icon">✅</span>
                           <span>พบการ์ด {detectedCards.length} ใบ - กรอกราคาและจำนวนต่อใบ</span>
                         </div>
                       </div>
@@ -1178,10 +1185,10 @@ const CreatePost: React.FC = () => {
                   )}
 
                     <div className="stepper-actions mt-4 d-flex gap-2">
-                      <SecondaryActionButton type="button" onClick={goPrevStep}>
+                      <SecondaryActionButton type="button" onClick={goPrevStep} icon={null}>
                         ย้อนกลับ
                       </SecondaryActionButton>
-                      <PrimaryActionButton type="button" onClick={goNextStep} disabled={!canProceedFromStep3()}>
+                      <PrimaryActionButton type="button" onClick={goNextStep} disabled={!canProceedFromStep3()} icon={null}>
                         ถัดไป: สรุป
                       </PrimaryActionButton>
                     </div>
@@ -1199,31 +1206,34 @@ const CreatePost: React.FC = () => {
                       </h5>
                       <p className="section-description">ตรวจสอบข้อมูลก่อนส่ง</p>
                     </div>
-                    <Card className="mb-4" style={{ background: 'var(--gray-100)', border: 'none' }}>
+                    <Card className="mb-4 create-post-summary-card">
                       <Card.Body>
-                        <p><strong>ประเภท:</strong> {formData.postType === 'auction' ? 'ประมูล' : 'ขาย'} - {formData.saleType === 'deck' ? 'เด็ค' : 'แยกใบ'}</p>
-                        <p><strong>รูปภาพ:</strong> {formData.images.length} ไฟล์</p>
-                        <p><strong>ชื่อ:</strong> {formData.title || '-'}</p>
-                        <p><strong>หมวดหมู่:</strong> {formData.category || '-'}</p>
+                        <div className="summary-grid">
+                          <div className="summary-item"><span className="summary-label">ประเภท</span><span className="summary-value">{formData.postType === 'auction' ? 'ประมูล' : 'ขาย'} · {formData.saleType === 'deck' ? 'เด็ค' : 'แยกใบ'}</span></div>
+                          <div className="summary-item"><span className="summary-label">รูปภาพ</span><span className="summary-value">{formData.images.length} ไฟล์</span></div>
+                          <div className="summary-item"><span className="summary-label">ชื่อ</span><span className="summary-value">{formData.title || '-'}</span></div>
+                          <div className="summary-item"><span className="summary-label">หมวดหมู่</span><span className="summary-value">{formData.category || '-'}</span></div>
                         {formData.postType === 'sale' && formData.saleType === 'deck' && (
-                          <p><strong>ราคาเด็ค:</strong> {formData.price} บาท | จำนวน {formData.cardCount} ใบ</p>
+                          <div className="summary-item"><span className="summary-label">ราคาเด็ค</span><span className="summary-value">{formData.price} บาท · {formData.cardCount} ใบ</span></div>
                         )}
                         {formData.postType === 'sale' && formData.saleType === 'individual' && detectedCards.length === 0 && (
-                          <p><strong>ราคาต่อใบ:</strong> {formData.individualPrice} บาท | จำนวน {formData.availableQuantity} ใบ</p>
+                          <div className="summary-item"><span className="summary-label">ราคาต่อใบ</span><span className="summary-value">{formData.individualPrice} บาท · {formData.availableQuantity} ใบ</span></div>
                         )}
                         {formData.postType === 'auction' && (
-                          <p><strong>ราคาเริ่มต้น:</strong> {formData.startingBid} บาท | สิ้นสุด: {formData.auctionEndDate ? new Date(formData.auctionEndDate).toLocaleString('th-TH') : '-'}</p>
+                          <div className="summary-item"><span className="summary-label">ราคาเริ่มต้น</span><span className="summary-value">{formData.startingBid} บาท · สิ้นสุด {formData.auctionEndDate ? new Date(formData.auctionEndDate).toLocaleString('th-TH') : '-'}</span></div>
                         )}
+                        </div>
                       </Card.Body>
                     </Card>
                     <div className="stepper-actions mt-4 d-flex gap-2 flex-wrap">
-                      <SecondaryActionButton type="button" onClick={goPrevStep}>
+                      <SecondaryActionButton type="button" onClick={goPrevStep} icon={null}>
                         ย้อนกลับ
                       </SecondaryActionButton>
                       <PrimaryActionButton
                         type="submit"
                         disabled={loading}
                         className="submit-button"
+                        icon={null}
                       >
                         {loading ? (
                           <>
@@ -1242,7 +1252,7 @@ const CreatePost: React.FC = () => {
                   {uploadProgress > 0 && uploadProgress < 100 && (
                     <div className="upload-progress-section mb-4">
                       <div className="progress-label mb-2">
-                        <span>📤 กำลังอัปโหลด...</span>
+                        <span>กำลังอัปโหลด...</span>
                         <span className="progress-percentage">{uploadProgress}%</span>
                       </div>
                       <ProgressBar 
@@ -1265,6 +1275,7 @@ const CreatePost: React.FC = () => {
                       type="button"
                       onClick={() => navigate('/')}
                       className="cancel-button"
+                      icon={null}
                     >
                       ยกเลิก
                     </SecondaryActionButton>

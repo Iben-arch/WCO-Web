@@ -276,8 +276,14 @@ const SellerProfile: React.FC = () => {
                               
                               <div className="card-meta-section">
                                 <div className="status-display mb-2">
-                                  <span className={`status-badge ${post.status === 'active' ? 'status-active' : 'status-inactive'}`}>
-                                    {post.status === 'active' ? '🟢 เปิดขาย' : '🔴 ปิดขาย'}
+                                  <span className={`status-badge ${
+                                    post.status === 'active' ? 'status-active' :
+                                    post.status === 'pending' ? 'status-pending' :
+                                    post.status === 'sold' ? 'status-sold' : 'status-inactive'
+                                  }`}>
+                                    {post.status === 'active' ? '🟢 เปิดขาย' :
+                                     post.status === 'pending' ? '🟡 รอการชำระเงิน' :
+                                     post.status === 'sold' ? '🔵 ขายแล้ว' : '🔴 ปิดขาย'}
                                   </span>
                                 </div>
                                 <div className="date-display">

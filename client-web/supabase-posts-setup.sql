@@ -18,7 +18,7 @@ CREATE TABLE posts (
   "imageStoragePaths" TEXT[] DEFAULT '{}',
   "sellerId" UUID NOT NULL,
   "sellerName" TEXT,
-  status TEXT DEFAULT 'pending',
+  status TEXT DEFAULT 'active',
   "postType" TEXT DEFAULT 'sale',
   "saleType" TEXT,
   price NUMERIC,

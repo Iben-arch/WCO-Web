@@ -67,7 +67,7 @@ namespace ServerApi.Controllers
                     ["imageStoragePaths"] = imageStoragePaths,
                     ["sellerId"] = userId,
                     ["sellerName"] = userName,
-                    ["status"] = "pending",
+                    ["status"] = "active",
                     ["postType"] = request.PostType ?? "sale",
                     ["createdAt"] = DateTime.UtcNow,
                     ["updatedAt"] = DateTime.UtcNow

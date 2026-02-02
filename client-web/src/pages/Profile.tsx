@@ -935,8 +935,14 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
                     </div>
                     <div className="d-flex justify-content-between align-items-center">
                       <small className="text-muted">
-                        สถานะ: <span className={`badge ${post.status === 'active' ? 'bg-success' : 'bg-secondary'}`}>
-                          {post.status === 'active' ? 'เปิดขาย' : 'ปิดขาย'}
+                        สถานะ: <span className={`badge ${
+                          post.status === 'active' ? 'bg-success' :
+                          post.status === 'pending' ? 'bg-warning' :
+                          post.status === 'sold' ? 'bg-info' : 'bg-secondary'
+                        }`}>
+                          {post.status === 'active' ? 'เปิดขาย' :
+                           post.status === 'pending' ? 'รอการชำระเงิน' :
+                           post.status === 'sold' ? 'ขายแล้ว' : 'ปิดขาย'}
                         </span>
                       </small>
                       <small className="text-muted">
