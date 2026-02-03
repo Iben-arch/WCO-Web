@@ -78,15 +78,20 @@ export interface Post {
 export type SortBy = 'newest' | 'priceAsc' | 'priceDesc';
 
 // Category Types
-export type Category = 
-  | 'Pokemon'
+export type Category =
   | 'Yu-Gi-Oh!'
-  | 'Magic: The Gathering'
-  | 'Dragon Ball Super'
-  | 'Card Fight!! Vanguard'
-  | 'One Piece'
-  | 'Naruto'
-  | 'Digimon'
+  | 'Pokemon Card Game'
+  | 'Cardfight!! Vanguard'
+  | 'Battle Spirits'
+  | 'Digimon Card Game'
+  | 'One Piece Card Game'
+  | 'Shadowverse Evolve'
+  | 'Weiß Schwarz'
+  | 'Rebirth for you'
+  | 'hololive card game'
+  | 'union arena'
+  | 'wixross'
+  | 'gundam card game'
   | 'อื่นๆ';
 
 // Cart Types

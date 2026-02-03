@@ -61,14 +61,19 @@ const ImagePreviewThumbnail: React.FC<{ file: File; index: number; onClick: () =
 };
 
 const categories: Category[] = [
-  'Pokemon',
   'Yu-Gi-Oh!',
-  'Magic: The Gathering',
-  'Dragon Ball Super',
-  'Card Fight!! Vanguard',
-  'One Piece',
-  'Naruto',
-  'Digimon',
+  'Pokemon Card Game',
+  'Cardfight!! Vanguard',
+  'Battle Spirits',
+  'Digimon Card Game',
+  'One Piece Card Game',
+  'Shadowverse Evolve',
+  'Weiß Schwarz',
+  'Rebirth for you',
+  'hololive card game',
+  'union arena',
+  'wixross',
+  'gundam card game',
   'อื่นๆ'
 ];
 
@@ -174,12 +179,19 @@ const CreatePost: React.FC = () => {
 
   const normalizeCardType = (category: string): string => {
     const map: { [key: string]: string } = {
-      'Pokemon': 'pokemon',
-      'Magic: The Gathering': 'mtg',
       'Yu-Gi-Oh!': 'yugioh',
-      'Card Fight!! Vanguard': 'vanguard',
-      'One Piece': 'onepiece',
-      'Digimon': 'digimon'
+      'Pokemon Card Game': 'pokemon',
+      'Cardfight!! Vanguard': 'vanguard',
+      'Battle Spirits': 'battlespirits',
+      'Digimon Card Game': 'digimon',
+      'One Piece Card Game': 'onepiece',
+      'Shadowverse Evolve': 'shadowverse',
+      'Weiß Schwarz': 'weiss schwarz',
+      'Rebirth for you': 'rebirthforyou',
+      'hololive card game': 'hololive',
+      'union arena': 'unionarena',
+      'wixross': 'wixross',
+      'gundam card game': 'gundam'
     };
     return map[category] || '';
   };

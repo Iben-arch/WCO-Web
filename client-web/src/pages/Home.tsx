@@ -18,14 +18,19 @@ import {
 import { Post, SortBy, Category, FirestoreTimestamp } from '../types';
 
 const categories: Category[] = [
-  'Pokemon',
   'Yu-Gi-Oh!',
-  'Magic: The Gathering',
-  'Dragon Ball Super',
-  'Card Fight!! Vanguard',
-  'One Piece',
-  'Naruto',
-  'Digimon',
+  'Pokemon Card Game',
+  'Cardfight!! Vanguard',
+  'Battle Spirits',
+  'Digimon Card Game',
+  'One Piece Card Game',
+  'Shadowverse Evolve',
+  'Weiß Schwarz',
+  'Rebirth for you',
+  'hololive card game',
+  'union arena',
+  'wixross',
+  'gundam card game',
   'อื่นๆ'
 ];
 
@@ -369,7 +374,11 @@ const Home: React.FC = () => {
                   >
                     <span className="category-icon">🃏</span>
                     <span className="category-name">{cat}</span>
-                    {category === cat && <span className="category-check">✓</span>}
+                    {category === cat ? (
+                      <span className="category-check">✓</span>
+                    ) : (
+                      <span className="sidebar-category-arrow" aria-hidden>›</span>
+                    )}
                   </button>
                 ))}
               </div>
