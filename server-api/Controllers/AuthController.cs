@@ -354,6 +354,71 @@ namespace ServerApi.Controllers
         }
 
         /// <summary>
+        /// ดึงข้อมูลผู้ขายตาม sellerId (สำหรับหน้า SellerProfile/ประวัติผู้ขาย)
+        /// </summary>
+        [HttpGet("seller/{sellerId}")]
+        public async Task<IActionResult> GetSeller(string sellerId)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(sellerId))
+                {
+                    return BadRequest(new { success = false, error = "ไม่พบรหัสผู้ขาย" });
+                }
+
+                // ลองดึงจาก users table ก่อน (custom auth - ใช้ uid)
+                var user = await _supabaseService.GetAsync("users", sellerId, useServiceRole: true, idField: "uid");
+
+                // ถ้าไม่เจอใน users ลอง profiles table (Supabase auth)
+                if (user == null)
+                {
+                    user = await _supabaseService.GetAsync("profiles", sellerId, useServiceRole: true, idField: "id");
+                }
+
+                if (user == null)
+                {
+                    return NotFound(new { success = false, error = "ไม่พบข้อมูลผู้ขาย" });
+                }
+
+                // ลบข้อมูลที่ไม่อยากให้ public เห็น
+                if (user.ContainsKey("passwordhash"))
+                    user.Remove("passwordhash");
+
+                // สร้าง response ในรูปแบบที่ frontend ต้องการ (Seller type)
+                // users: uid, displayName, photoURL, accountname | profiles: id, username, avatar_url
+                var sellerData = new Dictionary<string, object>
+                {
+                    ["id"] = user.ContainsKey("uid") ? user["uid"]?.ToString() ?? sellerId
+                        : (user.ContainsKey("id") ? user["id"]?.ToString() ?? sellerId : sellerId),
+                    ["displayName"] = user.ContainsKey("displayName") && user["displayName"] != null
+                        ? user["displayName"].ToString()!
+                        : (user.ContainsKey("accountname") && user["accountname"] != null
+                            ? user["accountname"].ToString()!
+                            : (user.ContainsKey("username") && user["username"] != null ? user["username"].ToString()! : "ผู้ขาย")),
+                    ["profileImage"] = user.ContainsKey("photoURL") && user["photoURL"] != null
+                        ? user["photoURL"].ToString()!
+                        : (user.ContainsKey("avatar_url") && user["avatar_url"] != null ? user["avatar_url"].ToString()! : ""),
+                    ["phone"] = user.ContainsKey("phone") && user["phone"] != null ? user["phone"].ToString()! : "",
+                    ["createdAt"] = user.ContainsKey("createdAt") ? user["createdAt"] : (user.ContainsKey("created_at") ? user["created_at"] : DateTime.UtcNow)
+                };
+
+                if (user.ContainsKey("email") && user["email"] != null)
+                    sellerData["email"] = user["email"];
+
+                return Ok(sellerData);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching seller profile");
+                return StatusCode(500, new
+                {
+                    success = false,
+                    error = "เกิดข้อผิดพลาดในการดึงข้อมูลผู้ขาย"
+                });
+            }
+        }
+
+        /// <summary>
         /// ตรวจสอบว่า user ถูกใจ post หรือไม่ (สำหรับ PostDetail)
         /// </summary>
         [HttpGet("check-like/{postId}")]

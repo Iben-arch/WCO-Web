@@ -273,6 +273,44 @@ namespace ServerApi.Controllers
         }
 
         /// <summary>
+        /// ดึงโพสต์ทั้งหมดของผู้ขายตาม sellerId (สำหรับหน้า SellerProfile/ประวัติผู้ขาย)
+        /// </summary>
+        [HttpGet("seller/{sellerId}")]
+        public async Task<IActionResult> GetPostsBySeller(string sellerId)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(sellerId))
+                {
+                    return BadRequest(new { success = false, error = "ไม่พบรหัสผู้ขาย", posts = Array.Empty<object>() });
+                }
+
+                var postsData = await _supabaseService.QueryAsync("posts", "sellerId", sellerId, useServiceRole: true);
+
+                if (postsData == null || postsData.Count == 0)
+                {
+                    return Ok(new { posts = new List<object>(), pagination = new { total = 0 } });
+                }
+
+                return Ok(new
+                {
+                    posts = postsData,
+                    pagination = new { total = postsData.Count }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching seller posts");
+                return StatusCode(500, new
+                {
+                    success = false,
+                    error = "เกิดข้อผิดพลาดในการดึงข้อมูลโพสต์ของผู้ขาย",
+                    posts = Array.Empty<object>()
+                });
+            }
+        }
+
+        /// <summary>
         /// อ่าน Post ตาม ID
         /// </summary>
         [HttpGet("{id}")]

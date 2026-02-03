@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Card, Button, Alert, Spinner, Badge } from 'react-bootstrap';
+import { Container, Button, Alert, Spinner } from 'react-bootstrap';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import axios from '../utils/axiosInterceptor';
 import { toast } from 'react-toastify';
 import '../styles/seller-profile.css';
 import { Seller, Post, FirestoreTimestamp } from '../types';
+
+type PostFilter = 'all' | 'active' | 'sold';
 
 const SellerProfile: React.FC = () => {
   const { sellerId } = useParams<{ sellerId: string }>();
@@ -15,40 +17,51 @@ const SellerProfile: React.FC = () => {
   const [sellerPosts, setSellerPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [postFilter, setPostFilter] = useState<PostFilter>('all');
 
   useEffect(() => {
-    fetchSellerData();
+    if (sellerId) {
+      fetchSellerData();
+    } else {
+      setError('ไม่พบรหัสผู้ขาย');
+      setLoading(false);
+    }
   }, [sellerId]);
 
   const fetchSellerData = async (): Promise<void> => {
+    if (!sellerId) return;
     try {
       setLoading(true);
+      setError(null);
       const [sellerResponse, postsResponse] = await Promise.all([
         axios.get(`/api/auth/seller/${sellerId}`),
         axios.get(`/api/posts/seller/${sellerId}`)
       ]);
-      
+
       setSeller(sellerResponse.data);
       setSellerPosts(postsResponse.data.posts || []);
-    } catch (error) {
-      console.error('Error fetching seller data:', error);
-      setError('ไม่พบข้อมูลผู้ขาย');
+    } catch (err: unknown) {
+      console.error('Error fetching seller data:', err);
+      const errMsg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      setError(errMsg || 'ไม่พบข้อมูลผู้ขาย');
     } finally {
       setLoading(false);
     }
   };
 
+  const filteredPosts = sellerPosts.filter((post) => {
+    if (postFilter === 'all') return true;
+    if (postFilter === 'active') return post.status === 'active';
+    if (postFilter === 'sold') return post.status === 'sold';
+    return true;
+  });
+
   const formatPrice = (price: number | undefined): string => {
-    // Handle invalid or missing price
     if (!price || isNaN(price) || price === null || price === undefined) {
       return 'ราคาไม่ระบุ';
     }
-    
     const numPrice = parseFloat(price.toString());
-    if (isNaN(numPrice) || numPrice <= 0) {
-      return 'ราคาไม่ระบุ';
-    }
-    
+    if (isNaN(numPrice) || numPrice <= 0) return 'ราคาไม่ระบุ';
     return new Intl.NumberFormat('th-TH', {
       style: 'currency',
       currency: 'THB'
@@ -56,32 +69,21 @@ const SellerProfile: React.FC = () => {
   };
 
   const formatDate = (dateString: Date | FirestoreTimestamp | string | undefined): string => {
-    if (!dateString) {
-      return 'วันที่ไม่ระบุ';
-    }
-    
+    if (!dateString) return 'วันที่ไม่ระบุ';
     try {
       let date: Date;
-      
-      // Handle Firestore timestamp format
       if (typeof dateString === 'object' && 'seconds' in dateString) {
         date = new Date(dateString.seconds * 1000);
       } else {
         date = new Date(dateString);
       }
-      
-      // Check if date is valid
-      if (isNaN(date.getTime())) {
-        return 'วันที่ไม่ระบุ';
-      }
-      
+      if (isNaN(date.getTime())) return 'วันที่ไม่ระบุ';
       return date.toLocaleDateString('th-TH', {
         year: 'numeric',
-        month: 'long',
+        month: 'short',
         day: 'numeric'
       });
-    } catch (error) {
-      console.error('Error formatting date:', error);
+    } catch {
       return 'วันที่ไม่ระบุ';
     }
   };
@@ -93,10 +95,8 @@ const SellerProfile: React.FC = () => {
   if (loading) {
     return (
       <div className="seller-profile-loading">
-        <div className="loading-container">
-          <Spinner animation="border" variant="primary" />
-          <p className="mt-3 text-muted">กำลังโหลดข้อมูลผู้ขาย...</p>
-        </div>
+        <Spinner animation="border" variant="primary" />
+        <p className="mt-3 text-muted" style={{ fontSize: '0.875rem' }}>กำลังโหลดข้อมูลผู้ขาย...</p>
       </div>
     );
   }
@@ -105,208 +105,166 @@ const SellerProfile: React.FC = () => {
     return (
       <div className="seller-profile-error">
         <Container>
-          <div className="error-container">
-            <Alert variant="danger" className="error-alert">
-              <div className="error-icon">❌</div>
-              <h4>ไม่พบข้อมูลผู้ขาย</h4>
-              <p>{error || 'ผู้ขายนี้อาจถูกลบหรือไม่พบในระบบ'}</p>
+          <div className="text-center py-5">
+            <Alert variant="light" className="d-inline-block px-4 py-4 rounded-3" style={{ border: '1px solid var(--gray-200)', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }}>
+              <div className="mb-3" style={{ fontSize: '2.5rem' }}>👤</div>
+              <h5 className="mb-2">ไม่พบข้อมูลผู้ขาย</h5>
+              <p className="text-muted mb-3" style={{ fontSize: '0.875rem' }}>{error || 'ผู้ขายนี้อาจถูกลบหรือไม่พบในระบบ'}</p>
+              <div className="d-flex gap-2 justify-content-center flex-wrap">
+                <Button as={Link as any} to="/" variant="primary" size="sm">🏠 กลับหน้าแรก</Button>
+                <Button variant="outline-secondary" size="sm" onClick={() => window.history.back()}>← กลับ</Button>
+              </div>
             </Alert>
-            <div className="error-actions">
-              <Button as={Link as any} to="/" className="btn-tcg-primary btn-tcg-lg">
-                🏠 กลับหน้าแรก
-              </Button>
-              <Button className="btn-tcg-outline btn-tcg-lg" onClick={() => window.history.back()}>
-                ← กลับ
-              </Button>
-            </div>
           </div>
         </Container>
       </div>
     );
   }
 
+  const activeCount = sellerPosts.filter((p) => p.status === 'active').length;
+  const soldCount = sellerPosts.filter((p) => p.status === 'sold').length;
+
   return (
     <div className="seller-profile-container">
-      <Container fluid className="px-0">
-        {/* Hero Section */}
-        <div className="seller-hero">
+      {/* Mercari-style: Simple white header with seller info */}
+      <div className="seller-mercari-header">
+        <Container>
+          <div className="seller-mercari-breadcrumb">
+            <Link to="/">หน้าแรก</Link>
+            <span className="mx-1">›</span>
+            <span>ประวัติผู้ขาย</span>
+          </div>
+          <div className="seller-mercari-info">
+            <div className="seller-mercari-avatar-wrap">
+              {seller.profileImage ? (
+                <img
+                  src={seller.profileImage}
+                  alt={seller.displayName}
+                  className="seller-mercari-avatar"
+                />
+              ) : (
+                <div className="seller-mercari-avatar-placeholder">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 12c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5z" />
+                    <path d="M20.59 22c0-4.87-3.86-9-8.59-9S3.41 17.13 3.41 22" />
+                  </svg>
+                </div>
+              )}
+            </div>
+            <div className="seller-mercari-details">
+              <h2 className="seller-mercari-name">{seller.displayName}</h2>
+              <p className="seller-mercari-meta">เป็นสมาชิกเมื่อ {formatDate(seller.createdAt)}</p>
+              <div className="seller-mercari-stats">
+                <span className="seller-mercari-stat"><strong>{sellerPosts.length}</strong> โพสต์</span>
+                <span className="seller-mercari-stat"><strong>{activeCount}</strong> กำลังขาย</span>
+                <span className="seller-mercari-stat"><strong>{soldCount}</strong> ขายแล้ว</span>
+              </div>
+              {seller.phone && (
+                <div className="seller-mercari-contact">
+                  <span className="seller-mercari-contact-label">📞 โทร:</span>
+                  <span className="seller-mercari-contact-value">{seller.phone}</span>
+                </div>
+              )}
+              {currentUser && String(currentUser.id) !== String(sellerId) && (
+                <button type="button" className="seller-mercari-chat-btn" onClick={handleStartChat}>
+                  💬 เริ่มแชท
+                </button>
+              )}
+            </div>
+          </div>
+        </Container>
+      </div>
+
+      {/* Page title - "Items listed by [name]" */}
+      <div className="seller-mercari-title">
+        <Container>
+          <h1>สินค้าที่ {seller.displayName} ขาย</h1>
+        </Container>
+      </div>
+
+      {/* Filter tabs */}
+      {sellerPosts.length > 0 && (
+        <div className="seller-mercari-tabs">
           <Container>
-            <div className="seller-breadcrumb">
-              <Link to="/" className="breadcrumb-link">🏠 หน้าแรก</Link>
-              <span className="breadcrumb-separator">›</span>
-              <span className="breadcrumb-current">ประวัติผู้ขาย</span>
+            <div className="d-flex gap-2 flex-wrap">
+              <button
+                type="button"
+                className={`seller-mercari-tab ${postFilter === 'all' ? 'active' : ''}`}
+                onClick={() => setPostFilter('all')}
+              >
+                ทั้งหมด ({sellerPosts.length})
+              </button>
+              <button
+                type="button"
+                className={`seller-mercari-tab ${postFilter === 'active' ? 'active' : ''}`}
+                onClick={() => setPostFilter('active')}
+              >
+                กำลังขาย ({activeCount})
+              </button>
+              <button
+                type="button"
+                className={`seller-mercari-tab ${postFilter === 'sold' ? 'active' : ''}`}
+                onClick={() => setPostFilter('sold')}
+              >
+                ขายแล้ว ({soldCount})
+              </button>
             </div>
           </Container>
         </div>
+      )}
 
-        <Container className="py-4">
-          <Row>
-            {/* Left Column - Seller Info */}
-            <Col lg={4}>
-              {/* Seller Profile Card */}
-              <Card className="seller-profile-card mb-4">
-                <Card.Body className="text-center">
-                  <div className="seller-avatar-container mb-3">
-                    {seller.profileImage ? (
-                      <img
-                        src={seller.profileImage}
-                        alt={seller.displayName}
-                        className="seller-avatar"
-                      />
+      {/* Product grid */}
+      <div className="seller-mercari-content">
+        <Container>
+          {filteredPosts.length === 0 ? (
+            <div className="seller-mercari-empty">
+              <div className="seller-mercari-empty-icon">🛍️</div>
+              <h3>{sellerPosts.length === 0 ? 'ยังไม่มีโพสต์' : 'ไม่พบรายการที่ตรงกับตัวกรอง'}</h3>
+              <p>{sellerPosts.length === 0 ? 'ผู้ขายยังไม่ได้โพสต์สินค้าใดๆ' : 'ลองเลือกตัวกรองอื่น'}</p>
+            </div>
+          ) : (
+            <div className="seller-mercari-grid">
+              {filteredPosts.map((post) => (
+                <div
+                  key={post.id}
+                  className="seller-mercari-card"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => navigate(`/post/${post.id}`)}
+                  onKeyDown={(e) => e.key === 'Enter' && navigate(`/post/${post.id}`)}
+                >
+                  <div className="seller-mercari-card-image">
+                    {post.images && post.images.length > 0 ? (
+                      <img src={post.images[0]} alt={post.title} />
                     ) : (
-                      <div className="seller-avatar-placeholder">
-                        <div className="seller-avatar-placeholder-content">
-                          <div className="seller-avatar-placeholder-icon">
-                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                              <path d="M12 12C14.7614 12 17 9.76142 17 7C17 4.23858 14.7614 2 12 2C9.23858 2 7 4.23858 7 7C7 9.76142 9.23858 12 12 12Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                              <path d="M20.59 22C20.59 18.13 16.74 15 12 15C7.26 15 3.41 18.13 3.41 22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                            </svg>
-                          </div>
-                          <div className="seller-avatar-placeholder-text">Profile</div>
-                        </div>
-                      </div>
+                      <div className="seller-mercari-card-image-placeholder">🃏</div>
                     )}
                   </div>
-                  <h4 className="seller-name mb-2">{seller.displayName}</h4>
-                  <Badge className="seller-status-badge mb-3">✅ ผู้ขายที่เชื่อถือได้</Badge>
-                  
-                  <div className="seller-stats mb-3">
-                    <div className="stat-item">
-                      <div className="stat-number">{sellerPosts.length}</div>
-                      <div className="stat-label">โพสต์ทั้งหมด</div>
+                  <div className="seller-mercari-card-body">
+                    <div className="seller-mercari-card-price">
+                      {post.postType === 'auction'
+                        ? formatPrice(post.startingBid)
+                        : formatPrice(post.price)}
+                      {post.postType === 'auction' && (
+                        <span className="seller-mercari-status active">ประมูล</span>
+                      )}
+                      {post.status === 'sold' && (
+                        <span className="seller-mercari-status sold">ขายแล้ว</span>
+                      )}
                     </div>
-                    <div className="stat-item">
-                      <div className="stat-number">{sellerPosts.filter(post => post.status === 'active').length}</div>
-                      <div className="stat-label">กำลังขาย</div>
-                    </div>
-                    <div className="stat-item">
-                      <div className="stat-number">{sellerPosts.filter(post => post.status === 'sold').length}</div>
-                      <div className="stat-label">ขายแล้ว</div>
+                    <p className="seller-mercari-card-title">{post.title}</p>
+                    <div className="seller-mercari-card-meta">
+                      {post.category} · {formatDate(post.createdAt)}
                     </div>
                   </div>
-
-                  {currentUser && currentUser.id !== sellerId && (
-                    <Button
-                      className="btn-tcg-primary btn-tcg-lg w-100 mb-3"
-                      onClick={handleStartChat}
-                    >
-                      💬 เริ่มแชท
-                    </Button>
-                  )}
-
-                  <div className="seller-join-date">
-                    <small className="text-muted">
-                      เป็นสมาชิกเมื่อ {formatDate(seller.createdAt)}
-                    </small>
-                  </div>
-                </Card.Body>
-              </Card>
-
-              {/* Seller Contact Info */}
-              {seller.phone && (
-                <Card className="seller-contact-card mb-4">
-                  <Card.Body>
-                    <h6>📞 ข้อมูลติดต่อ</h6>
-                    <div className="contact-info">
-                      <div className="contact-item">
-                        <span className="contact-label">โทรศัพท์:</span>
-                        <span className="contact-value">{seller.phone}</span>
-                      </div>
-                    </div>
-                  </Card.Body>
-                </Card>
-              )}
-            </Col>
-
-            {/* Right Column - Seller Posts */}
-            <Col lg={8}>
-              <Card className="seller-posts-card">
-                <Card.Header>
-                  <h5 className="mb-0">🛍️ สินค้าของผู้ขาย</h5>
-                </Card.Header>
-                <Card.Body>
-                  {sellerPosts.length === 0 ? (
-                    <div className="text-center py-4">
-                      <h5>ยังไม่มีโพสต์</h5>
-                      <p className="text-muted">ผู้ขายยังไม่ได้โพสต์สินค้าใดๆ</p>
-                    </div>
-                  ) : (
-                    <Row>
-                      {sellerPosts.map((post) => (
-                        <Col key={post.id} md={6} lg={4} className="mb-4">
-                          <Card 
-                            className="trading-card"
-                            style={{ cursor: 'pointer' }}
-                            onClick={() => navigate(`/post/${post.id}`)}
-                          >
-                            <div style={{ height: '200px', overflow: 'hidden' }}>
-                              {post.images && post.images.length > 0 ? (
-                                <Card.Img
-                                  variant="top"
-                                  src={post.images[0]}
-                                  style={{ height: '100%', objectFit: 'cover' }}
-                                />
-                              ) : (
-                                <div className="card-image-placeholder d-flex flex-column align-items-center justify-content-center" style={{ height: '100%' }}>
-                                  <div className="placeholder-icon">
-                                    🃏
-                                  </div>
-                                  <div className="placeholder-text">
-                                    การ์ดเกม
-                                  </div>
-                                  <div className="placeholder-subtext">
-                                    ไม่มีรูปภาพ
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                            <Card.Body>
-                              <Card.Title className="h6">{post.title}</Card.Title>
-                              <div className="card-price-section mb-3">
-                                <div className="price-display">
-                                  {post.postType === 'auction' 
-                                    ? `🎯 เริ่มต้น ${formatPrice(post.startingBid)}`
-                                    : `💰 ${formatPrice(post.price)}`
-                                  }
-                                </div>
-                                <div className="category-display">
-                                  <span className="category-badge">{post.category}</span>
-                                </div>
-                              </div>
-                              
-                              <div className="card-meta-section">
-                                <div className="status-display mb-2">
-                                  <span className={`status-badge ${
-                                    post.status === 'active' ? 'status-active' :
-                                    post.status === 'pending' ? 'status-pending' :
-                                    post.status === 'sold' ? 'status-sold' : 'status-inactive'
-                                  }`}>
-                                    {post.status === 'active' ? '🟢 เปิดขาย' :
-                                     post.status === 'pending' ? '🟡 รอการชำระเงิน' :
-                                     post.status === 'sold' ? '🔵 ขายแล้ว' : '🔴 ปิดขาย'}
-                                  </span>
-                                </div>
-                                <div className="date-display">
-                                  <small className="text-muted">
-                                    📅 {formatDate(post.createdAt)}
-                                  </small>
-                                </div>
-                              </div>
-                            </Card.Body>
-                          </Card>
-                        </Col>
-                      ))}
-                    </Row>
-                  )}
-                </Card.Body>
-              </Card>
-            </Col>
-          </Row>
+                </div>
+              ))}
+            </div>
+          )}
         </Container>
-      </Container>
+      </div>
     </div>
   );
 };
 
 export default SellerProfile;
-
