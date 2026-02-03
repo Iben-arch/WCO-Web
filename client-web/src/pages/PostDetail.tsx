@@ -34,6 +34,7 @@ const PostDetail: React.FC = () => {
   const [loadingBids, setLoadingBids] = useState<boolean>(false);
   const [showBidsTable, setShowBidsTable] = useState<boolean>(false);
   const [individualCards, setIndividualCards] = useState<DetectedCard[]>([]);
+  const [showImageLightbox, setShowImageLightbox] = useState<boolean>(false);
 
   useEffect(() => {
     fetchPost();
@@ -49,6 +50,20 @@ const PostDetail: React.FC = () => {
       return () => clearInterval(interval);
     }
   }, [post, id]);
+
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowImageLightbox(false);
+    };
+    if (showImageLightbox) {
+      document.addEventListener('keydown', handleEscape);
+      document.body.style.overflow = 'hidden';
+    }
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+      document.body.style.overflow = '';
+    };
+  }, [showImageLightbox]);
 
 
   const fetchPost = async (): Promise<void> => {
@@ -388,114 +403,132 @@ const PostDetail: React.FC = () => {
   const isSold = post.status === 'sold';
 
   return (
-    <div className="post-detail-container">
+    <div className="post-detail-container mercari-style">
       <Container fluid className="px-0">
-        {/* Hero Section */}
-        <div className="post-hero">
+        {/* Top bar - Mercari style */}
+        <div className="mercari-top">
           <Container>
-            <div className="post-breadcrumb">
-              <Link to="/" className="breadcrumb-link">🏠 หน้าแรก</Link>
-              <span className="breadcrumb-separator">›</span>
-              <span className="breadcrumb-current">{post.title}</span>
+            <div className="mercari-breadcrumb">
+              <Link to="/">หน้าแรก</Link>
+              <span className="sep">›</span>
+              <span className="current" title={post.title}>{post.title}</span>
             </div>
           </Container>
         </div>
 
-        <Container className="py-4">
+        <Container className="mercari-main">
           <Row>
-            {/* Left Column - Images and Details */}
-            <Col lg={8}>
+            {/* Left - Image gallery + Item name + Description (Mercari layout) */}
+            <Col lg={7} className="mercari-left">
               {/* Image Gallery */}
               {post.images && post.images.length > 0 && (
-                <Card className="post-image-card mb-4">
-                  <div className="image-gallery-container">
-                    <div className="main-image-container">
-                      <img
-                        src={post.images[currentImageIndex]}
-                        alt={`${post.title} ${currentImageIndex + 1}`}
-                        className="main-image"
-                      />
-                      {post.images.length > 1 && (
-                        <>
-                          <button 
-                            className="image-nav-btn prev-btn"
-                            onClick={prevImage}
-                          >
-                            ‹
-                          </button>
-                          <button 
-                            className="image-nav-btn next-btn"
-                            onClick={nextImage}
-                          >
-                            ›
-                          </button>
-                        </>
-                      )}
-                      <div className="image-counter">
-                        {currentImageIndex + 1} / {post.images.length}
-                      </div>
-                    </div>
-                    
+                <div className="mercari-gallery">
+                  <div
+                    className="mercari-main-image-wrap mercari-main-image-clickable"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setShowImageLightbox(true)}
+                    onKeyDown={(e) => e.key === 'Enter' && setShowImageLightbox(true)}
+                    aria-label="คลิกเพื่อดูภาพขยาย"
+                  >
+                    <img
+                      src={post.images[currentImageIndex]}
+                      alt={`${post.title} ${currentImageIndex + 1}`}
+                    />
+                    <span className="mercari-zoom-hint">🔍 คลิกดูภาพขยาย</span>
                     {post.images.length > 1 && (
-                      <div className="thumbnail-container">
-                        {post.images.map((image, index) => (
-                          <img
-                            key={index}
-                            src={image}
-                            alt={`${post.title} ${index + 1}`}
-                            className={`thumbnail ${index === currentImageIndex ? 'active' : ''}`}
-                            onClick={() => setCurrentImageIndex(index)}
-                          />
-                        ))}
-                      </div>
+                      <>
+                        <button type="button" className="image-nav-btn prev-btn" onClick={(e) => { e.stopPropagation(); prevImage(); }} aria-label="รูปก่อนหน้า">‹</button>
+                        <button type="button" className="image-nav-btn next-btn" onClick={(e) => { e.stopPropagation(); nextImage(); }} aria-label="รูปถัดไป">›</button>
+                      </>
                     )}
                   </div>
-                </Card>
-              )}
-
-              {/* Post Details */}
-              <Card className="post-details-card mb-4">
-                <Card.Body>
-                  <div className="post-header">
-                    <div className="post-title-section">
-                      <h1 className="post-title">{post.title}</h1>
-                      <div className="post-meta">
-                        <div className="post-badges">
-                          {isSold ? (
-                            <Badge className="status-badge sold-badge">✅ ขายแล้ว</Badge>
-                          ) : post.postType === 'auction' ? (
-                            <Badge className="status-badge auction-badge">🔨 ประมูล</Badge>
-                          ) : (
-                            <Badge className="status-badge sale-badge">💰 ขาย</Badge>
-                          )}
-                          <Badge className="category-badge">{post.category}</Badge>
-                        </div>
-                        <div className="post-date">
-                          📅 โพสต์เมื่อ {formatDate(post.createdAt)}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="post-description">
-                    <h5>📝 รายละเอียด</h5>
-                    <div className="description-content">
-                      {post.description ? (
-                        <p>{post.description}</p>
-                      ) : (
-                        <p className="text-muted">ไม่มีรายละเอียดเพิ่มเติม</p>
-                      )}
-                    </div>
-                  </div>
-
-                  {post.condition && (
-                    <div className="post-condition">
-                      <h6>🏷️ สภาพสินค้า</h6>
-                      <Badge className="condition-badge">{post.condition}</Badge>
+                  {post.images.length > 1 && (
+                    <div className="mercari-thumbs">
+                      {post.images.map((image, index) => (
+                        <button
+                          key={index}
+                          type="button"
+                          className={`thumb ${index === currentImageIndex ? 'active' : ''}`}
+                          onClick={() => setCurrentImageIndex(index)}
+                        >
+                          <img src={image} alt="" />
+                        </button>
+                      ))}
                     </div>
                   )}
-                </Card.Body>
-              </Card>
+                </div>
+              )}
+
+              <h1 className="mercari-item-name">{post.title}</h1>
+              <div className="mercari-meta">
+                {isSold ? (
+                  <Badge bg="secondary">ขายแล้ว</Badge>
+                ) : post.postType === 'auction' ? (
+                  <Badge bg="info">ประมูล</Badge>
+                ) : (
+                  <Badge bg="success">ขาย</Badge>
+                )}
+                <Badge bg="light" text="dark">{post.category}</Badge>
+                <span>โพสต์เมื่อ {formatDate(post.createdAt)}</span>
+              </div>
+
+              <div className="mercari-description-block">
+                <h6>รายละเอียดสินค้า</h6>
+                <div className="content">
+                  {post.description ? post.description : 'ไม่มีรายละเอียดเพิ่มเติม'}
+                </div>
+                {post.condition && (
+                  <p className="mt-2 mb-0">
+                    <strong>สภาพ:</strong> <Badge bg="light" text="dark">{post.condition}</Badge>
+                  </p>
+                )}
+              </div>
+
+              {/* Auction Bids - show on left below description */}
+              {post.postType === 'auction' && post.bidCount > 0 && (
+                <div className="mercari-description-block">
+                  <h6>รายการผู้ประมูล</h6>
+                  <Button
+                    variant="outline-primary"
+                    size="sm"
+                    onClick={() => setShowBidsTable(!showBidsTable)}
+                    className="mb-2"
+                  >
+                    {showBidsTable ? 'ซ่อนรายการ' : 'ดูรายการผู้ประมูล'}
+                  </Button>
+                  {showBidsTable && (
+                    <div className="bids-table-container mt-2">
+                      {loadingBids ? (
+                        <div className="text-center py-3">
+                          <Spinner size="sm" className="me-2" />
+                          กำลังโหลด...
+                        </div>
+                      ) : auctionBids.length > 0 ? (
+                        <div className="bids-list">
+                          {auctionBids.map((bid, index) => (
+                            <div key={bid.id} className={`bid-item ${index === 0 ? 'highest-bid' : ''}`}>
+                              <div className="bid-rank">
+                                <span className="rank-number">#{index + 1}</span>
+                              </div>
+                              <div className="bid-details">
+                                <div className="bidder-name">
+                                  {bid.bidderName}
+                                  {index === 0 && <span className="highest-badge">👑</span>}
+                                </div>
+                                <div className="bid-amount">{formatPrice(bid.bidAmount)}</div>
+                                <div className="bid-time">{formatDate(bid.createdAt)}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-2 text-muted small">ยังไม่มีผู้ประมูล</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Individual Cards Grid - Only show for individual sale posts */}
               {post.postType === 'sale' && post.saleType === 'individual' && (
@@ -506,335 +539,211 @@ const PostDetail: React.FC = () => {
               )}
             </Col>
 
-            {/* Right Column - Price and Actions */}
-            <Col lg={4}>
-              {/* Price Card */}
-              <Card className="price-card mb-4">
-                <Card.Body>
-                  <div className="price-section">
-                    {post.postType === 'auction' ? (
-                      <div className="auction-price-display">
-                        <div className="price-label">
-                          {post.saleType === 'deck' ? 'ราคาปัจจุบันเด็ค' : post.saleType === 'individual' ? 'ราคาปัจจุบันต่อใบ' : 'ราคาปัจจุบัน'}
-                        </div>
-                        <div className="price-value auction-price-value">
-                          {formatPrice(post.currentBid || post.startingBid)}
-                        </div>
-                        {post.saleType === 'deck' && post.cardCount && (
-                          <div className="auction-deck-details">
-                            <small className="text-muted">
-                              เด็ค {post.cardCount} ใบ
-                            </small>
-                          </div>
-                        )}
-                        {post.saleType === 'individual' && post.availableQuantity && (
-                          <div className="auction-quantity-details">
-                            <small className="text-muted">
-                              เหลือ {post.availableQuantity} ใบ
-                            </small>
-                          </div>
-                        )}
-                        {post.bidCount > 0 && (
-                          <div className="bid-info">
-                            <small className="text-muted">
-                              จาก {post.bidCount} ครั้งที่ประมูล
-                            </small>
-                          </div>
-                        )}
-                      </div>
-                    ) : post.postType === 'sale' && post.saleType === 'deck' ? (
-                      <div className="deck-price-display">
-                        <div className="price-label">ราคาเด็ค</div>
-                        <div className="price-value deck-price-value">
-                          {formatPrice(post.price)}
-                        </div>
-                        <div className="deck-details">
-                          <div className="deck-breakdown">
-                            <small className="text-muted">
-                              {post.cardCount} ใบ
-                            </small>
-                          </div>
-                        </div>
-                      </div>
-                    ) : post.postType === 'sale' && post.saleType === 'individual' ? (
-                      <div className="individual-price-display">
-                        <div className="price-label">ราคาต่อใบ</div>
-                        <div className="price-value individual-price-value">
-                          {formatPrice(post.individualPrice || post.price)}
-                        </div>
-                        {post.availableQuantity && (
-                          <div className="quantity-info">
-                            <small className="text-muted">
-                              เหลือ {post.availableQuantity} ใบ
-                            </small>
-                          </div>
-                        )}
-                      </div>
+            {/* Right - Sticky: Price + Actions + Seller (Mercari style) */}
+            <Col lg={5} className="mercari-right">
+              <div className="mercari-aside-card">
+                <div className="mercari-price-block">
+                  <div className="mercari-price-label">
+                    {post.postType === 'auction'
+                      ? (post.saleType === 'deck' ? 'ราคาปัจจุบัน (เด็ค)' : post.saleType === 'individual' ? 'ราคาปัจจุบัน (ต่อใบ)' : 'ราคาปัจจุบัน')
+                      : post.postType === 'sale' && post.saleType === 'deck'
+                        ? 'ราคาเด็ค'
+                        : post.postType === 'sale' && post.saleType === 'individual'
+                          ? 'ราคาต่อใบ'
+                          : 'ราคา'}
+                  </div>
+                  <div className="mercari-price-value">
+                    <span className="currency">฿</span>
+                    {post.postType === 'auction'
+                      ? (post.currentBid ?? post.startingBid ?? 0).toLocaleString('th-TH')
+                      : (post.postType === 'sale' && post.saleType === 'individual' ? (post.individualPrice ?? post.price ?? 0) : (post.price ?? 0)).toLocaleString('th-TH')}
+                  </div>
+                  {(post.postType === 'sale' && post.saleType === 'deck' && post.cardCount) && (
+                    <div className="mercari-extra-info">เด็ค {post.cardCount} ใบ</div>
+                  )}
+                  {(post.postType === 'sale' && post.saleType === 'individual' && post.availableQuantity) && (
+                    <div className="mercari-extra-info">เหลือ {post.availableQuantity} ใบ</div>
+                  )}
+                  {post.postType === 'auction' && post.bidCount > 0 && (
+                    <div className="mercari-extra-info">จาก {post.bidCount} ครั้งที่ประมูล</div>
+                  )}
+                </div>
+
+                {/* Auction info in sidebar */}
+                {post.postType === 'auction' && post.auctionEndDate && (
+                  <div className="mercari-auction-info">
+                    {convertToDate(post.auctionEndDate) > new Date() ? (
+                      <Badge bg="success" className="me-2">กำลังประมูล</Badge>
                     ) : (
-                      <>
-                        <div className="price-label">ราคา</div>
-                        <div className="price-value">{formatPrice(post.price)}</div>
-                      </>
+                      <Badge bg="danger">สิ้นสุดแล้ว</Badge>
+                    )}
+                    <div className="end-time">สิ้นสุด: {formatDate(post.auctionEndDate)}</div>
+                    {post.startingBid != null && (
+                      <div>ราคาเริ่มต้น: {formatPrice(post.startingBid)}</div>
+                    )}
+                    {post.buyNowPrice != null && (
+                      <div>ซื้อเลย: {formatPrice(post.buyNowPrice)}</div>
+                    )}
+                    {post.highestBidder === currentUser?.id && (
+                      <Badge bg="warning" className="mt-2">คุณเป็นผู้ประมูลสูงสุด</Badge>
                     )}
                   </div>
-                  
-                  {post.postType === 'auction' && post.auctionEndDate && (
-                    <div className="auction-info">
-                      <div className="auction-status">
-                        {post.auctionEndDate && convertToDate(post.auctionEndDate) > new Date() ? (
-                          <Badge bg="success" className="mb-2">🟢 กำลังประมูล</Badge>
-                        ) : (
-                          <Badge bg="danger" className="mb-2">🔴 สิ้นสุดแล้ว</Badge>
-                        )}
-                      </div>
-                      <div className="auction-end">
-                        ⏰ สิ้นสุดประมูล: {formatDate(post.auctionEndDate)}
-                      </div>
-                      {post.startingBid && (
-                        <div className="starting-bid">
-                          🎯 ราคาเริ่มต้น: {formatPrice(post.startingBid)}
-                        </div>
-                      )}
-                      {post.currentBid && post.currentBid > post.startingBid && (
-                        <div className="current-bid">
-                          💰 ราคาปัจจุบัน: {formatPrice(post.currentBid)}
-                        </div>
-                      )}
-                      {post.bidCount > 0 && (
-                        <div className="bid-count">
-                          📊 จำนวนครั้งที่ประมูล: {post.bidCount} ครั้ง
-                        </div>
-                      )}
-                      {post.buyNowPrice && (
-                        <div className="buy-now-price">
-                          🛒 ราคาซื้อเลย: {formatPrice(post.buyNowPrice)}
-                        </div>
-                      )}
-                      {post.highestBidder && post.highestBidder === currentUser?.id && (
-                        <div className="highest-bidder-notice">
-                          <Badge bg="warning">👑 คุณเป็นผู้ประมูลสูงสุด</Badge>
-                        </div>
-                      )}
-                      
-                      {/* Auction Bids Section */}
-                      {post.bidCount > 0 && (
-                        <div className="auction-bids-section mt-3">
-                          <Button
-                            variant="outline-primary"
-                            size="sm"
-                            onClick={() => setShowBidsTable(!showBidsTable)}
-                            className="w-100"
-                          >
-                            {showBidsTable ? '🔼 ซ่อนรายการผู้ประมูล' : '📋 ดูรายการผู้ประมูล'}
-                          </Button>
-                          
-                          {showBidsTable && (
-                            <div className="bids-table-container mt-3">
-                              {loadingBids ? (
-                                <div className="text-center py-3">
-                                  <Spinner size="sm" className="me-2" />
-                                  กำลังโหลดข้อมูลผู้ประมูล...
-                                </div>
-                              ) : auctionBids.length > 0 ? (
-                                <div className="bids-table">
-                                  <div className="bids-header">
-                                    <h6 className="mb-3">📊 รายการผู้ประมูล</h6>
-                                  </div>
-                                  <div className="bids-list">
-                                    {auctionBids.map((bid, index) => (
-                                      <div key={bid.id} className={`bid-item ${index === 0 ? 'highest-bid' : ''}`}>
-                                        <div className="bid-rank">
-                                          <span className="rank-number">#{index + 1}</span>
-                                        </div>
-                                        <div className="bid-details">
-                                          <div className="bidder-name">
-                                            {bid.bidderName}
-                                            {index === 0 && <span className="highest-badge">👑</span>}
-                                          </div>
-                                          <div className="bid-amount">
-                                            {formatPrice(bid.bidAmount)}
-                                          </div>
-                                          <div className="bid-time">
-                                            {formatDate(bid.createdAt)}
-                                          </div>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="text-center py-3 text-muted">
-                                  ยังไม่มีผู้ประมูล
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </Card.Body>
-              </Card>
+                )}
 
-              {/* Seller Info */}
-              <Card className="seller-card mb-4">
-                <Card.Body>
-                  <div className="seller-info">
-                    <h6>👤 ข้อมูลผู้ขาย</h6>
-                    <div className="seller-details">
-                      <div className="seller-name">{post.sellerName}</div>
-                      <Badge className="seller-status">✅ ผู้ขายที่เชื่อถือได้</Badge>
-                      <Button
-                        className="btn-tcg-outline btn-tcg-sm mt-2 w-100"
-                        onClick={() => navigate(`/seller/${post.sellerId}`)}
-                      >
-                        👤 ดูประวัติผู้ขาย
-                      </Button>
-                    </div>
-                  </div>
-                </Card.Body>
-              </Card>
-
-              {/* Action Buttons */}
-              <Card className="action-card">
-                <Card.Body>
+                <div className="mercari-actions-block">
                   {!currentUser ? (
-                    <div className="guest-actions">
-                      <Alert variant="info" className="login-prompt">
-                        <Link to="/login">🔐 เข้าสู่ระบบ</Link> เพื่อเริ่มการสนทนาและซื้อขาย
-                      </Alert>
-                    </div>
+                    <Alert variant="info" className="mb-0 small">
+                      <Link to="/login">เข้าสู่ระบบ</Link> เพื่อซื้อหรือติดต่อผู้ขาย
+                    </Alert>
                   ) : isOwner ? (
-                    <div className="owner-actions">
-                          {!isSold ? (
-                            <div className="owner-buttons">
-                              {post.postType === 'auction' ? (
-                                <>
-                                  <Button
-                                    className="btn-tcg-primary btn-tcg-lg w-100 mb-3"
-                                    onClick={() => setShowSoldModal(true)}
-                                  >
-                                    ✅ จบการประมูล
-                                  </Button>
-                                </>
-                              ) : (
-                                <Button
-                                  className="btn-tcg-primary btn-tcg-lg w-100 mb-3"
-                                  onClick={() => setShowSoldModal(true)}
-                                >
-                                  ✅ ขายแล้ว
-                                </Button>
-                              )}
-                              <Button
-                                as={Link as any}
-                                to="/my-posts"
-                                className="btn-tcg-outline btn-tcg-lg w-100"
-                              >
-                                ⚙️ จัดการโพสต์
-                              </Button>
-                            </div>
-                          ) : (
-                            <div className="sold-status">
-                              <Alert variant="success" className="text-center">
-                                <h6>✅ โพสต์นี้ถูกขายแล้ว</h6>
-                                <p className="mb-0">ขอบคุณที่ใช้บริการของเรา</p>
-                              </Alert>
-                              <Button
-                                as={Link as any}
-                                to="/my-posts"
-                                className="btn-tcg-outline btn-tcg-lg w-100 mt-3"
-                              >
-                                ⚙️ จัดการโพสต์อื่น
-                              </Button>
-                            </div>
-                          )}
-                    </div>
+                    <>
+                      {!isSold && (
+                        <button
+                          type="button"
+                          className="btn-mercari-primary"
+                          onClick={() => setShowSoldModal(true)}
+                        >
+                          {post.postType === 'auction' ? 'จบการประมูล' : 'ขายแล้ว'}
+                        </button>
+                      )}
+                      <Link to="/my-posts" className="btn-mercari-outline" style={{ textAlign: 'center', textDecoration: 'none' }}>
+                        จัดการโพสต์
+                      </Link>
+                      {isSold && (
+                        <div className="small text-success text-center py-2">โพสต์นี้ถูกขายแล้ว</div>
+                      )}
+                    </>
                   ) : (
-                    <div className="buyer-actions">
+                    <>
                       {!isSold ? (
-                        <div className="buyer-buttons">
-                          <Button
-                            className="btn-tcg-primary btn-tcg-lg w-100 mb-3"
+                        <>
+                          <button
+                            type="button"
+                            className="btn-mercari-primary"
                             onClick={handleStartChat}
                           >
-                            💬 เริ่มแชท
-                          </Button>
-                          <Button
-                            className="btn-tcg-outline btn-tcg-lg w-100 mb-3"
+                            ติดต่อผู้ขาย
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-mercari-outline"
                             onClick={handleLikePost}
                             disabled={likingPost}
                           >
-                            {likingPost ? (
-                              <Spinner size="sm" className="me-2" />
-                            ) : liked ? (
-                              '❤️ อยู่ในรายการโปรด'
-                            ) : (
-                              '🤍 เพิ่มรายการโปรด'
-                            )}
-                          </Button>
-                          <Button
-                            className="btn-tcg-outline btn-tcg-lg w-100 mb-3"
+                            {likingPost ? <Spinner size="sm" className="me-2" /> : null}
+                            {liked ? '❤️ อยู่ในรายการโปรด' : 'เพิ่มรายการโปรด'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-mercari-outline"
                             onClick={handleAddToCart}
                             disabled={addingToCart || isInCart(post.id)}
                           >
-                            {addingToCart ? (
-                              <>
-                                <Spinner size="sm" className="me-2" />
-                                กำลังเพิ่ม...
-                              </>
-                            ) : isInCart(post.id) ? (
-                              '🛒 อยู่ในตะกร้าแล้ว'
-                            ) : (
-                              '🛒 เพิ่มในตะกร้า'
-                            )}
-                          </Button>
+                            {addingToCart ? <Spinner size="sm" className="me-2" /> : null}
+                            {isInCart(post.id) ? 'อยู่ในตะกร้าแล้ว' : 'เพิ่มในตะกร้า'}
+                          </button>
                           {post.postType === 'auction' && (
-                            <div className="auction-actions">
-                              <Button
-                                className="btn-tcg-primary btn-tcg-lg w-100 mb-3"
+                            <>
+                              <button
+                                type="button"
+                                className="btn-mercari-primary"
                                 onClick={() => setShowBidModal(true)}
                               >
-                                🔨 ประมูล
-                              </Button>
+                                ประมูล
+                              </button>
                               {post.buyNowPrice && (
-                                <Button
-                                  className="btn-tcg-primary btn-tcg-lg w-100 mb-3"
+                                <button
+                                  type="button"
+                                  className="btn-mercari-primary"
                                   onClick={handleBuyNow}
                                 >
-                                  💳 ซื้อเลย {formatPrice(post.buyNowPrice)}
-                                </Button>
+                                  ซื้อเลย {formatPrice(post.buyNowPrice)}
+                                </button>
                               )}
-                              <Button
-                                className="btn-tcg-outline btn-tcg-lg w-100"
-                                onClick={handleStartChat}
-                              >
-                                💬 ติดต่อผู้ขาย
-                              </Button>
-                            </div>
+                            </>
                           )}
-                        </div>
+                        </>
                       ) : (
-                        <div className="sold-notice">
-                          <Alert variant="warning" className="text-center">
-                            <h6>⚠️ โพสต์นี้ถูกขายแล้ว</h6>
-                            <p className="mb-0">ดูโพสต์อื่นที่คล้ายกันได้ที่หน้าหลัก</p>
-                          </Alert>
-                          <Button
-                            as={Link as any}
-                            to="/"
-                            className="btn-tcg-primary btn-tcg-lg w-100"
-                          >
-                            🏠 ดูโพสต์อื่น
-                          </Button>
-                        </div>
+                        <Alert variant="warning" className="mb-0 small">โพสต์นี้ถูกขายแล้ว</Alert>
                       )}
-                    </div>
+                      {isSold && (
+                        <Link to="/" className="btn-mercari-primary" style={{ textAlign: 'center', textDecoration: 'none', display: 'block' }}>
+                          ดูโพสต์อื่น
+                        </Link>
+                      )}
+                    </>
                   )}
-                </Card.Body>
-              </Card>
+                </div>
+
+                <div className="mercari-seller-block">
+                  <div className="mercari-seller-avatar">👤</div>
+                  <div className="mercari-seller-info">
+                    <div className="mercari-seller-name">{post.sellerName}</div>
+                    <button
+                      type="button"
+                      className="btn btn-link p-0 mercari-seller-link"
+                      onClick={() => navigate(`/seller/${post.sellerId}`)}
+                    >
+                      ดูประวัติผู้ขาย
+                    </button>
+                  </div>
+                </div>
+              </div>
             </Col>
           </Row>
         </Container>
+
+        {/* Image Lightbox - ดูภาพขยาย */}
+        {showImageLightbox && post?.images && post.images.length > 0 && (
+          <div
+            className="image-lightbox-overlay"
+            onClick={() => setShowImageLightbox(false)}
+            role="dialog"
+            aria-modal="true"
+            aria-label="ภาพขยาย"
+          >
+            <button
+              type="button"
+              className="image-lightbox-close"
+              onClick={() => setShowImageLightbox(false)}
+              aria-label="ปิด"
+            >
+              ✕
+            </button>
+            <div
+              className="image-lightbox-content"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <img
+                src={post.images[currentImageIndex]}
+                alt={`${post.title} ${currentImageIndex + 1}`}
+              />
+              {post.images.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    className="image-lightbox-nav prev"
+                    onClick={(e) => { e.stopPropagation(); prevImage(); }}
+                    aria-label="รูปก่อนหน้า"
+                  >
+                    ‹
+                  </button>
+                  <button
+                    type="button"
+                    className="image-lightbox-nav next"
+                    onClick={(e) => { e.stopPropagation(); nextImage(); }}
+                    aria-label="รูปถัดไป"
+                  >
+                    ›
+                  </button>
+                  <span className="image-lightbox-counter">
+                    {currentImageIndex + 1} / {post.images.length}
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Chat Modal */}
         {showChat && (

@@ -396,3 +396,506 @@
   border-color: var(--primary);
   box-shadow: var(--shadow-sm);
 }
+
+/* ===== POST DETAIL - Mercari-style layout (jp.mercari.com) ===== */
+.post-detail-container.mercari-style {
+  min-height: 100vh;
+  background: var(--gray-100);
+  padding-bottom: 2rem;
+}
+
+.post-detail-container .post-detail-loading,
+.post-detail-container .post-detail-error {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mercari-top {
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--gray-200);
+  padding: 0.75rem 0;
+}
+
+.mercari-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--gray-600);
+}
+
+.mercari-breadcrumb a {
+  color: var(--bright-teal-blue);
+  text-decoration: none;
+}
+
+.mercari-breadcrumb a:hover {
+  text-decoration: underline;
+}
+
+.mercari-breadcrumb .sep {
+  color: var(--gray-400);
+}
+
+.mercari-breadcrumb .current {
+  color: var(--gray-700);
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mercari-main {
+  padding: 1.5rem 0;
+}
+
+.mercari-left {
+  margin-bottom: 1.5rem;
+}
+
+/* Gallery - Mercari: big image, thumbnails below */
+.mercari-gallery {
+  background: var(--bg-primary);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--gray-200);
+  margin-bottom: 1rem;
+}
+
+.mercari-main-image-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  max-height: 400px;
+  background: var(--gray-100);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.mercari-main-image-wrap img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.mercari-main-image-wrap .image-nav-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.4);
+  color: white;
+  font-size: 1.25rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition-base);
+}
+
+.mercari-main-image-wrap .image-nav-btn:hover {
+  background: var(--bright-teal-blue);
+}
+
+.mercari-main-image-wrap .image-nav-btn.prev-btn { left: 0.5rem; }
+.mercari-main-image-wrap .image-nav-btn.next-btn { right: 0.5rem; }
+
+.mercari-main-image-clickable {
+  cursor: pointer;
+}
+
+.mercari-zoom-hint {
+  position: absolute;
+  bottom: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.75rem;
+  color: rgba(255,255,255,0.95);
+  background: rgba(0,0,0,0.5);
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--transition-base);
+}
+
+.mercari-main-image-clickable:hover .mercari-zoom-hint {
+  opacity: 1;
+}
+
+.mercari-thumbs {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--gray-200);
+  overflow-x: auto;
+  flex-wrap: nowrap;
+}
+
+.mercari-thumbs .thumb {
+  flex: 0 0 64px;
+  height: 64px;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--gray-200);
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--gray-100);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition-base);
+}
+
+.mercari-thumbs .thumb.active {
+  border-color: var(--bright-teal-blue);
+  box-shadow: 0 0 0 1px var(--bright-teal-blue);
+}
+
+.mercari-thumbs .thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Item name & meta - below image like Mercari */
+.mercari-item-name {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--gray-900);
+  margin: 0 0 0.5rem 0;
+  line-height: 1.35;
+}
+
+.mercari-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  font-size: 0.8125rem;
+  color: var(--gray-500);
+}
+
+.mercari-meta .badge {
+  font-weight: 500;
+}
+
+.mercari-description-block {
+  background: var(--bg-primary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--gray-200);
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.mercari-description-block h6 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--gray-700);
+  margin: 0 0 0.5rem 0;
+}
+
+.mercari-description-block .content {
+  font-size: 0.9375rem;
+  color: var(--gray-700);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+/* Right sidebar - sticky, Mercari style */
+.mercari-right {
+  position: relative;
+}
+
+.mercari-aside-card {
+  position: sticky;
+  top: 1rem;
+  background: var(--bg-primary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--gray-200);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.mercari-price-block {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.mercari-price-label {
+  font-size: 0.8125rem;
+  color: var(--gray-500);
+  margin-bottom: 0.25rem;
+}
+
+.mercari-price-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--gray-900);
+  letter-spacing: -0.02em;
+}
+
+.mercari-price-value .currency {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-right: 0.15rem;
+}
+
+.mercari-extra-info {
+  font-size: 0.8125rem;
+  color: var(--gray-500);
+  margin-top: 0.35rem;
+}
+
+.mercari-actions-block {
+  padding: 1rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.mercari-actions-block .btn-mercari-primary {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  border: none;
+  background: var(--bright-teal-blue);
+  color: white;
+  cursor: pointer;
+  transition: var(--transition-base);
+}
+
+.mercari-actions-block .btn-mercari-primary:hover:not(:disabled) {
+  background: var(--primary-hover);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.mercari-actions-block .btn-mercari-primary:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.mercari-actions-block .btn-mercari-outline {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--gray-300);
+  background: var(--bg-primary);
+  color: var(--gray-700);
+  cursor: pointer;
+  transition: var(--transition-base);
+}
+
+.mercari-actions-block .btn-mercari-outline:hover:not(:disabled) {
+  border-color: var(--bright-teal-blue);
+  color: var(--bright-teal-blue);
+  background: var(--gray-50);
+}
+
+.mercari-seller-block {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--gray-200);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.mercari-seller-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--gray-200);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  color: var(--gray-500);
+  flex-shrink: 0;
+}
+
+.mercari-seller-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.mercari-seller-name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--gray-800);
+  margin: 0 0 0.25rem 0;
+}
+
+.mercari-seller-link {
+  font-size: 0.8125rem;
+  color: var(--bright-teal-blue);
+  text-decoration: none;
+}
+
+.mercari-seller-link:hover {
+  text-decoration: underline;
+}
+
+/* Auction info inside aside */
+.mercari-auction-info {
+  padding: 0 1.5rem 1rem;
+  font-size: 0.8125rem;
+  color: var(--gray-600);
+}
+
+.mercari-auction-info .end-time {
+  margin-top: 0.35rem;
+}
+
+/* Individual cards grid in Mercari layout */
+.mercari-left .individual-cards-section {
+  margin-top: 1rem;
+}
+
+@media (max-width: 991px) {
+  .mercari-aside-card {
+    position: static;
+  }
+  
+  .mercari-price-value {
+    font-size: 1.5rem;
+  }
+}
+
+@media (max-width: 576px) {
+  .mercari-item-name {
+    font-size: 1.25rem;
+  }
+  
+  .mercari-main-image-wrap {
+    max-height: 300px;
+  }
+  
+  .mercari-thumbs .thumb {
+    flex: 0 0 56px;
+    height: 56px;
+  }
+}
+
+/* ===== Image Lightbox - ดูภาพขยาย ===== */
+.image-lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  background: rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  animation: lightboxFadeIn 0.2s ease-out;
+}
+
+@keyframes lightboxFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.image-lightbox-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  font-size: 1.5rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition-base);
+  z-index: 10;
+}
+
+.image-lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.image-lightbox-content {
+  position: relative;
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.image-lightbox-content img {
+  max-width: 100%;
+  max-height: 85vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.image-lightbox-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 48px;
+  height: 48px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  font-size: 2rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition-base);
+}
+
+.image-lightbox-nav:hover {
+  background: var(--bright-teal-blue);
+}
+
+.image-lightbox-nav.prev {
+  left: -60px;
+}
+
+.image-lightbox-nav.next {
+  right: -60px;
+}
+
+.image-lightbox-counter {
+  position: absolute;
+  bottom: -2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+@media (max-width: 768px) {
+  .image-lightbox-nav.prev {
+    left: 0.5rem;
+  }
+  
+  .image-lightbox-nav.next {
+    right: 0.5rem;
+  }
+  
+  .image-lightbox-counter {
+    bottom: 0.5rem;
+  }
+}
