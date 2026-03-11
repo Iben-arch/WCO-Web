@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { User, UserProfile, Profile, AuthContextType } from '../types';
 import { supabase } from '../config/supabase';
 import { clearSessionCache } from '../utils/axiosInterceptor';
+import { authAPI } from '../api/api';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -249,6 +250,30 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  // ดึงโปรไฟล์จาก Backend API (GET /api/auth/profile) — ใช้เมื่อเข้าหน้าโปรไฟล์
+  const refreshProfileFromApi = async (): Promise<void> => {
+    if (!currentUser) return;
+    try {
+      const user = await authAPI.getProfile() as Record<string, unknown>;
+      const mapped: UserProfile = {
+        id: (user.id as string) ?? (user.uid as string) ?? currentUser.id,
+        username: (user.username as string) ?? (user.displayName as string) ?? (user.accountname as string),
+        displayName: (user.displayName as string) ?? (user.accountname as string) ?? (user.username as string),
+        avatar_url: (user.photoURL as string) ?? (user.avatar_url as string),
+        photoURL: (user.photoURL as string) ?? (user.avatar_url as string),
+        role: user.role as string,
+        isAdmin: (user.role as string) === 'admin',
+        phone: user.phone as string | undefined,
+        address: user.address as string | undefined,
+        email: (user.email as string) ?? currentUser.email ?? undefined
+      };
+      setUserProfile((prev) => (prev ? { ...prev, ...mapped } : mapped));
+    } catch (err) {
+      // Backend อาจยังไม่มี users table หรือ API 404 — ใช้โปรไฟล์จาก Supabase ต่อ
+      console.warn('Could not refresh profile from API (using Supabase profile):', err);
+    }
+  };
+
   // Check auth state on mount and listen for changes
   useEffect(() => {
     let mounted = true;
@@ -334,6 +359,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     register,
     logout,
     updateProfile,
+    refreshProfileFromApi,
     loading
   };
 

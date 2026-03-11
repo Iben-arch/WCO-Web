@@ -1,5 +1,5 @@
 import React, { useState, useEffect, FormEvent, ChangeEvent } from 'react';
-import { Container, Row, Col, Card, Form, Button, Spinner, Alert } from 'react-bootstrap';
+import { Container, Row, Col, Card, Form, Button, Spinner, Alert, Modal } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
 import { postsAPI, authAPI } from '../api/api';
 import { toast } from 'react-toastify';
@@ -53,6 +53,7 @@ const Home: React.FC = () => {
   const [selectedSearchImages, setSelectedSearchImages] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
+  const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
 
   useEffect(() => {
     fetchPosts();
@@ -147,7 +148,7 @@ const Home: React.FC = () => {
 
   const handleAddToCart = async (post: Post): Promise<void> => {
     if (!currentUser) {
-      toast.error('กรุณาเข้าสู่ระบบก่อน');
+      setShowLoginModal(true);
       return;
     }
 
@@ -812,6 +813,29 @@ const Home: React.FC = () => {
           </div>
         </div>
       )}
+
+      <Modal show={showLoginModal} onHide={() => setShowLoginModal(false)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>กรุณาเข้าสู่ระบบ</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          กรุณาเข้าสู่ระบบก่อนทำรายการนี้
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowLoginModal(false)}>
+            ปิด
+          </Button>
+          <Button
+            variant="primary"
+            onClick={() => {
+              setShowLoginModal(false);
+              window.location.href = '/login';
+            }}
+          >
+            ไปที่หน้าเข้าสู่ระบบ
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </div>
   );
 };

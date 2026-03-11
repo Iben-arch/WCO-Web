@@ -759,9 +759,34 @@
   margin-top: 0.35rem;
 }
 
-/* Individual cards grid in Mercari layout */
-.mercari-left .individual-cards-section {
-  margin-top: 1rem;
+/* Individual cards grid in Mercari layout - Shopee style: full image on top, card list below */
+.mercari-left .individual-cards-section.shopee-cards-section {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--gray-200, #e9ecef);
+}
+
+.mercari-left .shopee-cards-section .section-header {
+  margin-bottom: 1rem;
+  text-align: left;
+}
+
+.mercari-left .shopee-cards-section .section-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--gray-800, #343a40);
+}
+
+.mercari-left .shopee-cards-section .individual-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 1rem;
+}
+
+@media (min-width: 576px) {
+  .mercari-left .shopee-cards-section .individual-cards-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  }
 }
 
 @media (max-width: 991px) {

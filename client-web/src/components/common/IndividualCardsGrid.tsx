@@ -76,7 +76,7 @@ const IndividualCardsGrid: React.FC<IndividualCardsGridProps> = ({ post, onCardP
   const handleAddToCart = async (cardForCart: CardForCart): Promise<void> => {
     try {
       const card = cardForCart.originalPost?.individualCards?.find(c => c.id === cardForCart.cardId);
-      const quantity = card?.quantity ?? 1;
+      const quantity = cardForCart.quantityToAdd ?? card?.quantity ?? 1;
       const result = await addToCart(cardForCart.originalPost, cardForCart.cardId, quantity);
       if (result.success) {
         toast.success(result.message);

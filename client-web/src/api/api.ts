@@ -330,8 +330,50 @@ export const cartAPI = {
   },
 };
 
+// ==================== ORDERS API ====================
+export const ordersAPI = {
+  checkout: async (cartItemIds?: string[]): Promise<{ success: boolean; message?: string; orderIds?: string[]; error?: string }> => {
+    try {
+      const response = await axios.post('/api/orders/checkout', { cartItemIds: cartItemIds ?? [] });
+      return { success: true, message: response.data.message, orderIds: response.data.orderIds };
+    } catch (error: any) {
+      const err = error.response?.data;
+      return { success: false, error: err?.error || err?.message || 'เกิดข้อผิดพลาดในการสั่งซื้อ' };
+    }
+  },
 
-// ==================== SELLER API ====================
+  getMyOrders: async (): Promise<any[]> => {
+    try {
+      const response = await axios.get('/api/orders/my-orders');
+      return Array.isArray(response.data) ? response.data : [];
+    } catch (error: any) {
+      if (error.response?.status === 401) return [];
+      console.error('Error fetching my orders:', error);
+      return [];
+    }
+  },
+
+  getSellerOrders: async (): Promise<any[]> => {
+    try {
+      const response = await axios.get('/api/orders/seller-orders');
+      return Array.isArray(response.data) ? response.data : [];
+    } catch (error: any) {
+      if (error.response?.status === 401) return [];
+      console.error('Error fetching seller orders:', error);
+      return [];
+    }
+  },
+
+  confirmShipment: async (orderId: string, receiptUrl: string): Promise<{ success: boolean; message?: string; error?: string }> => {
+    try {
+      await axios.post(`/api/orders/${orderId}/confirm-shipment`, { receiptUrl });
+      return { success: true, message: 'ยืนยันการส่งแล้ว' };
+    } catch (error: any) {
+      const err = error.response?.data;
+      return { success: false, error: err?.error || err?.message || 'เกิดข้อผิดพลาด' };
+    }
+  },
+};
 export const sellerAPI = {
   // Get seller profile
   getSellerProfile: async (sellerId: string): Promise<any> => {
@@ -441,6 +483,7 @@ export default {
   posts: postsAPI,
   auction: auctionAPI,
   cart: cartAPI,
+  orders: ordersAPI,
   seller: sellerAPI,
   admin: adminAPI,
   chat: chatAPI,

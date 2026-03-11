@@ -1,6 +1,8 @@
 import React, { useState, FormEvent, ChangeEvent, useEffect } from 'react';
 import { Container, Row, Col, Card, Form, Button, Alert, ProgressBar, Spinner, Modal } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
+import Cropper from 'react-easy-crop';
+import type { Area } from 'react-easy-crop';
 import { useAuth } from '../contexts/AuthContext';
 import axios from '../utils/axiosInterceptor';
 import { supabase } from '../config/supabase';
@@ -60,6 +62,37 @@ const ImagePreviewThumbnail: React.FC<{ file: File; index: number; onClick: () =
   );
 };
 
+/** Create an Image from URL for canvas crop */
+const createImage = (url: string): Promise<HTMLImageElement> =>
+  new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = url;
+  });
+
+/** Get cropped image as base64 data URL from image source and pixel area */
+async function getCroppedImg(imageSrc: string, pixelArea: Area): Promise<string> {
+  const image = await createImage(imageSrc);
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('No 2d context');
+  canvas.width = pixelArea.width;
+  canvas.height = pixelArea.height;
+  ctx.drawImage(
+    image,
+    pixelArea.x,
+    pixelArea.y,
+    pixelArea.width,
+    pixelArea.height,
+    0,
+    0,
+    pixelArea.width,
+    pixelArea.height
+  );
+  return canvas.toDataURL('image/jpeg', 0.9);
+}
+
 const categories: Category[] = [
   'Yu-Gi-Oh!',
   'Pokemon Card Game',
@@ -111,6 +144,12 @@ const CreatePost: React.FC = () => {
   const [detectedCards, setDetectedCards] = useState<DetectedCard[]>([]);
   const [previewImageIndex, setPreviewImageIndex] = useState<number | null>(null);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [cropImageIndex, setCropImageIndex] = useState<number>(0);
+  const [cropAreaPixels, setCropAreaPixels] = useState<Area | null>(null);
+  const [cropZoom, setCropZoom] = useState<number>(1);
+  const [cropPosition, setCropPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [addingCrop, setAddingCrop] = useState<boolean>(false);
+  const [cropImageObjectUrl, setCropImageObjectUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (previewImageIndex !== null && formData.images[previewImageIndex]) {
@@ -120,6 +159,15 @@ const CreatePost: React.FC = () => {
     }
     setPreviewImageUrl(null);
   }, [previewImageIndex, formData.images]);
+
+  useEffect(() => {
+    if (formData.images.length > 0 && cropImageIndex >= 0 && cropImageIndex < formData.images.length) {
+      const url = URL.createObjectURL(formData.images[cropImageIndex]);
+      setCropImageObjectUrl(url);
+      return () => URL.revokeObjectURL(url);
+    }
+    setCropImageObjectUrl(null);
+  }, [cropImageIndex, formData.images]);
 
   const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>): void => {
     const { name, value } = e.target;
@@ -152,17 +200,64 @@ const CreatePost: React.FC = () => {
     }
   };
 
+  const handleAddCroppedCard = async (): Promise<void> => {
+    if (!cropAreaPixels || formData.images.length === 0) {
+      toast.error('กรุณาลากเลือกพื้นที่การ์ดก่อนกดเพิ่มการ์ด');
+      return;
+    }
+    const file = formData.images[cropImageIndex];
+    if (!file) return;
+    const imageSrc = URL.createObjectURL(file);
+    setAddingCrop(true);
+    try {
+      const base64 = await getCroppedImg(imageSrc, cropAreaPixels);
+      URL.revokeObjectURL(imageSrc);
+      const newCard: DetectedCard = {
+        id: `crop-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        imageUrl: base64,
+        quantity: 1,
+        price: ''
+      };
+      setDetectedCards(prev => [...prev, newCard]);
+      toast.success('เพิ่มการ์ดแล้ว กรอกราคาด้านล่าง');
+    } catch (err) {
+      URL.revokeObjectURL(imageSrc);
+      console.error(err);
+      toast.error('เกิดข้อผิดพลาดในการครอป');
+    } finally {
+      setAddingCrop(false);
+    }
+  };
+
+  const handleRemoveDetectedCard = (cardId: string): void => {
+    setDetectedCards(prev => prev.filter(c => c.id !== cardId));
+  };
+
   const canProceedFromStep1 = (): boolean => true;
   const canProceedFromStep2 = (): boolean => formData.images.length > 0;
   const canProceedFromStep3 = (): boolean => {
     if (formData.postType === 'sale') {
       if (formData.saleType === 'deck') {
-        return !!(formData.cardCount && parseInt(formData.cardCount) > 0 && formData.price && parseFloat(formData.price) > 0);
+        return !!(
+          formData.cardCount &&
+          parseInt(formData.cardCount) > 0 &&
+          formData.price &&
+          parseFloat(formData.price) > 0
+        );
       }
-      if (detectedCards.length > 0) {
-        return detectedCards.every(c => c.price && parseFloat(String(c.price)) > 0 && c.quantity && parseInt(String(c.quantity)) > 0);
+
+      if (formData.saleType === 'individual') {
+        return (
+          detectedCards.length > 0 &&
+          detectedCards.every(
+            (c) =>
+              c.price &&
+              parseFloat(String(c.price)) > 0 &&
+              c.quantity &&
+              parseInt(String(c.quantity)) > 0
+          )
+        );
       }
-      return !!(formData.individualPrice && parseFloat(formData.individualPrice) > 0 && formData.availableQuantity && parseInt(formData.availableQuantity) > 0);
     }
     if (formData.postType === 'auction') {
       return !!(formData.startingBid && parseFloat(formData.startingBid) > 0 && formData.auctionEndDate && new Date(formData.auctionEndDate) > new Date());
@@ -264,30 +359,22 @@ const CreatePost: React.FC = () => {
           return;
         }
       } else if (formData.saleType === 'individual') {
-        if (detectedCards.length > 0) {
-          // validate per-card
-          for (const card of detectedCards) {
-            if (!card.price || parseFloat(String(card.price)) <= 0) {
-              setError('กรุณากรอกราคาต่อใบให้ครบทุกภาพ');
-              toast.error('กรุณากรอกราคาต่อใบให้ครบทุกภาพ');
-              return;
-            }
-            if (!card.quantity || parseInt(String(card.quantity)) <= 0) {
-              setError('กรุณากรอกจำนวนต่อใบให้ครบทุกภาพ');
-              toast.error('กรุณากรอกจำนวนต่อใบให้ครบทุกภาพ');
-              return;
-            }
-          }
-        } else {
-          // fallback to simple fields if not using per-card
-          if (!formData.individualPrice || parseFloat(formData.individualPrice) <= 0) {
-            setError('ราคาต่อใบต้องมากกว่า 0');
-            toast.error('ราคาต่อใบต้องมากกว่า 0');
+        if (detectedCards.length === 0) {
+          setError('กรุณาเพิ่มการ์ดแยกใบอย่างน้อย 1 ใบ และกรอกราคา/จำนวนให้ครบทุกใบ');
+          toast.error('กรุณาเพิ่มการ์ดแยกใบอย่างน้อย 1 ใบ และกรอกราคา/จำนวนให้ครบทุกใบ');
+          return;
+        }
+
+        // validate per-card
+        for (const card of detectedCards) {
+          if (!card.price || parseFloat(String(card.price)) <= 0) {
+            setError('กรุณากรอกราคาต่อใบให้ครบทุกภาพ');
+            toast.error('กรุณากรอกราคาต่อใบให้ครบทุกภาพ');
             return;
           }
-          if (!formData.availableQuantity || parseInt(formData.availableQuantity) <= 0) {
-            setError('จำนวนที่ขายได้ต้องมากกว่า 0');
-            toast.error('จำนวนที่ขายได้ต้องมากกว่า 0');
+          if (!card.quantity || parseInt(String(card.quantity)) <= 0) {
+            setError('กรุณากรอกจำนวนต่อใบให้ครบทุกภาพ');
+            toast.error('กรุณากรอกจำนวนต่อใบให้ครบทุกภาพ');
             return;
           }
         }
@@ -376,14 +463,22 @@ const CreatePost: React.FC = () => {
       }
 
       // 2. อัปโหลด individualCards imageUrl ถ้าเป็น base64
-      let individualCardsPayload = detectedCards.length > 0
-        ? detectedCards.map(c => ({
-            id: c.id,
-            imageUrl: c.imageUrl,
-            price: parseFloat(String(c.price)),
-            quantity: parseInt(String(c.quantity))
-          }))
-        : null;
+      let individualCardsPayload: Array<{ id: string; imageUrl: string; price: number; quantity: number }> | null = null;
+      if (detectedCards.length > 0) {
+        individualCardsPayload = detectedCards
+          .map((c) => {
+            const price = Math.max(0, Number(parseFloat(String(c.price))) || 0);
+            const quantity = Math.max(1, parseInt(String(c.quantity), 10) || 1);
+            return {
+              id: c.id,
+              imageUrl: c.imageUrl,
+              price: Number.isFinite(price) ? price : 0,
+              quantity: Number.isInteger(quantity) && quantity >= 1 ? quantity : 1
+            };
+          })
+          .filter((c) => c.price > 0);
+        if (individualCardsPayload.length === 0) individualCardsPayload = null;
+      }
 
       if (individualCardsPayload && individualCardsPayload.some(c => String(c.imageUrl).startsWith('data:'))) {
         const uploaded = await Promise.all(
@@ -431,12 +526,10 @@ const CreatePost: React.FC = () => {
         } else if (formData.saleType === 'individual') {
           if (individualCardsPayload && individualCardsPayload.length > 0) {
             payload.individualCards = individualCardsPayload;
-            payload.price = String(Math.min(...individualCardsPayload.map(p => p.price)));
-            payload.availableQuantity = String(individualCardsPayload.reduce((s, p) => s + (p.quantity || 0), 0));
-          } else {
-            payload.individualPrice = formData.individualPrice;
-            payload.availableQuantity = formData.availableQuantity;
-            payload.price = formData.individualPrice;
+            payload.price = String(Math.min(...individualCardsPayload.map((p) => p.price)));
+            payload.availableQuantity = String(
+              individualCardsPayload.reduce((s, p) => s + (p.quantity || 0), 0)
+            );
           }
         }
       } else if (formData.postType === 'auction') {
@@ -697,7 +790,7 @@ const CreatePost: React.FC = () => {
                           </Button>
                         </div>
                         {detectedCards.length > 0 && (
-                          <div className="detected-cards-preview mt-4">
+                      <div className="detected-cards-preview mt-4">
                             <div className="detected-cards-header">
                               <div className="success-badge">
                                 <span>พบการ์ด {detectedCards.length} ใบ - กรอกราคาในขั้นตอนถัดไป</span>
@@ -788,7 +881,7 @@ const CreatePost: React.FC = () => {
                       <p className="section-description">กรอกข้อมูลพื้นฐานของการ์ด</p>
                     </div>
                     <Row>
-                      <Col md={8}>
+                      <Col md={formData.postType === 'sale' && formData.saleType === 'individual' ? 12 : 8}>
                         <Form.Group className="mb-3 form-group-sakura">
                           <Form.Label className="form-label-sakura">
                             ชื่อการ์ด
@@ -833,28 +926,7 @@ const CreatePost: React.FC = () => {
                                 ราคาสำหรับทั้งเด็ค
                               </Form.Text>
                             </Form.Group>
-                          ) : (
-                            <Form.Group className="mb-3 form-group-sakura">
-                              <Form.Label className="form-label-sakura">
-                                💰 ราคาต่อใบ (บาท)
-                                <span className="required-badge">*</span>
-                              </Form.Label>
-                              <div className="input-with-icon">
-                                <span className="input-icon-left">฿</span>
-                                <Form.Control
-                                  type="number"
-                                  name="individualPrice"
-                                  placeholder="0.00"
-                                  value={formData.individualPrice}
-                                  onChange={handleChange}
-                                  className="form-control-sakura"
-                                  min="0"
-                                  step="0.01"
-                                  required
-                                />
-                              </div>
-                            </Form.Group>
-                          )
+                          ) : null
                         ) : formData.postType === 'auction' ? (
                           formData.saleType === 'deck' ? (
                             <Form.Group className="mb-3 form-group-sakura">
@@ -965,6 +1037,62 @@ const CreatePost: React.FC = () => {
                     </div>
                   )}
 
+                  {/* Crop cards from image - Step 3 when sale individual */}
+                  {formData.postType === 'sale' && formData.saleType === 'individual' && formData.images.length > 0 && (
+                    <div className="form-section mb-4">
+                      <div className="section-header mb-3">
+                        <h5 className="section-title">
+                          <span className="section-icon">✂️</span>
+                          ครอปการ์ดจากรูป
+                        </h5>
+                        <p className="section-description">เลือกรูปแล้วลากกำหนดพื้นที่การ์ด 1 ใบ แล้วกดเพิ่มการ์ด (ทำซ้ำได้หลายใบ)</p>
+                      </div>
+                      <div className="mb-3">
+                        <Form.Label className="form-label-sakura">เลือกรูปที่จะครอป</Form.Label>
+                        <Form.Select
+                          value={cropImageIndex}
+                          onChange={(e) => setCropImageIndex(Number(e.target.value))}
+                          className="form-control-sakura"
+                        >
+                          {formData.images.map((_, i) => (
+                            <option key={i} value={i}>รูปที่ {i + 1}</option>
+                          ))}
+                        </Form.Select>
+                      </div>
+                      {cropImageObjectUrl && (
+                        <div className="crop-container-wrapper" style={{ position: 'relative', height: 400, background: '#000' }}>
+                          <Cropper
+                            image={cropImageObjectUrl}
+                            crop={cropPosition}
+                            zoom={cropZoom}
+                            onCropChange={setCropPosition}
+                            onZoomChange={setCropZoom}
+                            onCropComplete={(_area, croppedAreaPixels) => setCropAreaPixels(croppedAreaPixels)}
+                            aspect={2.5 / 3.5}
+                            objectFit="contain"
+                          />
+                        </div>
+                      )}
+                      <div className="mt-2">
+                        <Button
+                          type="button"
+                          variant="outline-primary"
+                          onClick={handleAddCroppedCard}
+                          disabled={addingCrop || !cropAreaPixels}
+                        >
+                          {addingCrop ? (
+                            <>
+                              <Spinner size="sm" className="me-2" />
+                              กำลังเพิ่ม...
+                            </>
+                          ) : (
+                            'เพิ่มการ์ดจากพื้นที่ที่เลือก'
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Section 5: Individual card-specific fields */}
                   {((formData.postType === 'sale' && formData.saleType === 'individual') || (formData.postType === 'auction' && formData.saleType === 'individual')) && (
                     <div className="form-section mb-4">
@@ -975,28 +1103,30 @@ const CreatePost: React.FC = () => {
                         <p className="section-description">กรอกข้อมูลเกี่ยวกับการ์ดแยกใบ</p>
                       </div>
                       <Row>
-                        <Col md={6}>
-                          <Form.Group className="mb-3 form-group-sakura">
-                            <Form.Label className="form-label-sakura">
-                              📦 จำนวนที่ขายได้
-                              <span className="required-badge">*</span>
-                            </Form.Label>
-                            <Form.Control
-                              type="number"
-                              name="availableQuantity"
-                              placeholder="เช่น 10"
-                              value={formData.availableQuantity}
-                              onChange={handleChange}
-                              className="form-control-sakura"
-                              min="1"
-                              required
-                            />
-                            <Form.Text className="form-help-text">
-                              จำนวนการ์ดที่พร้อมขาย
-                            </Form.Text>
-                          </Form.Group>
-                        </Col>
-                        <Col md={6}>
+                        {!(formData.postType === 'sale' && formData.saleType === 'individual') && (
+                          <Col md={6}>
+                            <Form.Group className="mb-3 form-group-sakura">
+                              <Form.Label className="form-label-sakura">
+                                📦 จำนวนที่ขายได้
+                                <span className="required-badge">*</span>
+                              </Form.Label>
+                              <Form.Control
+                                type="number"
+                                name="availableQuantity"
+                                placeholder="เช่น 10"
+                                value={formData.availableQuantity}
+                                onChange={handleChange}
+                                className="form-control-sakura"
+                                min="1"
+                                required
+                              />
+                              <Form.Text className="form-help-text">
+                                จำนวนการ์ดที่พร้อมขาย
+                              </Form.Text>
+                            </Form.Group>
+                          </Col>
+                        )}
+                        <Col md={formData.postType === 'sale' && formData.saleType === 'individual' ? 12 : 6}>
                           <Form.Group className="mb-3 form-group-sakura">
                             <Form.Label className="form-label-sakura">
                               หมวดหมู่
@@ -1155,26 +1285,34 @@ const CreatePost: React.FC = () => {
                                 className="card-preview-image"
                               />
                               <div className="card-preview-number">#{index + 1}</div>
+                              <button
+                                type="button"
+                                className="card-preview-remove-btn"
+                                onClick={() => handleRemoveDetectedCard(card.id)}
+                                aria-label="ลบการ์ด"
+                                title="ลบการ์ด"
+                              >
+                                ×
+                              </button>
                             </div>
                             <div className="card-preview-form">
-                              <Form.Group className="mb-2">
-                                <Form.Label className="card-form-label">จำนวน</Form.Label>
-                                <Form.Control
-                                  type="number"
-                                  placeholder="1"
-                                  min="1"
-                                  value={card.quantity}
-                                  onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                                    const val = e.target.value;
-                                    setDetectedCards(prev => prev.map(c => c.id === card.id ? { ...c, quantity: val } : c));
-                                  }}
-                                  className="form-control-sakura"
-                                />
-                              </Form.Group>
-                              <Form.Group>
-                                <Form.Label className="card-form-label">ราคา (บาท)</Form.Label>
-                                <div className="input-with-icon">
-                                  <span className="input-icon-left">฿</span>
+                              <div className="card-preview-fields">
+                                <Form.Group className="mb-0 card-preview-field">
+                                  <Form.Label className="card-form-label">จำนวน</Form.Label>
+                                  <Form.Control
+                                    type="number"
+                                    placeholder="1"
+                                    min="1"
+                                    value={card.quantity}
+                                    onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                                      const val = e.target.value;
+                                      setDetectedCards(prev => prev.map(c => c.id === card.id ? { ...c, quantity: val } : c));
+                                    }}
+                                    className="form-control-sakura"
+                                  />
+                                </Form.Group>
+                                <Form.Group className="mb-0 card-preview-field">
+                                  <Form.Label className="card-form-label">ราคา (บาท)</Form.Label>
                                   <Form.Control
                                     type="number"
                                     placeholder="0.00"
@@ -1187,8 +1325,8 @@ const CreatePost: React.FC = () => {
                                     }}
                                     className="form-control-sakura"
                                   />
-                                </div>
-                              </Form.Group>
+                                </Form.Group>
+                              </div>
                             </div>
                           </div>
                         ))}

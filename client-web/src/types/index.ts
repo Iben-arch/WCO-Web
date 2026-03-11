@@ -113,6 +113,7 @@ export interface AuthContextType {
   register: (email: string, password: string, username: string) => Promise<User>;
   logout: () => Promise<void>;
   updateProfile: (profileData: any) => Promise<Profile>;
+  refreshProfileFromApi: () => Promise<void>;
   loading: boolean;
 }
 
@@ -124,6 +125,7 @@ export interface CartContextType {
   removeFromCart: (itemId: string, cardId?: string) => Promise<{ success: boolean; message: string }>;
   clearCart: () => Promise<{ success: boolean; message: string }>;
   isInCart: (postId: string, cardId?: string) => boolean;
+  getQuantityInCart: (postId: string, cardId?: string) => number;
   getCartCount: () => number;
   getTotalPrice: () => number;
   formatPrice: (price: number) => string;
@@ -182,6 +184,8 @@ export interface CardForCart {
   category: string;
   isIndividualCard: boolean;
   originalPost: Post;
+  /** จำนวนที่จะใส่ตะกร้า (ไม่เกินจำนวนคงเหลือ) */
+  quantityToAdd?: number;
 }
 
 
@@ -221,5 +225,28 @@ export interface Message {
   senderName: string;
   message: string;
   timestamp: Date | FirestoreTimestamp | string;
+}
+
+// Order Types (คำสั่งซื้อ / รอจัดส่ง / ขายแล้ว)
+export interface OrderItemDto {
+  id?: string;
+  postId?: string;
+  cardId?: string | null;
+  quantity: number;
+  unitPrice: number;
+  post?: Post | null;
+}
+
+export interface OrderDto {
+  id: string;
+  buyerId?: string | null;
+  sellerId?: string | null;
+  sellerName?: string | null;
+  status: 'pending_shipment' | 'sold';
+  receiptUrl?: string | null;
+  totalAmount: number;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  items: OrderItemDto[];
 }
 

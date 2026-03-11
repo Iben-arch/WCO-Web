@@ -94,6 +94,14 @@ namespace ServerApi.Controllers
                             postData["individualPrice"] = double.Parse(request.IndividualPrice);
                         if (!string.IsNullOrEmpty(request.AvailableQuantity))
                             postData["availableQuantity"] = int.Parse(request.AvailableQuantity);
+                        if (request.IndividualCards != null && request.IndividualCards.Count > 0)
+                        {
+                            postData["individualCards"] = request.IndividualCards;
+                            if (!string.IsNullOrEmpty(request.Price))
+                                postData["individualPrice"] = double.Parse(request.Price);
+                            if (!string.IsNullOrEmpty(request.AvailableQuantity))
+                                postData["availableQuantity"] = int.Parse(request.AvailableQuantity);
+                        }
                     }
                 }
                 else if (request.PostType == "auction")

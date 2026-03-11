@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../contexts/CartContext';
 import { useAuth } from '../contexts/AuthContext';
 import { CartItem } from '../types';
+import { ordersAPI } from '../api/api';
 import { toast } from 'react-toastify';
 import '../styles/cart.css';
 
@@ -14,6 +15,7 @@ const Cart: React.FC = () => {
   const [removingItem, setRemovingItem] = useState<string | null>(null);
   const [showClearModal, setShowClearModal] = useState<boolean>(false);
   const [clearingCart, setClearingCart] = useState<boolean>(false);
+  const [checkingOut, setCheckingOut] = useState<boolean>(false);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
 
   // Filter only normal sale items (not auction)
@@ -81,10 +83,10 @@ const Cart: React.FC = () => {
   };
 
   const handleSelectAll = (): void => {
-    if (selectedItems.size === cartItems.length) {
+    if (selectedItems.size === normalCartItems.length) {
       setSelectedItems(new Set());
     } else {
-      setSelectedItems(new Set(cartItems.map(item => item.postId)));
+      setSelectedItems(new Set(normalCartItems.map(getItemKey)));
     }
   };
 
@@ -98,19 +100,39 @@ const Cart: React.FC = () => {
       }, 0);
   };
 
-  const handleCheckout = (): void => {
+  const handleCheckout = async (): Promise<void> => {
     if (!currentUser) {
       navigate('/login');
       return;
     }
-    
-    if (selectedItems.size === 0) {
+
+    const selected = normalCartItems.filter(item => selectedItems.has(getItemKey(item)));
+    if (selected.length === 0) {
       toast.warning('กรุณาเลือกสินค้าที่ต้องการซื้อ');
       return;
     }
 
-    // Navigate to checkout or show contact info
-    toast.info('กรุณาติดต่อผู้ขายแต่ละรายเพื่อดำเนินการซื้อขาย');
+    const cartItemIds = selected.map(item => item.id).filter((id): id is string => !!id);
+    if (cartItemIds.length === 0) {
+      toast.error('ไม่พบรหัสรายการตะกร้า กรุณารีเฟรชหน้า');
+      return;
+    }
+
+    setCheckingOut(true);
+    try {
+      const result = await ordersAPI.checkout(cartItemIds);
+      if (result.success) {
+        toast.success(result.message || 'สั่งซื้อสำเร็จ สถานะ: รอจัดส่ง');
+        await fetchCartItems();
+        navigate('/profile', { state: { tab: 'orders' } });
+      } else {
+        toast.error(result.error || 'เกิดข้อผิดพลาดในการสั่งซื้อ');
+      }
+    } catch (e) {
+      toast.error('เกิดข้อผิดพลาดในการสั่งซื้อ');
+    } finally {
+      setCheckingOut(false);
+    }
   };
 
   if (loading) {
@@ -331,9 +353,16 @@ const Cart: React.FC = () => {
                       <Button
                         className="btn-tcg-primary w-100 mb-2"
                         onClick={handleCheckout}
-                        disabled={selectedItems.size === 0}
+                        disabled={selectedItems.size === 0 || checkingOut}
                       >
-                        ดำเนินการซื้อ ({selectedItems.size})
+                        {checkingOut ? (
+                          <>
+                            <Spinner size="sm" className="me-2" />
+                            กำลังดำเนินการ...
+                          </>
+                        ) : (
+                          `ดำเนินการซื้อ (${selectedItems.size})`
+                        )}
                       </Button>
                       <Button
                         variant="outline-secondary"
@@ -347,8 +376,8 @@ const Cart: React.FC = () => {
                     <div className="cart-summary-note">
                       <Alert variant="info" className="mb-0">
                         <small>
-                          💡 <strong>หมายเหตุ:</strong> ระบบนี้เป็นเพียงการเก็บรายการที่สนใจ 
-                          กรุณาติดต่อผู้ขายแต่ละรายเพื่อดำเนินการซื้อขายจริง
+                          💡 กด &quot;ดำเนินการซื้อ&quot; เพื่อยืนยันคำสั่งซื้อ สถานะจะเป็น <strong>รอจัดส่ง</strong> 
+                          หลังจากผู้ขายยืนยันการส่งและแนบใบเสร็จ คุณสามารถดูใบเสร็จได้ที่ <strong>รายการคำสั่งซื้อ</strong> ในโปรไฟล์
                         </small>
                       </Alert>
                     </div>

@@ -109,6 +109,13 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     return cartItems.some(item => item.postId === postId && !item.cardId);
   };
 
+  /** จำนวนชิ้นของโพสต์/การ์ดนี้ที่อยู่ในตะกร้าของผู้ใช้ (ใช้แสดง "เหลือ N ใบ") */
+  const getQuantityInCart = (postId: string, cardId?: string): number => {
+    return cartItems
+      .filter(item => item.postId === postId && (cardId ? item.cardId === cardId : !item.cardId))
+      .reduce((sum, item) => sum + (item.quantity ?? 1), 0);
+  };
+
   const getCartCount = (): number => {
     return cartItems.length;
   };
@@ -136,6 +143,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     removeFromCart,
     clearCart,
     isInCart,
+    getQuantityInCart,
     getCartCount,
     getTotalPrice,
     formatPrice,

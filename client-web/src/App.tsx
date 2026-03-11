@@ -1,8 +1,8 @@
 import React, { Component, ReactNode, ErrorInfo } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
 import 'bootstrap/dist/css/bootstrap.min.css';
+import 'react-toastify/dist/ReactToastify.css';
 
 import { AuthProvider } from './contexts/AuthContext';
 import { CartProvider } from './contexts/CartContext';
@@ -71,11 +71,11 @@ const App: React.FC = () => {
     <ErrorBoundary>
       <AuthProvider>
         <CartProvider>
-              <Router>
-                <div className="App">
-                  <Navbar />
-                  <main className="container-fluid px-0">
-                    <Routes>
+          <Router>
+            <div className="App min-vh-100">
+              <Navbar />
+              <main className="min-vh-100">
+                <Routes>
                       <Route path="/" element={<Home />} />
                       <Route path="/login" element={<Login />} />
                       <Route path="/register" element={<Register />} />
@@ -112,21 +112,21 @@ const App: React.FC = () => {
                           <Cart />
                         </ProtectedRoute>
                       } />
-                    </Routes>
-                  </main>
-                  <ToastContainer
-                    position="top-right"
-                    autoClose={3000}
-                    hideProgressBar={false}
-                    newestOnTop={false}
-                    closeOnClick
-                    rtl={false}
-                    pauseOnFocusLoss
-                    draggable
-                    pauseOnHover
-                  />
-                </div>
-              </Router>
+                  </Routes>
+              </main>
+              <ToastContainer
+                position="top-right"
+                autoClose={3000}
+                hideProgressBar={false}
+                newestOnTop={false}
+                closeOnClick
+                rtl={false}
+                pauseOnFocusLoss
+                draggable
+                pauseOnHover
+              />
+            </div>
+          </Router>
         </CartProvider>
       </AuthProvider>
     </ErrorBoundary>

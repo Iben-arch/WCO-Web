@@ -100,11 +100,6 @@ const ProfileSidebar: React.FC<ProfileSidebarProps> = ({ activeTab, onTabChange 
       icon: 'edit'
     },
     {
-      id: 'buy-request',
-      label: 'ขอซื้อ',
-      icon: 'eye'
-    },
-    {
       id: 'liked',
       label: 'รายการที่ถูกใจ',
       icon: 'heart'
@@ -113,11 +108,6 @@ const ProfileSidebar: React.FC<ProfileSidebarProps> = ({ activeTab, onTabChange 
       id: 'auctions',
       label: 'การประมูลของฉัน',
       icon: 'hammer'
-    },
-    {
-      id: 'watchlist',
-      label: 'รายการตั้งรับ',
-      icon: 'eye'
     },
     {
       id: 'orders',
@@ -150,10 +140,6 @@ const ProfileSidebar: React.FC<ProfileSidebarProps> = ({ activeTab, onTabChange 
   };
 
   const handleItemClick = (itemId: string): void => {
-    if (itemId === 'buy-request') {
-      navigate('/buy-request');
-      return;
-    }
     onTabChange(itemId);
   };
 

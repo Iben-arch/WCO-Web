@@ -1,16 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Row, Col, Card, Form, Modal, Button } from 'react-bootstrap';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Row, Col, Card, Form, Modal, Button, Badge, Spinner } from 'react-bootstrap';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../config/supabase';
 import axios from '../utils/axiosInterceptor';
+import { ordersAPI } from '../api/api';
 import { toast } from 'react-toastify';
 import ProfileSidebar from '../components/layout/ProfileSidebar';
-import { 
-  PrimaryActionButton,
-  SecondaryActionButton 
-} from '../components/common/ButtonComponents';
-import { Post, FirestoreTimestamp } from '../types';
+import { Post, FirestoreTimestamp, OrderDto, OrderItemDto } from '../types';
 
 interface ProfileFormData {
   displayName: string; // ชื่อที่ใช้แสดง
@@ -36,13 +33,30 @@ interface ProfileProps {
 }
 
 const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
-  const { userProfile, updateProfile, currentUser } = useAuth();
+  const { userProfile, updateProfile, currentUser, refreshProfileFromApi } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState<ActiveTab>(initialTab);
 
   useEffect(() => {
     if (initialTab) setActiveTab(initialTab);
   }, [initialTab]);
+
+  // เปิดแท็บจาก state (เช่น หลัง checkout จากตะกร้า)
+  useEffect(() => {
+    const stateTab = (location.state as { tab?: string })?.tab;
+    if (stateTab && (stateTab === 'orders' || stateTab === 'my-posts' || stateTab === 'liked' || stateTab === 'personal-info' || stateTab === 'security' || stateTab === 'auctions' || stateTab === 'watchlist')) {
+      setActiveTab(stateTab as ActiveTab);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, location.pathname, navigate]);
+
+  // ยิง GET /api/auth/profile เมื่อเข้าหน้าโปรไฟล์
+  useEffect(() => {
+    if (currentUser && refreshProfileFromApi) {
+      refreshProfileFromApi();
+    }
+  }, [currentUser?.id, refreshProfileFromApi]);
 
   const [formData, setFormData] = useState<ProfileFormData>({
     displayName: '',
@@ -54,7 +68,10 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
   const [likedItems, setLikedItems] = useState<LikedPost[]>([]);
   const [auctions, setAuctions] = useState<Post[]>([]);
   const [watchlist, setWatchlist] = useState<Post[]>([]);
-  const [orders, setOrders] = useState<Post[]>([]);
+  const [orders, setOrders] = useState<OrderDto[]>([]);
+  const [sellerOrders, setSellerOrders] = useState<OrderDto[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState<boolean>(false);
+  const [sellerOrdersLoading, setSellerOrdersLoading] = useState<boolean>(false);
   const [myPosts, setMyPosts] = useState<Post[]>([]);
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
   const [originalFormData, setOriginalFormData] = useState<ProfileFormData>({
@@ -64,6 +81,10 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
     photoURL: ''
   });
   const [showPasswordModal, setShowPasswordModal] = useState<boolean>(false);
+  const [showReceiptModal, setShowReceiptModal] = useState<boolean>(false);
+  const [confirmShipmentOrderId, setConfirmShipmentOrderId] = useState<string | null>(null);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [confirmShipmentLoading, setConfirmShipmentLoading] = useState<boolean>(false);
   const [passwordData, setPasswordData] = useState<PasswordData>({
     currentPassword: '',
     newPassword: '',
@@ -103,6 +124,7 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
         break;
       case 'orders':
         fetchOrders();
+        fetchSellerOrders();
         break;
       case 'my-posts':
         fetchMyPosts();
@@ -153,15 +175,30 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
   };
 
   const fetchOrders = async (): Promise<void> => {
+    setOrdersLoading(true);
     try {
-      const response = await axios.get('/api/auth/orders');
-      setOrders(response.data);
+      const data = await ordersAPI.getMyOrders();
+      setOrders(Array.isArray(data) ? data : []);
     } catch (error: any) {
-      console.error('Error fetching orders:', error);
-      // If user is not authenticated or API error, set empty array
-      if (error.response?.status === 401) {
-        setOrders([]);
-      }
+      if (error.response?.status === 401) setOrders([]);
+      else console.error('Error fetching orders:', error);
+      setOrders([]);
+    } finally {
+      setOrdersLoading(false);
+    }
+  };
+
+  const fetchSellerOrders = async (): Promise<void> => {
+    setSellerOrdersLoading(true);
+    try {
+      const data = await ordersAPI.getSellerOrders();
+      setSellerOrders(Array.isArray(data) ? data : []);
+    } catch (error: any) {
+      if (error.response?.status === 401) setSellerOrders([]);
+      else console.error('Error fetching seller orders:', error);
+      setSellerOrders([]);
+    } finally {
+      setSellerOrdersLoading(false);
     }
   };
 
@@ -857,28 +894,229 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
     </Card>
   );
 
-  const renderOrders = (): JSX.Element => (
-      <Card>
-        <Card.Header>
-          <h5 className="mb-0">📋 รายการคำสั่งซื้อ</h5>
-        </Card.Header>
-      <Card.Body>
-        {orders.length === 0 ? (
-          <div className="profile-empty-state">
-            <div className="profile-empty-state-icon">📋</div>
-            <h5 className="profile-empty-state-title">ยังไม่มีคำสั่งซื้อ</h5>
-            <p className="profile-empty-state-description">เริ่มต้นซื้อการ์ดที่คุณต้องการ</p>
-          </div>
-        ) : (
-          <div className="profile-empty-state">
-            <div className="profile-empty-state-icon">⏳</div>
-            <h5 className="profile-empty-state-title">ฟีเจอร์คำสั่งซื้อ</h5>
-            <p className="profile-empty-state-description">จะเปิดใช้งานเร็วๆ นี้</p>
-          </div>
-        )}
-      </Card.Body>
-    </Card>
-  );
+  const renderOrders = (): JSX.Element => {
+    const formatOrderDate = (d: string | null | undefined): string => {
+      if (!d) return '-';
+      try {
+        return new Date(d).toLocaleDateString('th-TH', { dateStyle: 'short', timeStyle: 'short' });
+      } catch {
+        return String(d);
+      }
+    };
+
+    const getOrderItemDisplay = (it: OrderItemDto) => {
+      const isIndividualCard = !!it.cardId && it.post?.individualCards?.length;
+      const card = isIndividualCard
+        ? it.post!.individualCards!.find((c: { id?: string }) => c.id === it.cardId)
+        : null;
+      const cardImage = card && 'imageUrl' in card ? card.imageUrl : null;
+      const title = it.post?.title || `โพสต์ #${it.postId}`;
+      return { title, cardImage, isIndividualCard };
+    };
+
+    const renderOrderItemRow = (it: OrderItemDto, idx: number, showPrice: boolean) => {
+      const { title, cardImage, isIndividualCard } = getOrderItemDisplay(it);
+      return (
+        <li key={it.id || idx} className="d-flex align-items-center gap-2 mb-2">
+          {cardImage && (
+            <img
+              src={cardImage}
+              alt=""
+              style={{ width: 40, height: 56, objectFit: 'cover', borderRadius: 4 }}
+            />
+          )}
+          <span>
+            {title}
+            {isIndividualCard && <Badge bg="secondary" className="ms-1">แยกใบ</Badge>}
+            {' '}x{it.quantity}
+            {showPrice && <> — {formatPrice(Number(it.unitPrice))}</>}
+          </span>
+        </li>
+      );
+    };
+
+    return (
+      <>
+        <Card className="mb-4">
+          <Card.Header>
+            <h5 className="mb-0">📋 รายการที่ซื้อ</h5>
+          </Card.Header>
+          <Card.Body>
+            {ordersLoading ? (
+              <div className="d-flex justify-content-center py-4">
+                <Spinner animation="border" />
+              </div>
+            ) : orders.length === 0 ? (
+              <div className="profile-empty-state">
+                <div className="profile-empty-state-icon">📋</div>
+                <h5 className="profile-empty-state-title">ยังไม่มีคำสั่งซื้อ</h5>
+                <p className="profile-empty-state-description">เมื่อคุณสั่งซื้อจากตะกร้า คำสั่งซื้อจะแสดงที่นี่</p>
+              </div>
+            ) : (
+              <div className="d-flex flex-column gap-3">
+                {orders.map((order) => (
+                  <Card key={order.id} className="border">
+                    <Card.Body>
+                      <div className="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+                        <div>
+                          <span className="me-2">
+                            <Badge bg={order.status === 'sold' ? 'success' : 'warning'}>
+                              {order.status === 'pending_shipment' ? 'รอจัดส่ง' : 'ขายแล้ว'}
+                            </Badge>
+                          </span>
+                          <span className="text-muted small">ผู้ขาย: {order.sellerName || '-'}</span>
+                        </div>
+                        <div className="text-end">
+                          <strong>{formatPrice(Number(order.totalAmount))}</strong>
+                          <div className="small text-muted">{formatOrderDate(order.createdAt)}</div>
+                        </div>
+                      </div>
+                      <ul className="list-unstyled small mb-2">
+                        {order.items?.map((it, idx) => renderOrderItemRow(it, idx, true))}
+                      </ul>
+                      {order.status === 'sold' && order.receiptUrl && (
+                        <Button
+                          size="sm"
+                          variant="outline-primary"
+                          onClick={() => window.open(order.receiptUrl!, '_blank')}
+                        >
+                          📄 ดูใบเสร็จ
+                        </Button>
+                      )}
+                    </Card.Body>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </Card.Body>
+        </Card>
+
+        <Card>
+          <Card.Header>
+            <h5 className="mb-0">📤 รายการที่ต้องจัดส่ง (ผู้ขาย)</h5>
+          </Card.Header>
+          <Card.Body>
+            {sellerOrdersLoading ? (
+              <div className="d-flex justify-content-center py-4">
+                <Spinner animation="border" />
+              </div>
+            ) : sellerOrders.length === 0 ? (
+              <div className="profile-empty-state">
+                <div className="profile-empty-state-icon">📤</div>
+                <h5 className="profile-empty-state-title">ไม่มีคำสั่งที่ต้องจัดส่ง</h5>
+                <p className="profile-empty-state-description">เมื่อมีลูกค้าสั่งซื้อสินค้าของคุณ จะแสดงที่นี่</p>
+              </div>
+            ) : (
+              <div className="d-flex flex-column gap-3">
+                {sellerOrders.map((order) => (
+                  <Card key={order.id} className="border">
+                    <Card.Body>
+                      <div className="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+                        <div>
+                          <span className="me-2">
+                            <Badge bg={order.status === 'sold' ? 'success' : 'warning'}>
+                              {order.status === 'pending_shipment' ? 'รอจัดส่ง' : 'ขายแล้ว'}
+                            </Badge>
+                          </span>
+                          <span className="text-muted small">ยอดรวม: {formatPrice(Number(order.totalAmount))}</span>
+                        </div>
+                        <div className="text-end small text-muted">{formatOrderDate(order.createdAt)}</div>
+                      </div>
+                      <ul className="list-unstyled small mb-2">
+                        {order.items?.map((it, idx) => renderOrderItemRow(it, idx, false))}
+                      </ul>
+                      {order.status === 'pending_shipment' && (
+                        <Button
+                          size="sm"
+                          className="btn-tcg-primary"
+                          onClick={() => {
+                            setConfirmShipmentOrderId(order.id);
+                            setReceiptFile(null);
+                            setShowReceiptModal(true);
+                          }}
+                        >
+                          ยืนยันการส่ง (แนบใบเสร็จ)
+                        </Button>
+                      )}
+                      {order.status === 'sold' && order.receiptUrl && (
+                        <Button
+                          size="sm"
+                          variant="outline-secondary"
+                          onClick={() => window.open(order.receiptUrl!, '_blank')}
+                        >
+                          ดูใบเสร็จ
+                        </Button>
+                      )}
+                    </Card.Body>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </Card.Body>
+        </Card>
+
+        <Modal show={showReceiptModal} onHide={() => { setShowReceiptModal(false); setConfirmShipmentOrderId(null); setReceiptFile(null); }} centered>
+          <Modal.Header closeButton>
+            <Modal.Title>ยืนยันการส่ง — แนบใบเสร็จ</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            <Form.Group className="mb-3">
+              <Form.Label>เลือกรูปใบเสร็จ</Form.Label>
+              <Form.Control
+                type="file"
+                accept="image/*"
+                onChange={(e) => setReceiptFile((e.target as HTMLInputElement).files?.[0] || null)}
+              />
+            </Form.Group>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={() => { setShowReceiptModal(false); setConfirmShipmentOrderId(null); setReceiptFile(null); }}>
+              ยกเลิก
+            </Button>
+            <Button
+              className="btn-tcg-primary"
+              disabled={!receiptFile || !confirmShipmentOrderId || confirmShipmentLoading}
+              onClick={async () => {
+                if (!receiptFile || !confirmShipmentOrderId || !currentUser) return;
+                setConfirmShipmentLoading(true);
+                try {
+                  const ext = receiptFile.name.split('.').pop() || 'jpg';
+                  const fileName = `receipts/${confirmShipmentOrderId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+                  const { error } = await supabase.storage.from('posts').upload(fileName, receiptFile, { cacheControl: '3600', upsert: false });
+                  if (error) throw error;
+                  const { data: { publicUrl } } = supabase.storage.from('posts').getPublicUrl(fileName);
+                  const result = await ordersAPI.confirmShipment(confirmShipmentOrderId, publicUrl);
+                  if (result.success) {
+                    toast.success(result.message);
+                    setShowReceiptModal(false);
+                    setConfirmShipmentOrderId(null);
+                    setReceiptFile(null);
+                    fetchSellerOrders();
+                    fetchOrders();
+                  } else {
+                    toast.error(result.error);
+                  }
+                } catch (e: any) {
+                  toast.error(e.message || 'อัปโหลดใบเสร็จไม่สำเร็จ');
+                } finally {
+                  setConfirmShipmentLoading(false);
+                }
+              }}
+            >
+              {confirmShipmentLoading ? (
+                <>
+                  <Spinner size="sm" className="me-2" />
+                  กำลังอัปโหลด...
+                </>
+              ) : (
+                'ยืนยันการส่ง'
+              )}
+            </Button>
+          </Modal.Footer>
+        </Modal>
+      </>
+    );
+  };
 
   const renderMyPosts = (): JSX.Element => (
       <Card>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Card, Button, Badge, Modal, Spinner } from 'react-bootstrap';
 import { useAuth } from '../../contexts/AuthContext';
+import { useCart } from '../../contexts/CartContext';
 import { Post, IndividualCardItem, CardForCart } from '../../types';
 import { toast } from 'react-toastify';
 import '../../styles/individual-card.css';
@@ -23,8 +24,15 @@ const IndividualCard: React.FC<IndividualCardProps> = ({
   isAddingToCart = false 
 }) => {
   const { currentUser } = useAuth();
+  const { getQuantityInCart } = useCart();
   const [showImageModal, setShowImageModal] = useState<boolean>(false);
   const [imageLoading, setImageLoading] = useState<boolean>(false);
+  const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
+
+  const cardQty = typeof card.quantity === 'number' ? card.quantity : 1;
+  const inCartQty = getQuantityInCart(post.id, card.id);
+  const remaining = Math.max(0, cardQty - inCartQty);
+  const isOutOfStock = remaining <= 0;
 
   const formatPrice = (price: number): string => {
     return new Intl.NumberFormat('th-TH', {
@@ -35,7 +43,7 @@ const IndividualCard: React.FC<IndividualCardProps> = ({
 
   const handleAddToCart = async (): Promise<void> => {
     if (!currentUser) {
-      toast.error('กรุณาเข้าสู่ระบบก่อนเพิ่มในตะกร้า');
+      setShowLoginModal(true);
       return;
     }
 
@@ -49,8 +57,12 @@ const IndividualCard: React.FC<IndividualCardProps> = ({
       return;
     }
 
+    if (isOutOfStock) {
+      toast.error('การ์ดใบนี้หมดแล้ว');
+      return;
+    }
+
     try {
-      // สร้าง card object สำหรับ cart
       const cardForCart: CardForCart = {
         id: `${post.id}_${card.id}`,
         postId: post.id,
@@ -62,7 +74,8 @@ const IndividualCard: React.FC<IndividualCardProps> = ({
         sellerName: post.sellerName,
         category: post.category,
         isIndividualCard: true,
-        originalPost: post
+        originalPost: post,
+        quantityToAdd: Math.min(remaining, cardQty)
       };
 
       await onAddToCart(cardForCart);
@@ -130,7 +143,14 @@ const IndividualCard: React.FC<IndividualCardProps> = ({
           <div className="card-price-section">
             <div className="price-label">ราคาต่อใบ</div>
             <div className="price-value">
-              {formatPrice(post.individualPrice || post.price || 0)}
+              {formatPrice(typeof card.price === 'number' ? card.price : (post.individualPrice || post.price || 0))}
+            </div>
+            <div className="card-quantity-info">
+              {isOutOfStock ? (
+                <span className="text-danger small fw-bold">หมดแล้ว</span>
+              ) : (
+                <span className="text-muted small">เหลือ {remaining} ใบ</span>
+              )}
             </div>
           </div>
 
@@ -151,7 +171,7 @@ const IndividualCard: React.FC<IndividualCardProps> = ({
                 size="sm"
                 className="w-100"
                 onClick={handleAddToCart}
-                disabled={isAddingToCart || post.status === 'sold'}
+                disabled={isAddingToCart || post.status === 'sold' || isOutOfStock}
               >
                 {isAddingToCart ? (
                   <>
@@ -172,6 +192,13 @@ const IndividualCard: React.FC<IndividualCardProps> = ({
             <div className="sold-overlay">
               <Badge bg="danger" className="sold-badge">
                 ขายแล้ว
+              </Badge>
+            </div>
+          )}
+          {post.status !== 'sold' && isOutOfStock && (
+            <div className="sold-overlay">
+              <Badge bg="secondary" className="sold-badge">
+                หมดแล้ว
               </Badge>
             </div>
           )}
@@ -202,7 +229,10 @@ const IndividualCard: React.FC<IndividualCardProps> = ({
         <Modal.Footer>
           <div className="card-info">
             <div className="info-item">
-              <strong>ราคา:</strong> {formatPrice(post.individualPrice || post.price || 0)}
+              <strong>ราคา:</strong> {formatPrice(typeof card.price === 'number' ? card.price : (post.individualPrice || post.price || 0))}
+            </div>
+            <div className="info-item">
+              <strong>เหลือ:</strong> {remaining} ใบ
             </div>
             <div className="info-item">
               <strong>หมวดหมู่:</strong> {post.category || 'อื่นๆ'}
@@ -211,6 +241,33 @@ const IndividualCard: React.FC<IndividualCardProps> = ({
               <strong>ผู้ขาย:</strong> {post.sellerName}
             </div>
           </div>
+        </Modal.Footer>
+      </Modal>
+
+      <Modal
+        show={showLoginModal}
+        onHide={() => setShowLoginModal(false)}
+        centered
+      >
+        <Modal.Header closeButton>
+          <Modal.Title>กรุณาเข้าสู่ระบบ</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          กรุณาเข้าสู่ระบบก่อนเพิ่มสินค้าในตะกร้า
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowLoginModal(false)}>
+            ปิด
+          </Button>
+          <Button
+            variant="primary"
+            onClick={() => {
+              setShowLoginModal(false);
+              window.location.href = '/login';
+            }}
+          >
+            ไปที่หน้าเข้าสู่ระบบ
+          </Button>
         </Modal.Footer>
       </Modal>
     </>
