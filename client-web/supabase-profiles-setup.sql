@@ -146,3 +146,19 @@ USING (bucket_id = 'avatars');
 --    - ทุกคนสามารถดูรูปโปรไฟล์ได้ (public read)
 -- ============================================
 
+-- ============================================
+-- 9. ฟีเจอร์แบนผู้ใช้ (ทางเลือก แนะนำให้เปิดใช้)
+-- ============================================
+-- เพิ่มคอลัมน์สำหรับจัดการสถานะแบนในตาราง profiles
+-- รันส่วนนี้หนึ่งครั้งหลังจากมีตาราง profiles แล้ว
+
+ALTER TABLE profiles
+  ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS ban_reason TEXT,
+  ADD COLUMN IF NOT EXISTS banned_at TIMESTAMPTZ;
+
+-- หมายเหตุ:
+-- - แอดมินจะใช้คอลัมน์ is_banned/ban_reason/banned_at ผ่าน Admin Dashboard
+-- - ฝั่งแอป เมื่อผู้ใช้ถูกแบน จะไม่สามารถเข้าสู่ระบบใช้งานได้ (login จะถูกปฏิเสธ)
+
+

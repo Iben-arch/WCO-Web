@@ -546,8 +546,8 @@ const CreatePost: React.FC = () => {
       });
 
       const successMessage = formData.postType === 'auction'
-        ? 'สร้างการประมูลสำเร็จ! 🔨'
-        : 'สร้างโพสต์ขายสำเร็จ! 🛒';
+        ? 'สร้างการประมูลสำเร็จ! โพสต์อยู่ในสถานะรออนุมัติ เมื่อแอดมินอนุมัติแล้วจะแสดงในหน้ารายการ 🔨'
+        : 'สร้างโพสต์ขายสำเร็จ! โพสต์อยู่ในสถานะรออนุมัติ เมื่อแอดมินอนุมัติแล้วจะแสดงในหน้ารายการ 🛒';
       toast.success(successMessage);
       navigate(`/post/${response.data.id}`);
     } catch (error: any) {

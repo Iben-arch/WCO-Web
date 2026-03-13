@@ -12,13 +12,16 @@ namespace ServerApi.Controllers
     public class PostsController : BaseController
     {
         private readonly SupabaseService _supabaseService;
+        private readonly AuctionService _auctionService;
         private readonly ILogger<PostsController> _logger;
 
         public PostsController(
             SupabaseService supabaseService,
+            AuctionService auctionService,
             ILogger<PostsController> logger)
         {
             _supabaseService = supabaseService;
+            _auctionService = auctionService;
             _logger = logger;
         }
 
@@ -67,7 +70,7 @@ namespace ServerApi.Controllers
                     ["imageStoragePaths"] = imageStoragePaths,
                     ["sellerId"] = userId,
                     ["sellerName"] = userName,
-                    ["status"] = "active",
+                    ["status"] = "pending",
                     ["postType"] = request.PostType ?? "sale",
                     ["createdAt"] = DateTime.UtcNow,
                     ["updatedAt"] = DateTime.UtcNow
@@ -106,6 +109,7 @@ namespace ServerApi.Controllers
                 }
                 else if (request.PostType == "auction")
                 {
+                    postData["auctionStatus"] = "active";
                     if (!string.IsNullOrEmpty(request.StartingBid))
                         postData["startingBid"] = double.Parse(request.StartingBid);
                     if (!string.IsNullOrEmpty(request.BuyNowPrice))
@@ -180,9 +184,10 @@ namespace ServerApi.Controllers
         {
             try
             {
-                // ใช้ database-level filter, sort, pagination แทนการโหลดทั้งหมด
+                // รายการสาธารณะ: แสดงเฉพาะโพสต์ที่แอดมินอนุมัติแล้ว (status=active) ถ้าไม่ได้ระบุ status
+                var statusFilter = status ?? "active";
                 var (posts, total) = await _supabaseService.GetPostsFilteredAsync(
-                    category, search, sortBy, page, limit, postType, status, useServiceRole: true);
+                    category, search, sortBy, page, limit, postType, statusFilter, useServiceRole: true);
 
                 var totalPages = (int)Math.Ceiling(total / (double)limit);
 
@@ -300,10 +305,14 @@ namespace ServerApi.Controllers
                     return Ok(new { posts = new List<object>(), pagination = new { total = 0 } });
                 }
 
+                // หน้าโปรไฟล์ผู้ขาย: แสดงเฉพาะโพสต์ที่อนุมัติแล้ว (active)
+                var activePosts = postsData.Where(p =>
+                    p.TryGetValue("status", out var st) && string.Equals(st?.ToString(), "active", StringComparison.OrdinalIgnoreCase)).ToList();
+
                 return Ok(new
                 {
-                    posts = postsData,
-                    pagination = new { total = postsData.Count }
+                    posts = activePosts,
+                    pagination = new { total = activePosts.Count }
                 });
             }
             catch (Exception ex)
@@ -326,11 +335,39 @@ namespace ServerApi.Controllers
         {
             try
             {
-                var post = await _supabaseService.GetAsync("posts", id);
+                var post = await _supabaseService.GetAsync("posts", id, useServiceRole: true);
                 
                 if (post == null)
                 {
                     return NotFound(new { success = false, error = "ไม่พบโพสต์ที่ระบุ" });
+                }
+
+                // ประมูล: อัปเดตสถานะจบประมูล/หลุดเมื่อโหลดโพสต์
+                if (post.TryGetValue("postType", out var ptCheck) && ptCheck?.ToString() == "auction")
+                {
+                    await _auctionService.FinalizeAuctionIfNeededAsync(id);
+                    await _auctionService.ReleaseAuctionIfOverdueAsync(id);
+                    post = await _supabaseService.GetAsync("posts", id, useServiceRole: true) ?? post;
+                }
+
+                var postStatus = post.TryGetValue("status", out var st) ? st?.ToString() : null;
+                var sellerId = post.TryGetValue("sellerId", out var sid) ? sid?.ToString() : null;
+
+                // โพสต์ที่ยังไม่อนุมัติ (pending/rejected) แสดงเฉพาะเจ้าของหรือแอดมิน
+                if (!string.Equals(postStatus, "active", StringComparison.OrdinalIgnoreCase))
+                {
+                    var userId = GetUserId();
+                    var isOwner = !string.IsNullOrEmpty(userId) && string.Equals(userId, sellerId, StringComparison.OrdinalIgnoreCase);
+                    var isAdmin = false;
+                    if (!isOwner && !string.IsNullOrEmpty(userId))
+                    {
+                        var profile = await _supabaseService.GetAsync("profiles", userId, useServiceRole: true, idField: "id");
+                        isAdmin = profile != null && profile.TryGetValue("role", out var r) && string.Equals(r?.ToString(), "admin", StringComparison.OrdinalIgnoreCase);
+                    }
+                    if (!isOwner && !isAdmin)
+                    {
+                        return NotFound(new { success = false, error = "ไม่พบโพสต์ที่ระบุ" });
+                    }
                 }
 
                 return Ok(post);

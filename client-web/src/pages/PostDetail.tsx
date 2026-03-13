@@ -35,6 +35,7 @@ const PostDetail: React.FC = () => {
   const [showBidsTable, setShowBidsTable] = useState<boolean>(false);
   const [individualCards, setIndividualCards] = useState<DetectedCard[]>([]);
   const [showImageLightbox, setShowImageLightbox] = useState<boolean>(false);
+  const [reAuctioning, setReAuctioning] = useState<boolean>(false);
 
   useEffect(() => {
     fetchPost();
@@ -282,21 +283,21 @@ const PostDetail: React.FC = () => {
 
     setPlacingBid(true);
     try {
-      await auctionAPI.placeBid(id!, bidValue);
+      const res = await auctionAPI.placeBid(id!, bidValue);
       
-      // Update post data
+      // Update post data (รองรับการขยายเวลาจาก backend)
       setPost(prev => ({
         ...prev,
-        currentBid: bidValue,
-        bidCount: (prev.bidCount || 0) + 1,
-        highestBidder: currentUser.id
+        currentBid: res?.currentBid ?? bidValue,
+        bidCount: res?.bidCount ?? (prev.bidCount || 0) + 1,
+        highestBidder: currentUser.id,
+        ...(res?.auctionEndDate && { auctionEndDate: res.auctionEndDate })
       }));
       
       setShowBidModal(false);
       setBidAmount('');
-      toast.success(`ประมูลสำเร็จ! จำนวนเงิน ${formatPrice(bidValue)}`);
+      toast.success(res?.message || `ประมูลสำเร็จ! จำนวนเงิน ${formatPrice(bidValue)}`);
       
-      // Refresh auction bids after successful bid
       fetchAuctionBids();
     } catch (error) {
       console.error('Error placing bid:', error);
@@ -332,7 +333,6 @@ const PostDetail: React.FC = () => {
       // TODO: Implement buyNow API endpoint in backend
       // await auctionAPI.buyNow(id!);
       toast.info('ฟีเจอร์ซื้อเลยกำลังพัฒนา');
-      // Navigate to chat or show success message
     } catch (error) {
       console.error('Error buying now:', error);
       if (error.response?.data?.error) {
@@ -340,6 +340,24 @@ const PostDetail: React.FC = () => {
       } else {
         toast.error('เกิดข้อผิดพลาดในการซื้อ');
       }
+    }
+  };
+
+  const handleReAuction = async (): Promise<void> => {
+    if (!post || !currentUser || post.sellerId !== currentUser.id) return;
+    setReAuctioning(true);
+    try {
+      const newEnd = new Date();
+      newEnd.setDate(newEnd.getDate() + 7);
+      await auctionAPI.reAuction(post.id, newEnd.toISOString());
+      toast.success('เปิดประมูลใหม่แล้ว');
+      const updated = await postsAPI.getPost(post.id);
+      setPost(updated);
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || 'เกิดข้อผิดพลาด';
+      toast.error(msg);
+    } finally {
+      setReAuctioning(false);
     }
   };
 
@@ -401,6 +419,15 @@ const PostDetail: React.FC = () => {
 
   const isOwner = currentUser && currentUser.id === post.sellerId;
   const isSold = post.status === 'sold';
+  const isAuctionReleased = post.postType === 'auction' && post.auctionStatus === 'auction_released';
+  const isWonPendingPayment = post.postType === 'auction' && post.auctionStatus === 'won_pending_payment';
+  const isAuctionWinner = currentUser && post.winnerId === currentUser.id;
+  const canBidAuction =
+    post.postType === 'auction' &&
+    post.auctionStatus !== 'won_pending_payment' &&
+    post.auctionStatus !== 'sold' &&
+    post.auctionStatus !== 'auction_released' &&
+    convertToDate(post.auctionEndDate) > new Date();
 
   return (
     <div className="post-detail-container mercari-style">
@@ -570,22 +597,38 @@ const PostDetail: React.FC = () => {
                 </div>
 
                 {/* Auction info in sidebar */}
-                {post.postType === 'auction' && post.auctionEndDate && (
+                {post.postType === 'auction' && (
                   <div className="mercari-auction-info">
-                    {convertToDate(post.auctionEndDate) > new Date() ? (
-                      <Badge bg="success" className="me-2">กำลังประมูล</Badge>
-                    ) : (
-                      <Badge bg="danger">สิ้นสุดแล้ว</Badge>
-                    )}
-                    <div className="end-time">สิ้นสุด: {formatDate(post.auctionEndDate)}</div>
-                    {post.startingBid != null && (
-                      <div>ราคาเริ่มต้น: {formatPrice(post.startingBid)}</div>
-                    )}
-                    {post.buyNowPrice != null && (
-                      <div>ซื้อเลย: {formatPrice(post.buyNowPrice)}</div>
-                    )}
-                    {post.highestBidder === currentUser?.id && (
-                      <Badge bg="warning" className="mt-2">คุณเป็นผู้ประมูลสูงสุด</Badge>
+                    {isWonPendingPayment ? (
+                      <>
+                        <Badge bg="warning" className="me-2">รอการชำระเงิน</Badge>
+                        {post.paymentDeadline && (
+                          <div className="end-time">ชำระภายใน: {formatDate(post.paymentDeadline)}</div>
+                        )}
+                        {isAuctionWinner && (
+                          <Badge bg="success" className="mt-2">คุณเป็นผู้ชนะ — กรุณาชำระในตะกร้า</Badge>
+                        )}
+                      </>
+                    ) : isAuctionReleased ? (
+                      <Badge bg="secondary">รายการหลุด — เจ้าของสามารถเปิดประมูลใหม่</Badge>
+                    ) : post.auctionEndDate && (
+                      <>
+                        {convertToDate(post.auctionEndDate) > new Date() ? (
+                          <Badge bg="success" className="me-2">กำลังประมูล</Badge>
+                        ) : (
+                          <Badge bg="danger">สิ้นสุดแล้ว</Badge>
+                        )}
+                        <div className="end-time">สิ้นสุด: {formatDate(post.auctionEndDate)}</div>
+                        {post.startingBid != null && (
+                          <div>ราคาเริ่มต้น: {formatPrice(post.startingBid)}</div>
+                        )}
+                        {post.buyNowPrice != null && (
+                          <div>ซื้อเลย: {formatPrice(post.buyNowPrice)}</div>
+                        )}
+                        {post.highestBidder === currentUser?.id && (
+                          <Badge bg="warning" className="mt-2">คุณเป็นผู้ประมูลสูงสุด</Badge>
+                        )}
+                      </>
                     )}
                   </div>
                 )}
@@ -597,7 +640,17 @@ const PostDetail: React.FC = () => {
                     </Alert>
                   ) : isOwner ? (
                     <>
-                      {!isSold && (
+                      {isAuctionReleased && (
+                        <button
+                          type="button"
+                          className="btn-mercari-primary"
+                          onClick={handleReAuction}
+                          disabled={reAuctioning}
+                        >
+                          {reAuctioning ? 'กำลังเปิด...' : 'ประมูลใหม่'}
+                        </button>
+                      )}
+                      {!isSold && !isAuctionReleased && (
                         <button
                           type="button"
                           className="btn-mercari-primary"
@@ -644,21 +697,37 @@ const PostDetail: React.FC = () => {
                           </button>
                           {post.postType === 'auction' && (
                             <>
-                              <button
-                                type="button"
-                                className="btn-mercari-primary"
-                                onClick={() => setShowBidModal(true)}
-                              >
-                                ประมูล
-                              </button>
-                              {post.buyNowPrice && (
-                                <button
-                                  type="button"
+                              {isWonPendingPayment && isAuctionWinner && (
+                                <Link
+                                  to="/cart"
                                   className="btn-mercari-primary"
-                                  onClick={handleBuyNow}
+                                  style={{ textDecoration: 'none', textAlign: 'center' }}
                                 >
-                                  ซื้อเลย {formatPrice(post.buyNowPrice)}
-                                </button>
+                                  ไปตะกร้าเพื่อชำระเงิน
+                                </Link>
+                              )}
+                              {canBidAuction && (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="btn-mercari-primary"
+                                    onClick={() => setShowBidModal(true)}
+                                  >
+                                    ประมูล
+                                  </button>
+                                  {post.buyNowPrice && (
+                                    <button
+                                      type="button"
+                                      className="btn-mercari-primary"
+                                      onClick={handleBuyNow}
+                                    >
+                                      ซื้อเลย {formatPrice(post.buyNowPrice)}
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                              {isWonPendingPayment && !isAuctionWinner && (
+                                <span className="text-muted small">มีผู้ชนะแล้ว รอการชำระเงิน</span>
                               )}
                             </>
                           )}

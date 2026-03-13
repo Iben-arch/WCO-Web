@@ -59,6 +59,7 @@ if (string.IsNullOrEmpty(jwtSecret) && !string.IsNullOrEmpty(serviceRoleKey))
 try
 {
     builder.Services.AddScoped<SupabaseService>();
+    builder.Services.AddScoped<AuctionService>();
     Console.WriteLine("✅ SupabaseService registered");
 }
 catch (Exception ex)

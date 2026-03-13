@@ -261,6 +261,14 @@ export const auctionAPI = {
       throw error;
     }
   },
+
+  // เจ้าของโพสต์เปิดประมูลใหม่ (หลังรายการหลุด)
+  reAuction: async (postId: string, newEndDate?: string): Promise<any> => {
+    const response = await axios.post(`/api/auction/${postId}/re-auction`, {
+      newEndDate: newEndDate ? new Date(newEndDate).toISOString() : undefined
+    });
+    return response.data;
+  },
 };
 
 // ==================== CART API ====================

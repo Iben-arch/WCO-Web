@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { Container, Row, Col, Card, Table, Button, Badge, Modal, Form, Alert } from 'react-bootstrap';
 import { useAuth } from '../contexts/AuthContext';
 import axios from '../utils/axiosInterceptor';
@@ -11,6 +12,8 @@ interface AdminUser extends UserProfile {
   email: string;
   createdAt?: Date | string;
   isAdmin?: boolean;
+  isBanned?: boolean;
+  banReason?: string | null;
 }
 
 interface AdminPost extends Post {
@@ -43,10 +46,10 @@ const AdminDashboard: React.FC = () => {
         axios.get('/api/admin/posts'),
         axios.get('/api/admin/users')
       ]);
-      
+
       setStats(statsResponse.data);
-      setPosts(postsResponse.data.posts);
-      setUsers(usersResponse.data.users);
+      setPosts(Array.isArray(postsResponse.data?.posts) ? postsResponse.data.posts : []);
+      setUsers(Array.isArray(usersResponse.data?.users) ? usersResponse.data.users : []);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
       toast.error('เกิดข้อผิดพลาดในการโหลดข้อมูล');
@@ -111,7 +114,7 @@ const AdminDashboard: React.FC = () => {
       case 'active':
         return <Badge bg="success">เปิดขาย</Badge>;
       case 'pending':
-        return <Badge bg="warning">รอการชำระเงิน</Badge>;
+        return <Badge bg="warning">รออนุมัติ</Badge>;
       case 'rejected':
         return <Badge bg="danger">ถูกปฏิเสธ</Badge>;
       default:
@@ -358,7 +361,13 @@ const AdminDashboard: React.FC = () => {
                   <tr key={post.id}>
                     <td>
                       <div>
-                        <strong>{post.title}</strong>
+                        <Link
+                          to={`/post/${post.id}`}
+                          className="text-decoration-none fw-bold"
+                          style={{ color: 'var(--bright-teal-blue)' }}
+                        >
+                          {post.title}
+                        </Link>
                         <br />
                         <small className="text-muted">{post.category}</small>
                       </div>
@@ -368,7 +377,29 @@ const AdminDashboard: React.FC = () => {
                     <td>{getStatusBadge(post.status)}</td>
                     <td>{formatDate(post.createdAt as string)}</td>
                     <td>
-                      <div className="d-flex gap-1">
+                      <div className="d-flex flex-wrap gap-1 align-items-center">
+                        <Link
+                          to={`/post/${post.id}`}
+                          className="btn btn-sm btn-outline-primary btn-tcg-sm"
+                        >
+                          ดูรายละเอียด
+                        </Link>
+                        <Button
+                          size="sm"
+                          variant="success"
+                          className="btn-tcg-sm"
+                          onClick={() => handlePostAction(post, 'active')}
+                        >
+                          อนุมัติ
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="warning"
+                          className="btn-tcg-sm"
+                          onClick={() => handlePostAction(post, 'rejected')}
+                        >
+                          ปฏิเสธ
+                        </Button>
                         <Button
                           size="sm"
                           className="btn-tcg-outline btn-tcg-sm"
@@ -416,10 +447,12 @@ const AdminDashboard: React.FC = () => {
               <tbody>
                 {users.map((user) => (
                   <tr key={user.id}>
-                    <td>{user.displayName}</td>
-                    <td>{user.email}</td>
+                    <td>{user.displayName ?? user.username ?? '—'}</td>
+                    <td>{user.email ?? '—'}</td>
                     <td>
-                      {user.isAdmin ? (
+                      {user.isBanned ? (
+                        <Badge bg="dark">ถูกแบน</Badge>
+                      ) : user.isAdmin ? (
                         <Badge bg="danger">แอดมิน</Badge>
                       ) : (
                         <Badge bg="secondary">ผู้ใช้</Badge>
@@ -427,25 +460,50 @@ const AdminDashboard: React.FC = () => {
                     </td>
                     <td>{formatDate(user.createdAt)}</td>
                     <td>
-                      <Button
-                        size="sm"
-                        className={user.isAdmin ? 'btn-tcg-outline btn-tcg-sm' : 'btn-tcg-primary btn-tcg-sm'}
-                        onClick={async () => {
-                          try {
-                            await axios.put(`/api/admin/users/${user.id}/admin`, {
-                              isAdmin: !user.isAdmin
-                            });
-                            setUsers(users.map(u => 
-                              u.id === user.id ? { ...u, isAdmin: !u.isAdmin } : u
-                            ));
-                            toast.success('อัปเดตสถานะผู้ใช้สำเร็จ');
-                          } catch (error) {
-                            toast.error('เกิดข้อผิดพลาดในการอัปเดต');
-                          }
-                        }}
-                      >
-                        {user.isAdmin ? 'ลบสิทธิ์แอดมิน' : 'ให้สิทธิ์แอดมิน'}
-                      </Button>
+                      <div className="d-flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          className={user.isAdmin ? 'btn-tcg-outline btn-tcg-sm' : 'btn-tcg-primary btn-tcg-sm'}
+                          onClick={async () => {
+                            try {
+                              await axios.put(`/api/admin/users/${user.id}/admin`, {
+                                isAdmin: !user.isAdmin
+                              });
+                              setUsers(users.map(u => 
+                                u.id === user.id ? { ...u, isAdmin: !u.isAdmin } : u
+                              ));
+                              toast.success('อัปเดตสิทธิ์แอดมินสำเร็จ');
+                            } catch (error) {
+                              toast.error('เกิดข้อผิดพลาดในการอัปเดตสิทธิ์แอดมิน');
+                            }
+                          }}
+                        >
+                          {user.isAdmin ? 'ลบสิทธิ์แอดมิน' : 'ให้สิทธิ์แอดมิน'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={user.isBanned ? 'outline-secondary' : 'outline-danger'}
+                          className="btn-tcg-sm"
+                          onClick={async () => {
+                            try {
+                              const isBanned = !user.isBanned;
+                              await axios.put(`/api/admin/users/${user.id}/ban`, {
+                                isBanned,
+                                reason: isBanned ? 'แบนจากแดชบอร์ดแอดมิน' : undefined
+                              });
+                              setUsers(users.map(u =>
+                                u.id === user.id ? { ...u, isBanned } : u
+                              ));
+                              toast.success(isBanned ? 'แบนผู้ใช้สำเร็จ' : 'ยกเลิกการแบนสำเร็จ');
+                            } catch (err: any) {
+                              const message = err?.response?.data?.error || 'เกิดข้อผิดพลาดในการอัปเดตสถานะแบน';
+                              toast.error(message);
+                            }
+                          }}
+                        >
+                          {user.isBanned ? 'ยกเลิกแบน' : 'แบนผู้ใช้'}
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}

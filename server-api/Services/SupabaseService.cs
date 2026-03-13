@@ -319,6 +319,9 @@ namespace ServerApi.Services
             if (!string.IsNullOrEmpty(status))
                 queryParams.Add($"status=eq.{Uri.EscapeDataString(status)}");
 
+            // ไม่แสดงโพสต์ประมูลที่หลุด (auction_released) ในรายการหลัก
+            queryParams.Add("or=(postType.neq.auction,auctionStatus.neq.auction_released,auctionStatus.is.null)");
+
             // Filter: search (title or description contains - ใช้ % สำหรับ SQL LIKE wildcard)
             if (!string.IsNullOrEmpty(search))
             {
@@ -377,13 +380,14 @@ namespace ServerApi.Services
         /// <summary>
         /// อ่านข้อมูลทั้งหมดจาก table
         /// </summary>
-        public async Task<List<Dictionary<string, object>>> GetAllAsync(string table)
+        public async Task<List<Dictionary<string, object>>> GetAllAsync(string table, bool useServiceRole = false)
         {
+            var keyToUse = (useServiceRole && !string.IsNullOrEmpty(_serviceRoleKey)) ? _serviceRoleKey : _supabaseKey;
             var url = $"/rest/v1/{table}?select=*";
             var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.Add("apikey", _supabaseKey);
-            request.Headers.Add("Authorization", $"Bearer {_supabaseKey}");
-            
+            request.Headers.Add("apikey", keyToUse);
+            request.Headers.Add("Authorization", $"Bearer {keyToUse}");
+
             var response = await _httpClient.SendAsync(request);
             response.EnsureSuccessStatusCode();
 
@@ -391,7 +395,7 @@ namespace ServerApi.Services
             var doc = JsonSerializer.Deserialize<JsonElement>(content);
 
             var results = new List<Dictionary<string, object>>();
-            
+
             if (doc.ValueKind == JsonValueKind.Array)
             {
                 foreach (var item in doc.EnumerateArray())
@@ -411,13 +415,15 @@ namespace ServerApi.Services
         /// <summary>
         /// ลบข้อมูลจาก Supabase
         /// </summary>
-        public async Task DeleteAsync(string table, string id)
+        public async Task DeleteAsync(string table, string id, string? idField = null, bool useServiceRole = false)
         {
-            var url = $"/rest/v1/{table}?id=eq.{id}";
+            var fieldName = idField ?? (table == "users" ? "uid" : "id");
+            var url = $"/rest/v1/{table}?{fieldName}=eq.{Uri.EscapeDataString(id)}";
+            var keyToUse = (useServiceRole && !string.IsNullOrEmpty(_serviceRoleKey)) ? _serviceRoleKey : _supabaseKey;
             var request = new HttpRequestMessage(HttpMethod.Delete, url);
-            request.Headers.Add("apikey", _supabaseKey);
-            request.Headers.Add("Authorization", $"Bearer {_supabaseKey}");
-            
+            request.Headers.Add("apikey", keyToUse);
+            request.Headers.Add("Authorization", $"Bearer {keyToUse}");
+
             var response = await _httpClient.SendAsync(request);
             response.EnsureSuccessStatusCode();
         }

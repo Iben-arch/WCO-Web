@@ -72,6 +72,10 @@ export interface Post {
   condition?: string;
   highestBidder?: string;
   game?: string;
+  /** สถานะประมูล: active | won_pending_payment | sold | auction_released */
+  auctionStatus?: 'active' | 'won_pending_payment' | 'sold' | 'auction_released';
+  winnerId?: string;
+  paymentDeadline?: Date | FirestoreTimestamp | string;
 }
 
 // Sort Types

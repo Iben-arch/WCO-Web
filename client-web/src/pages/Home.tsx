@@ -1,6 +1,6 @@
 import React, { useState, useEffect, FormEvent, ChangeEvent } from 'react';
 import { Container, Row, Col, Card, Form, Button, Spinner, Alert, Modal } from 'react-bootstrap';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { postsAPI, authAPI } from '../api/api';
 import { toast } from 'react-toastify';
 import { useAuth } from '../contexts/AuthContext';
@@ -36,6 +36,7 @@ const categories: Category[] = [
 
 const Home: React.FC = () => {
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
   const { addToCart, isInCart } = useCart();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -645,7 +646,7 @@ const Home: React.FC = () => {
                         <div className="card-actions">
                           <button 
                             className="btn-view-details"
-                            onClick={() => window.open(`/post/${post.id}`, '_blank')}
+                            onClick={() => navigate(`/post/${post.id}`)}
                           >
                             ดูรายละเอียด
                           </button>

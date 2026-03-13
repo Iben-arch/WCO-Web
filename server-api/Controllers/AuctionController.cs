@@ -1,0 +1,202 @@
+using Microsoft.AspNetCore.Mvc;
+using ServerApi.Services;
+using System.Text.Json;
+
+namespace ServerApi.Controllers
+{
+    [ApiController]
+    [Route("api/auction")]
+    public class AuctionController : BaseController
+    {
+        private readonly SupabaseService _supabase;
+        private readonly AuctionService _auctionService;
+        private readonly ILogger<AuctionController> _logger;
+
+        private const int ExtendMinutes = 5;
+        private const int MinutesThresholdToExtend = 5;
+        private const int PaymentDeadlineHours = 24;
+
+        public AuctionController(SupabaseService supabase, AuctionService auctionService, ILogger<AuctionController> logger)
+        {
+            _supabase = supabase;
+            _auctionService = auctionService;
+            _logger = logger;
+        }
+
+        /// <summary>วาง bid และขยายเวลาได้ถ้าใกล้หมดเวลา</summary>
+        [HttpPost("{postId}/bid")]
+        public async Task<IActionResult> PlaceBid(string postId, [FromBody] PlaceBidRequest body)
+        {
+            var userId = GetUserId();
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized(new { success = false, error = "กรุณาเข้าสู่ระบบ" });
+
+            if (body?.BidAmount <= 0)
+                return BadRequest(new { success = false, error = "จำนวนเงินประมูลต้องมากกว่า 0" });
+
+            var post = await _supabase.GetAsync("posts", postId, useServiceRole: true);
+            if (post == null)
+                return NotFound(new { success = false, error = "ไม่พบโพสต์" });
+
+            if (post.TryGetValue("postType", out var pt) && pt?.ToString() != "auction")
+                return BadRequest(new { success = false, error = "โพสต์นี้ไม่ใช่การประมูล" });
+
+            var sellerId = post.TryGetValue("sellerId", out var sid) ? sid?.ToString() : null;
+            if (sellerId == userId)
+                return BadRequest(new { success = false, error = "ไม่สามารถประมูลโพสต์ของตัวเองได้" });
+
+            var status = post.TryGetValue("status", out var st) ? st?.ToString() : null;
+            var auctionStatus = post.TryGetValue("auctionStatus", out var ast) ? ast?.ToString() : null;
+            if (status == "sold" || auctionStatus == "sold" || auctionStatus == "won_pending_payment")
+                return BadRequest(new { success = false, error = "การประมูลจบแล้วหรือรอการชำระเงิน" });
+
+            if (auctionStatus == "auction_released")
+                return BadRequest(new { success = false, error = "รายการนี้หลุดแล้ว เจ้าของยังไม่ได้เปิดประมูลใหม่" });
+
+            var auctionEnd = GetDateTime(post, "auctionEndDate");
+            if (auctionEnd <= DateTime.UtcNow)
+            {
+                await _auctionService.FinalizeAuctionIfNeededAsync(postId);
+                return BadRequest(new { success = false, error = "การประมูลสิ้นสุดแล้ว" });
+            }
+
+            var startingBid = GetDecimal(post, "startingBid");
+            var currentBid = GetDecimal(post, "currentBid");
+            var minBid = currentBid > 0 ? currentBid : startingBid;
+            if (body.BidAmount <= minBid)
+                return BadRequest(new { success = false, error = $"จำนวนเงินประมูลต้องมากกว่า {minBid:N0} บาท" });
+
+            var profile = await _supabase.GetAsync("profiles", userId, useServiceRole: true, idField: "id");
+            var bidderName = (profile != null && profile.TryGetValue("username", out var un) && un != null) ? un.ToString()! : "ผู้ใช้";
+
+            var bidRow = new Dictionary<string, object>
+            {
+                ["post_id"] = postId,
+                ["bidder_id"] = userId,
+                ["bidder_name"] = bidderName,
+                ["bid_amount"] = body.BidAmount
+            };
+            await _supabase.CreateAsync("auction_bids", bidRow, useServiceRole: true);
+
+            var bidCount = (int)(GetDecimal(post, "bidCount") + 1);
+            var newEnd = auctionEnd;
+            var remaining = (newEnd - DateTime.UtcNow).TotalMinutes;
+            if (remaining <= MinutesThresholdToExtend)
+                newEnd = DateTime.UtcNow.AddMinutes(ExtendMinutes);
+
+            var update = new Dictionary<string, object>
+            {
+                ["currentBid"] = body.BidAmount,
+                ["highestBidder"] = userId,
+                ["bidCount"] = bidCount,
+                ["auctionEndDate"] = newEnd,
+                ["updatedAt"] = DateTime.UtcNow
+            };
+            if (!post.ContainsKey("auctionStatus") || string.IsNullOrEmpty(auctionStatus))
+                update["auctionStatus"] = "active";
+            await _supabase.UpdateAsync("posts", postId, update, idField: "id", useServiceRole: true);
+
+            return Ok(new
+            {
+                success = true,
+                message = remaining <= MinutesThresholdToExtend ? $"ประมูลสำเร็จ และขยายเวลาประมูลอีก {ExtendMinutes} นาที" : "ประมูลสำเร็จ",
+                currentBid = body.BidAmount,
+                bidCount,
+                auctionEndDate = newEnd
+            });
+        }
+
+        /// <summary>ดึงรายการ bid ของโพสต์ (เรียงจากสูงไปต่ำ)</summary>
+        [HttpGet("{postId}/bids")]
+        public async Task<IActionResult> GetBids(string postId)
+        {
+            var list = await _supabase.QueryAsync("auction_bids", "post_id", postId, useServiceRole: true);
+            if (list == null) return Ok(new { bids = new List<object>() });
+
+            var bids = list
+                .OrderByDescending(b => GetDecimal(b, "bid_amount"))
+                .ThenByDescending(b => GetDateTime(b, "created_at"))
+                .Select(b => new
+                {
+                    id = b.TryGetValue("id", out var i) ? i?.ToString() : null,
+                    bidderId = b.TryGetValue("bidder_id", out var bi) ? bi?.ToString() : null,
+                    bidderName = b.TryGetValue("bidder_name", out var bn) ? bn?.ToString() : null,
+                    bidAmount = GetDecimal(b, "bid_amount"),
+                    createdAt = b.TryGetValue("created_at", out var c) ? c : null
+                })
+                .ToList();
+
+            return Ok(bids);
+        }
+
+        /// <summary>เจ้าของโพสต์เลือกประมูลใหม่ (หลังหลุด)</summary>
+        [HttpPost("{postId}/re-auction")]
+        public async Task<IActionResult> ReAuction(string postId, [FromBody] ReAuctionRequest body)
+        {
+            var userId = GetUserId();
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized(new { success = false, error = "กรุณาเข้าสู่ระบบ" });
+
+            var post = await _supabase.GetAsync("posts", postId, useServiceRole: true);
+            if (post == null)
+                return NotFound(new { success = false, error = "ไม่พบโพสต์" });
+
+            var sellerId = post.TryGetValue("sellerId", out var s) ? s?.ToString() : null;
+            if (sellerId != userId)
+                return Forbid();
+
+            if (post.TryGetValue("auctionStatus", out var ast) && ast?.ToString() != "auction_released")
+                return BadRequest(new { success = false, error = "สามารถประมูลใหม่ได้เฉพาะรายการที่หลุดเท่านั้น" });
+
+            var newEnd = body?.NewEndDate ?? DateTime.UtcNow.AddDays(7);
+            if (newEnd <= DateTime.UtcNow)
+                return BadRequest(new { success = false, error = "วันสิ้นสุดต้องเป็นเวลาข้างหน้า" });
+
+            var update = new Dictionary<string, object>
+            {
+                ["auctionStatus"] = "active",
+                ["winnerId"] = null!,
+                ["paymentDeadline"] = null!,
+                ["auctionEndDate"] = newEnd,
+                ["currentBid"] = null!,
+                ["highestBidder"] = null!,
+                ["bidCount"] = 0,
+                ["updatedAt"] = DateTime.UtcNow
+            };
+            await _supabase.UpdateAsync("posts", postId, update, idField: "id", useServiceRole: true);
+
+            return Ok(new { success = true, message = "เปิดประมูลใหม่แล้ว", auctionEndDate = newEnd });
+        }
+
+        private static decimal GetDecimal(Dictionary<string, object> d, string key)
+        {
+            if (!d.TryGetValue(key, out var v) || v == null) return 0;
+            if (v is decimal dm) return dm;
+            if (v is double db) return (decimal)db;
+            if (v is int i) return i;
+            if (v is long l) return l;
+            if (v is JsonElement je && je.TryGetDecimal(out var jd)) return jd;
+            decimal.TryParse(v.ToString(), out var r);
+            return r;
+        }
+
+        private static DateTime GetDateTime(Dictionary<string, object> d, string key)
+        {
+            if (!d.TryGetValue(key, out var v) || v == null) return DateTime.MinValue;
+            if (v is DateTime dt) return dt;
+            if (v is DateTimeOffset dto) return dto.UtcDateTime;
+            if (v is string s && DateTime.TryParse(s, out var p)) return p.ToUniversalTime();
+            return DateTime.MinValue;
+        }
+    }
+
+    public class PlaceBidRequest
+    {
+        public decimal BidAmount { get; set; }
+    }
+
+    public class ReAuctionRequest
+    {
+        public DateTime? NewEndDate { get; set; }
+    }
+}

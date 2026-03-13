@@ -45,20 +45,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
 
       if (data) {
-      setProfile(data);
-      // Also update userProfile for backward compatibility
-      setUserProfile({
-        id: data.id,
-        username: data.username,
-        displayName: data.username, // Map username to displayName for backward compatibility
-        avatar_url: data.avatar_url,
-        photoURL: data.avatar_url, // Map avatar_url to photoURL for backward compatibility
-        role: data.role,
-        isAdmin: data.role === 'admin',
-        phone: data.phone || undefined,
-        address: data.address || undefined,
-        email: currentUser?.email || undefined
-      });
+        setProfile(data);
+        // Also update userProfile for backward compatibility
+        setUserProfile({
+          id: data.id,
+          username: data.username,
+          displayName: data.username, // Map username to displayName for backward compatibility
+          avatar_url: data.avatar_url,
+          photoURL: data.avatar_url, // Map avatar_url to photoURL for backward compatibility
+          role: data.role,
+          isAdmin: data.role === 'admin',
+          // โปรไฟล์ใหม่รองรับสถานะแบนจากคอลัมน์ is_banned
+          isBanned: (data as any).is_banned === true,
+          phone: data.phone || undefined,
+          address: data.address || undefined,
+          email: currentUser?.email || undefined
+        });
       }
     } catch (error: any) {
       console.error('Error fetching profile:', error);
@@ -88,6 +90,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       if (!data.user) {
         throw new Error('ไม่พบข้อมูลผู้ใช้');
+      }
+
+      // ตรวจสอบสถานะแบนจาก profiles ก่อนให้เข้าสู่ระบบในแอป
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, username, role, is_banned, ban_reason')
+        .eq('id', data.user.id)
+        .single();
+
+      if (profileError) {
+        console.warn('Error loading profile during login:', profileError);
+      }
+
+      if (profileData && (profileData as any).is_banned === true) {
+        // เคลียร์ session ทิ้งไม่ให้ใช้งานต่อ
+        clearSessionCache();
+        await supabase.auth.signOut();
+        throw new Error('บัญชีของคุณถูกแบน ไม่สามารถเข้าสู่ระบบได้');
       }
 
       setCurrentUser(data.user);
