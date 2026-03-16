@@ -39,47 +39,22 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="auth-page-container" style={{
-      background: 'linear-gradient(135deg, var(--light-cyan) 0%, var(--frosted-blue-light) 50%, var(--sky-aqua) 100%)',
-      minHeight: '100vh',
-      padding: '2rem 0'
-    }}>
+    <div className="auth-page-container">
       <Container>
         <Row className="justify-content-center align-items-center min-vh-100 py-5">
           <Col md={8} lg={6} xl={5}>
             {/* Logo/Brand Section */}
-            <div className="auth-logo-section text-center mb-5" style={{
-              animation: 'fadeInDown 0.6s ease-out'
-            }}>
-              <Link to="/" className="auth-logo-link" style={{ textDecoration: 'none' }}>
-                <h1 className="auth-brand-title" style={{
-                  fontSize: '2.5rem',
-                  fontWeight: '700',
-                  color: 'var(--deep-twilight)',
-                  marginBottom: '1rem',
-                  textShadow: '0 2px 4px rgba(3, 4, 94, 0.1)'
-                }}>🎴 WCO Thailand</h1>
-                <p className="auth-brand-tagline" style={{
-                  fontSize: '1rem',
-                  color: 'var(--text-secondary)',
-                  lineHeight: '1.6',
-                  maxWidth: '500px',
-                  margin: '0 auto'
-                }}>
+            <div className="auth-logo-section text-center mb-5">
+              <Link to="/" className="auth-logo-link">
+                <h1 className="auth-brand-title">🎴 WCO Thailand</h1>
+                <p className="auth-brand-tagline">
                   เรามุ่งมั่นที่จะผลักดันวงการการ์ดเกมประเทศไทยให้เติบโตและพัฒนาไปข้างหน้าอย่างก้าวกระโดด
                 </p>
               </Link>
             </div>
 
             {/* Auth Card */}
-            <div className="auth-form-card" style={{
-              background: 'var(--bg-card)',
-              borderRadius: 'var(--radius-xl)',
-              boxShadow: 'var(--shadow-xl)',
-              padding: '2.5rem',
-              border: '1px solid var(--border-light)',
-              animation: 'fadeInUp 0.6s ease-out'
-            }}>
+            <div className="auth-form-card">
               <div className="auth-form-header">
                 <h2 className="auth-form-title">เข้าสู่ระบบ</h2>
                 <p className="auth-form-subtitle">เข้าสู่ระบบเพื่อซื้อขายการ์ดเกม</p>

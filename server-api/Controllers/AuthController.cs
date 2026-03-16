@@ -474,6 +474,48 @@ namespace ServerApi.Controllers
         }
 
         /// <summary>
+        /// ดึงรายการที่ถูกใจของ user (โพสต์ + วันที่ถูกใจ)
+        /// </summary>
+        [HttpGet("liked-items")]
+        public async Task<IActionResult> GetLikedItems()
+        {
+            try
+            {
+                var userId = GetUserId();
+                if (string.IsNullOrEmpty(userId))
+                    return Ok(new List<object>());
+
+                var likes = await _supabaseService.QueryAsync("likes", "userId", userId, useServiceRole: true);
+                if (likes == null || likes.Count == 0)
+                    return Ok(new List<object>());
+
+                var result = new List<object>();
+                foreach (var like in likes)
+                {
+                    var postId = like.TryGetValue("postId", out var pid) ? pid?.ToString() : null;
+                    if (string.IsNullOrEmpty(postId)) continue;
+
+                    var post = await _supabaseService.GetAsync("posts", postId, useServiceRole: true);
+                    if (post == null) continue;
+
+                    var likedAt = like.TryGetValue("created_at", out var ca) ? ca : null;
+                    var item = new Dictionary<string, object?>(post)
+                    {
+                        ["likedAt"] = likedAt ?? ""
+                    };
+                    result.Add(item);
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching liked items");
+                return Ok(new List<object>());
+            }
+        }
+
+        /// <summary>
         /// Toggle like บน post (เพิ่มหรือลบ)
         /// </summary>
         [HttpPost("like/{postId}")]

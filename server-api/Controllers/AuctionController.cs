@@ -23,7 +23,7 @@ namespace ServerApi.Controllers
             _logger = logger;
         }
 
-        /// <summary>วาง bid และขยายเวลาได้ถ้าใกล้หมดเวลา</summary>
+        /// <summary>วาง bid และขยายเวลาได้ถ้าใกล้หมดเวลา (cardId บังคับสำหรับประมูลแยกใบ)</summary>
         [HttpPost("{postId}/bid")]
         public async Task<IActionResult> PlaceBid(string postId, [FromBody] PlaceBidRequest body)
         {
@@ -40,6 +40,12 @@ namespace ServerApi.Controllers
 
             if (post.TryGetValue("postType", out var pt) && pt?.ToString() != "auction")
                 return BadRequest(new { success = false, error = "โพสต์นี้ไม่ใช่การประมูล" });
+
+            var saleType = post.TryGetValue("saleType", out var stype) ? stype?.ToString() : null;
+            var isIndividual = saleType == "individual";
+
+            if (isIndividual && string.IsNullOrEmpty(body?.CardId))
+                return BadRequest(new { success = false, error = "ประมูลแยกใบต้องระบุ cardId" });
 
             var sellerId = post.TryGetValue("sellerId", out var sid) ? sid?.ToString() : null;
             if (sellerId == userId)
@@ -60,10 +66,26 @@ namespace ServerApi.Controllers
                 return BadRequest(new { success = false, error = "การประมูลสิ้นสุดแล้ว" });
             }
 
-            var startingBid = GetDecimal(post, "startingBid");
-            var currentBid = GetDecimal(post, "currentBid");
-            var minBid = currentBid > 0 ? currentBid : startingBid;
-            if (body.BidAmount <= minBid)
+            decimal minBid;
+            if (isIndividual)
+            {
+                if (!GetIndividualCardStartingBid(post, body!.CardId!, out var cardStart))
+                    return BadRequest(new { success = false, error = "ไม่พบการ์ดที่ระบุ" });
+                var allBids = await _supabase.QueryAsync("auction_bids", "post_id", postId, useServiceRole: true);
+                var cardBids = (allBids ?? new List<Dictionary<string, object>>())
+                    .Where(b => string.Equals(GetString(b, "card_id"), body.CardId, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                var cardMax = cardBids.Count > 0 ? cardBids.Max(b => GetDecimal(b, "bid_amount")) : 0;
+                minBid = cardMax > 0 ? cardMax : cardStart;
+            }
+            else
+            {
+                var startingBid = GetDecimal(post, "startingBid");
+                var currentBid = GetDecimal(post, "currentBid");
+                minBid = currentBid > 0 ? currentBid : startingBid;
+            }
+
+            if (body!.BidAmount <= minBid)
                 return BadRequest(new { success = false, error = $"จำนวนเงินประมูลต้องมากกว่า {minBid:N0} บาท" });
 
             var profile = await _supabase.GetAsync("profiles", userId, useServiceRole: true, idField: "id");
@@ -76,6 +98,8 @@ namespace ServerApi.Controllers
                 ["bidder_name"] = bidderName,
                 ["bid_amount"] = body.BidAmount
             };
+            if (isIndividual)
+                bidRow["card_id"] = body.CardId!;
             await _supabase.CreateAsync("auction_bids", bidRow, useServiceRole: true);
 
             var bidCount = (int)(GetDecimal(post, "bidCount") + 1);
@@ -86,14 +110,17 @@ namespace ServerApi.Controllers
 
             var update = new Dictionary<string, object>
             {
-                ["currentBid"] = body.BidAmount,
-                ["highestBidder"] = userId,
                 ["bidCount"] = bidCount,
                 ["auctionEndDate"] = newEnd,
                 ["updatedAt"] = DateTime.UtcNow
             };
             if (!post.ContainsKey("auctionStatus") || string.IsNullOrEmpty(auctionStatus))
                 update["auctionStatus"] = "active";
+            if (!isIndividual)
+            {
+                update["currentBid"] = body.BidAmount;
+                update["highestBidder"] = userId;
+            }
             await _supabase.UpdateAsync("posts", postId, update, idField: "id", useServiceRole: true);
 
             return Ok(new
@@ -101,19 +128,48 @@ namespace ServerApi.Controllers
                 success = true,
                 message = remaining <= MinutesThresholdToExtend ? $"ประมูลสำเร็จ และขยายเวลาประมูลอีก {ExtendMinutes} นาที" : "ประมูลสำเร็จ",
                 currentBid = body.BidAmount,
+                cardId = body.CardId,
                 bidCount,
                 auctionEndDate = newEnd
             });
         }
 
-        /// <summary>ดึงรายการ bid ของโพสต์ (เรียงจากสูงไปต่ำ)</summary>
+        private static bool GetIndividualCardStartingBid(Dictionary<string, object> post, string cardId, out decimal startingBid)
+        {
+            startingBid = 0;
+            if (!post.TryGetValue("individualCards", out var icObj) || icObj == null) return false;
+            if (icObj is not System.Collections.IEnumerable arr) return false;
+            foreach (var item in arr)
+            {
+                var card = item as Dictionary<string, object>;
+                if (card == null) continue;
+                var id = card.TryGetValue("id", out var i) ? i?.ToString() : null;
+                if (string.IsNullOrEmpty(id) || !string.Equals(id, cardId, StringComparison.OrdinalIgnoreCase)) continue;
+                startingBid = AuctionService.GetDecimal(card, "price");
+                if (startingBid <= 0) startingBid = GetDecimal(post, "startingBid");
+                return true;
+            }
+            return false;
+        }
+
+        private static string GetString(Dictionary<string, object> d, string key)
+        {
+            if (!d.TryGetValue(key, out var v) || v == null) return string.Empty;
+            return v?.ToString() ?? string.Empty;
+        }
+
+        /// <summary>ดึงรายการ bid ของโพสต์ (optional cardId สำหรับประมูลแยกใบ)</summary>
         [HttpGet("{postId}/bids")]
-        public async Task<IActionResult> GetBids(string postId)
+        public async Task<IActionResult> GetBids(string postId, [FromQuery] string? cardId = null)
         {
             var list = await _supabase.QueryAsync("auction_bids", "post_id", postId, useServiceRole: true);
-            if (list == null) return Ok(new { bids = new List<object>() });
+            if (list == null) return Ok(new List<object>());
 
-            var bids = list
+            var filtered = string.IsNullOrEmpty(cardId)
+                ? list
+                : list.Where(b => string.Equals(GetString(b, "card_id"), cardId, StringComparison.OrdinalIgnoreCase)).ToList();
+
+            var bids = filtered
                 .OrderByDescending(b => GetDecimal(b, "bid_amount"))
                 .ThenByDescending(b => GetDateTime(b, "created_at"))
                 .Select(b => new
@@ -122,11 +178,28 @@ namespace ServerApi.Controllers
                     bidderId = b.TryGetValue("bidder_id", out var bi) ? bi?.ToString() : null,
                     bidderName = b.TryGetValue("bidder_name", out var bn) ? bn?.ToString() : null,
                     bidAmount = GetDecimal(b, "bid_amount"),
+                    cardId = b.TryGetValue("card_id", out var ci) ? ci?.ToString() : null,
                     createdAt = b.TryGetValue("created_at", out var c) ? c : null
                 })
                 .ToList();
 
             return Ok(bids);
+        }
+
+        /// <summary>ดึงรายการผู้ชนะแต่ละใบ (สำหรับประมูลแยกใบ)</summary>
+        [HttpGet("{postId}/card-winners")]
+        public async Task<IActionResult> GetCardWinners(string postId)
+        {
+            var list = await _supabase.QueryAsync("auction_card_winners", "post_id", postId, useServiceRole: true);
+            if (list == null) return Ok(new List<object>());
+            var result = list.Select(w => new
+            {
+                cardId = w.TryGetValue("card_id", out var ci) ? ci?.ToString() : null,
+                winnerId = w.TryGetValue("winner_id", out var wi) ? wi?.ToString() : null,
+                bidAmount = AuctionService.GetDecimal(w, "bid_amount"),
+                paymentDeadline = w.TryGetValue("payment_deadline", out var pd) ? pd : null
+            }).ToList();
+            return Ok(result);
         }
 
         /// <summary>เจ้าของโพสต์เลือกประมูลใหม่ (หลังหลุด)</summary>
@@ -193,6 +266,7 @@ namespace ServerApi.Controllers
     public class PlaceBidRequest
     {
         public decimal BidAmount { get; set; }
+        public string? CardId { get; set; }
     }
 
     public class ReAuctionRequest

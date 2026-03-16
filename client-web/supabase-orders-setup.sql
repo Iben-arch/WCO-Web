@@ -17,7 +17,10 @@ CREATE TABLE IF NOT EXISTS orders (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- status: 'pending_shipment' = รอจัดส่ง, 'sold' = ขายแล้ว (จัดส่งแล้ว มีใบเสร็จ)
+-- status: 'pending_shipment' = รอจัดส่ง, 'shipped' = จัดส่งแล้ว (แนบใบเสร็จแล้ว), 'sold' = ผู้ซื้อได้รับแล้ว/เสร็จสิ้น
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_address TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS buyer_name TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_phone TEXT;
 
 -- 2. ตาราง order_items (รายการในคำสั่งซื้อ)
 CREATE TABLE IF NOT EXISTS order_items (

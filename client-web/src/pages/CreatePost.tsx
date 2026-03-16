@@ -260,6 +260,20 @@ const CreatePost: React.FC = () => {
       }
     }
     if (formData.postType === 'auction') {
+      if (formData.saleType === 'individual') {
+        return !!(
+          formData.startingBid && parseFloat(formData.startingBid) > 0 &&
+          formData.auctionEndDate && new Date(formData.auctionEndDate) > new Date() &&
+          detectedCards.length > 0 &&
+          detectedCards.every(
+            (c) =>
+              c.price &&
+              parseFloat(String(c.price)) > 0 &&
+              c.quantity &&
+              parseInt(String(c.quantity)) > 0
+          )
+        );
+      }
       return !!(formData.startingBid && parseFloat(formData.startingBid) > 0 && formData.auctionEndDate && new Date(formData.auctionEndDate) > new Date());
     }
     return false;
@@ -537,7 +551,16 @@ const CreatePost: React.FC = () => {
         payload.startingBid = formData.startingBid;
         payload.auctionEndDate = formData.auctionEndDate;
         if (formData.saleType === 'deck') payload.cardCount = formData.cardCount;
-        if (formData.saleType === 'individual') payload.availableQuantity = formData.availableQuantity;
+        if (formData.saleType === 'individual') {
+          payload.availableQuantity = formData.availableQuantity;
+          if (individualCardsPayload && individualCardsPayload.length > 0) {
+            payload.individualCards = individualCardsPayload;
+            payload.price = String(Math.min(...individualCardsPayload.map((p) => p.price)));
+            payload.availableQuantity = String(
+              individualCardsPayload.reduce((s, p) => s + (p.quantity || 0), 0)
+            );
+          }
+        }
         if (formData.buyNowPrice) payload.buyNowPrice = formData.buyNowPrice;
       }
 
@@ -761,7 +784,7 @@ const CreatePost: React.FC = () => {
                         </div>
                       )}
                     </Form.Group>
-                    {formData.postType === 'sale' && formData.saleType === 'individual' && formData.images.length > 0 && (
+                    {((formData.postType === 'sale' || formData.postType === 'auction') && formData.saleType === 'individual' && formData.images.length > 0) && (
                       <div className="card-detection-section mt-4">
                         <div className="detection-header">
                           <div>
@@ -1038,7 +1061,7 @@ const CreatePost: React.FC = () => {
                   )}
 
                   {/* Crop cards from image - Step 3 when sale individual */}
-                  {formData.postType === 'sale' && formData.saleType === 'individual' && formData.images.length > 0 && (
+                  {((formData.postType === 'sale' || formData.postType === 'auction') && formData.saleType === 'individual' && formData.images.length > 0) && (
                     <div className="form-section mb-4">
                       <div className="section-header mb-3">
                         <h5 className="section-title">

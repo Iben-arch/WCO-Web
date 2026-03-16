@@ -237,10 +237,10 @@ export const postsAPI = {
 
 // ==================== AUCTION API ====================
 export const auctionAPI = {
-  // Place a bid
-  placeBid: async (postId: string, bidAmount: number): Promise<any> => {
+  // Place a bid (cardId สำหรับประมูลแยกใบ)
+  placeBid: async (postId: string, bidAmount: number, cardId?: string): Promise<any> => {
     try {
-      const response = await axios.post(`/api/auction/${postId}/bid`, { bidAmount });
+      const response = await axios.post(`/api/auction/${postId}/bid`, { bidAmount, cardId });
       return response.data;
     } catch (error: any) {
       console.error('Error placing bid:', error);
@@ -248,10 +248,11 @@ export const auctionAPI = {
     }
   },
 
-  // Get auction bids
-  getBids: async (postId: string): Promise<AuctionBid[]> => {
+  // Get auction bids (cardId optional สำหรับประมูลแยกใบ)
+  getBids: async (postId: string, cardId?: string): Promise<AuctionBid[]> => {
     try {
-      const response = await axios.get(`/api/auction/${postId}/bids`);
+      const url = cardId ? `/api/auction/${postId}/bids?cardId=${encodeURIComponent(cardId)}` : `/api/auction/${postId}/bids`;
+      const response = await axios.get(url);
       return response.data;
     } catch (error: any) {
       console.error('Error fetching bids:', error);
@@ -262,7 +263,10 @@ export const auctionAPI = {
     }
   },
 
-  // เจ้าของโพสต์เปิดประมูลใหม่ (หลังรายการหลุด)
+  getCardWinners: async (postId: string): Promise<Array<{ cardId: string; winnerId: string; bidAmount: number; paymentDeadline: string }>> => {
+    const response = await axios.get(`/api/auction/${postId}/card-winners`);
+    return response.data;
+  },
   reAuction: async (postId: string, newEndDate?: string): Promise<any> => {
     const response = await axios.post(`/api/auction/${postId}/re-auction`, {
       newEndDate: newEndDate ? new Date(newEndDate).toISOString() : undefined
@@ -340,9 +344,13 @@ export const cartAPI = {
 
 // ==================== ORDERS API ====================
 export const ordersAPI = {
-  checkout: async (cartItemIds?: string[]): Promise<{ success: boolean; message?: string; orderIds?: string[]; error?: string }> => {
+  checkout: async (payload: { cartItemIds: string[]; shippingAddress?: string; shippingPhone?: string }): Promise<{ success: boolean; message?: string; orderIds?: string[]; error?: string }> => {
     try {
-      const response = await axios.post('/api/orders/checkout', { cartItemIds: cartItemIds ?? [] });
+      const response = await axios.post('/api/orders/checkout', {
+        cartItemIds: payload.cartItemIds ?? [],
+        shippingAddress: payload.shippingAddress?.trim() || undefined,
+        shippingPhone: payload.shippingPhone?.trim() || undefined
+      });
       return { success: true, message: response.data.message, orderIds: response.data.orderIds };
     } catch (error: any) {
       const err = error.response?.data;
@@ -376,6 +384,16 @@ export const ordersAPI = {
     try {
       await axios.post(`/api/orders/${orderId}/confirm-shipment`, { receiptUrl });
       return { success: true, message: 'ยืนยันการส่งแล้ว' };
+    } catch (error: any) {
+      const err = error.response?.data;
+      return { success: false, error: err?.error || err?.message || 'เกิดข้อผิดพลาด' };
+    }
+  },
+
+  confirmReceived: async (orderId: string): Promise<{ success: boolean; message?: string; error?: string }> => {
+    try {
+      await axios.post(`/api/orders/${orderId}/confirm-received`);
+      return { success: true, message: 'ยืนยันได้รับของแล้ว' };
     } catch (error: any) {
       const err = error.response?.data;
       return { success: false, error: err?.error || err?.message || 'เกิดข้อผิดพลาด' };

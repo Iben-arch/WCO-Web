@@ -36,6 +36,8 @@ const PostDetail: React.FC = () => {
   const [individualCards, setIndividualCards] = useState<DetectedCard[]>([]);
   const [showImageLightbox, setShowImageLightbox] = useState<boolean>(false);
   const [reAuctioning, setReAuctioning] = useState<boolean>(false);
+  const [bidCardId, setBidCardId] = useState<string | undefined>(undefined);
+  const [bidMinAmount, setBidMinAmount] = useState<number>(0);
 
   useEffect(() => {
     fetchPost();
@@ -269,8 +271,9 @@ const PostDetail: React.FC = () => {
       return;
     }
 
-    if (bidValue <= (post.currentBid || post.startingBid)) {
-      toast.error(`จำนวนเงินประมูลต้องมากกว่า ${formatPrice(post.currentBid || post.startingBid)}`);
+    const minBid = bidCardId ? bidMinAmount : (post.currentBid || post.startingBid || 0);
+    if (bidValue <= minBid) {
+      toast.error(`จำนวนเงินประมูลต้องมากกว่า ${formatPrice(minBid)}`);
       return;
     }
 
@@ -283,19 +286,19 @@ const PostDetail: React.FC = () => {
 
     setPlacingBid(true);
     try {
-      const res = await auctionAPI.placeBid(id!, bidValue);
+      const res = await auctionAPI.placeBid(id!, bidValue, bidCardId);
       
-      // Update post data (รองรับการขยายเวลาจาก backend)
       setPost(prev => ({
         ...prev,
-        currentBid: res?.currentBid ?? bidValue,
+        currentBid: res?.currentBid ?? (bidCardId ? prev?.currentBid : bidValue),
         bidCount: res?.bidCount ?? (prev.bidCount || 0) + 1,
-        highestBidder: currentUser.id,
+        highestBidder: bidCardId ? prev?.highestBidder : currentUser.id,
         ...(res?.auctionEndDate && { auctionEndDate: res.auctionEndDate })
       }));
       
       setShowBidModal(false);
       setBidAmount('');
+      setBidCardId(undefined);
       toast.success(res?.message || `ประมูลสำเร็จ! จำนวนเงิน ${formatPrice(bidValue)}`);
       
       fetchAuctionBids();
@@ -557,11 +560,15 @@ const PostDetail: React.FC = () => {
                 </div>
               )}
 
-              {/* Individual Cards Grid - Only show for individual sale posts */}
-              {post.postType === 'sale' && post.saleType === 'individual' && (
+              {/* Individual Cards Grid - แสดงสำหรับขายแยกใบและประมูลแยกใบ */}
+              {((post.postType === 'sale' || post.postType === 'auction') && post.saleType === 'individual') && (
                 <IndividualCardsGrid 
                   post={post} 
                   onCardProcessed={handleCardProcessed}
+                  readOnly={false}
+                  isAuctionIndividual={post.postType === 'auction'}
+                  onOpenBidModal={(cardId, minBid) => { setBidCardId(cardId); setBidMinAmount(minBid); setShowBidModal(true); }}
+                  placingBid={placingBid}
                 />
               )}
             </Col>
@@ -686,6 +693,7 @@ const PostDetail: React.FC = () => {
                             {likingPost ? <Spinner size="sm" className="me-2" /> : null}
                             {liked ? '❤️ อยู่ในรายการโปรด' : 'เพิ่มรายการโปรด'}
                           </button>
+                          {post.postType !== 'auction' && (
                           <button
                             type="button"
                             className="btn-mercari-outline"
@@ -695,6 +703,7 @@ const PostDetail: React.FC = () => {
                             {addingToCart ? <Spinner size="sm" className="me-2" /> : null}
                             {isInCart(post.id) ? 'อยู่ในตะกร้าแล้ว' : 'เพิ่มในตะกร้า'}
                           </button>
+                          )}
                           {post.postType === 'auction' && (
                             <>
                               {isWonPendingPayment && isAuctionWinner && (
@@ -706,12 +715,12 @@ const PostDetail: React.FC = () => {
                                   ไปตะกร้าเพื่อชำระเงิน
                                 </Link>
                               )}
-                              {canBidAuction && (
+                              {canBidAuction && post.saleType !== 'individual' && (
                                 <>
                                   <button
                                     type="button"
                                     className="btn-mercari-primary"
-                                    onClick={() => setShowBidModal(true)}
+                                    onClick={() => { setBidCardId(undefined); setBidMinAmount(post?.currentBid ?? post?.startingBid ?? 0); setShowBidModal(true); }}
                                   >
                                     ประมูล
                                   </button>
@@ -912,7 +921,7 @@ const PostDetail: React.FC = () => {
         </Modal>
 
         {/* Bid Modal */}
-        <Modal show={showBidModal} onHide={() => setShowBidModal(false)} centered>
+        <Modal show={showBidModal} onHide={() => { setShowBidModal(false); setBidCardId(undefined); setBidAmount(''); }} centered>
           <Modal.Header closeButton>
             <Modal.Title>🔨 ประมูล - {post?.title}</Modal.Title>
           </Modal.Header>
@@ -922,12 +931,12 @@ const PostDetail: React.FC = () => {
               <div className="bid-details">
                 <div className="bid-detail-item">
                   <span className="label">🎯 ราคาเริ่มต้น:</span>
-                  <span className="value">{formatPrice(post?.startingBid)}</span>
+                  <span className="value">{formatPrice(bidCardId ? bidMinAmount || 0 : (post?.startingBid ?? 0))}</span>
                 </div>
-                {post?.currentBid && post.currentBid > post.startingBid && (
+                {(bidCardId ? bidMinAmount > 0 : (post?.currentBid ?? 0) > (post?.startingBid ?? 0)) && (
                   <div className="bid-detail-item">
-                    <span className="label">💰 ราคาปัจจุบัน:</span>
-                    <span className="value current-bid">{formatPrice(post.currentBid)}</span>
+                    <span className="label">💰 ขั้นต่ำที่ต้องประมูล:</span>
+                    <span className="value current-bid">{formatPrice((bidCardId ? bidMinAmount : (post?.currentBid ?? 0)) + 1)}</span>
                   </div>
                 )}
                 <div className="bid-detail-item">
@@ -961,7 +970,7 @@ const PostDetail: React.FC = () => {
                 className="bid-input"
               />
               <Form.Text className="text-muted">
-                จำนวนเงินประมูลต้องมากกว่า {formatPrice(post?.currentBid || post?.startingBid)}
+                จำนวนเงินประมูลต้องมากกว่า {formatPrice(bidCardId ? bidMinAmount : (post?.currentBid || post?.startingBid || 0))}
               </Form.Text>
             </Form.Group>
             

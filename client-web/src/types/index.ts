@@ -105,6 +105,7 @@ export interface CartItem {
   post: Post;
   cardId?: string; // Optional - for individual card
   quantity?: number;
+  unitPrice?: number; // สำหรับประมูลที่ชนะ ( winning bid)
   addedAt?: Date | FirestoreTimestamp | string;
 }
 
@@ -244,10 +245,13 @@ export interface OrderItemDto {
 export interface OrderDto {
   id: string;
   buyerId?: string | null;
+  buyerName?: string | null;
   sellerId?: string | null;
   sellerName?: string | null;
-  status: 'pending_shipment' | 'sold';
+  status: 'pending_shipment' | 'shipped' | 'sold';
   receiptUrl?: string | null;
+  shippingAddress?: string | null;
+  shippingPhone?: string | null;
   totalAmount: number;
   createdAt?: string | null;
   updatedAt?: string | null;

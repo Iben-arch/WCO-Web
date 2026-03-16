@@ -55,6 +55,29 @@ const Home: React.FC = () => {
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
   const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const getAuctionCountdown = (endDate: Date | string | FirestoreTimestamp | undefined): string => {
+    if (!endDate) return '';
+    const end = typeof endDate === 'object' && endDate !== null && 'seconds' in endDate
+      ? new Date((endDate as { seconds: number }).seconds * 1000)
+      : new Date(endDate as string | Date);
+    const diff = end.getTime() - now.getTime();
+    if (isNaN(diff) || diff <= 0) return 'หมดเวลาแล้ว';
+    const d = Math.floor(diff / 86400000);
+    const h = Math.floor((diff % 86400000) / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    const s = Math.floor((diff % 60000) / 1000);
+    if (d > 0) return `เหลือ ${d} วัน ${h} ชม.`;
+    if (h > 0) return `เหลือ ${h} ชม. ${m} นาที`;
+    if (m > 0) return `เหลือ ${m} นาที ${s} วินาที`;
+    return `เหลือ ${s} วินาที`;
+  };
 
   useEffect(() => {
     fetchPosts();
@@ -633,7 +656,7 @@ const Home: React.FC = () => {
                         {post.postType === 'auction' && (
                           <div className="auction-details">
                             <div className="auction-time">
-                              ⏰ สิ้นสุด: {formatDate(post.auctionEndDate)}
+                              ⏰ {getAuctionCountdown(post.auctionEndDate) || 'สิ้นสุด: ' + formatDate(post.auctionEndDate)}
                             </div>
                             {post.bidCount && post.bidCount > 0 && (
                               <div className="bid-count">

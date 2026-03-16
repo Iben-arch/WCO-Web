@@ -292,12 +292,12 @@ const Register: React.FC = () => {
         </Row>
       </Container>
 
-      {/* Success Modal */}
+      {/* Success Modal - Supabase auto-logs in after signUp ดังนั้นไปหน้าแรกเลย */}
       <Modal 
         show={showSuccessModal} 
         onHide={() => {
           setShowSuccessModal(false);
-          navigate('/login');
+          navigate('/');
         }}
         centered
         backdrop="static"
@@ -330,13 +330,13 @@ const Register: React.FC = () => {
             lineHeight: '1.6'
           }}>
             ยินดีต้อนรับสู่ <strong style={{ color: 'var(--deep-twilight)' }}>WCO Thailand</strong><br />
-            กรุณาเข้าสู่ระบบเพื่อเริ่มใช้งาน
+            คุณเข้าสู่ระบบแล้ว สามารถเริ่มใช้งานได้เลย
           </p>
           <Button
             className="btn-tcg-primary btn-tcg-lg"
             onClick={() => {
               setShowSuccessModal(false);
-              navigate('/login');
+              navigate('/');
             }}
             style={{
               minWidth: '220px',
@@ -348,7 +348,7 @@ const Register: React.FC = () => {
               transition: 'all 0.3s ease'
             }}
           >
-            ไปที่หน้าล็อกอิน →
+            เริ่มใช้งาน →
           </Button>
         </Modal.Body>
       </Modal>

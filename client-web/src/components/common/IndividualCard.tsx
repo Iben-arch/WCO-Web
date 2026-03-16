@@ -13,6 +13,13 @@ interface IndividualCardProps {
   onRemoveFromCart?: (postId: string, cardId: string) => void;
   isInCart?: boolean;
   isAddingToCart?: boolean;
+  readOnly?: boolean;
+  /** โหมดประมูลแยกใบ */
+  isAuctionCard?: boolean;
+  cardCurrentBid?: number;
+  cardWinnerId?: string;
+  onPlaceBid?: () => void;
+  placingBid?: boolean;
 }
 
 const IndividualCard: React.FC<IndividualCardProps> = ({ 
@@ -21,7 +28,13 @@ const IndividualCard: React.FC<IndividualCardProps> = ({
   onAddToCart, 
   onRemoveFromCart, 
   isInCart = false,
-  isAddingToCart = false 
+  isAddingToCart = false,
+  readOnly = false,
+  isAuctionCard = false,
+  cardCurrentBid,
+  cardWinnerId,
+  onPlaceBid,
+  placingBid = false
 }) => {
   const { currentUser } = useAuth();
   const { getQuantityInCart } = useCart();
@@ -141,52 +154,51 @@ const IndividualCard: React.FC<IndividualCardProps> = ({
           </div>
 
           <div className="card-price-section">
-            <div className="price-label">ราคาต่อใบ</div>
+            <div className="price-label">{isAuctionCard ? 'ราคาปัจจุบัน' : readOnly ? 'ราคาอ้างอิงต่อใบ' : 'ราคาต่อใบ'}</div>
             <div className="price-value">
-              {formatPrice(typeof card.price === 'number' ? card.price : (post.individualPrice || post.price || 0))}
+              {formatPrice(isAuctionCard && cardCurrentBid != null && cardCurrentBid > 0
+                ? cardCurrentBid
+                : (typeof card.price === 'number' ? card.price : (post.individualPrice || post.price || 0)))}
             </div>
             <div className="card-quantity-info">
-              {isOutOfStock ? (
+              {isAuctionCard && cardWinnerId && currentUser?.id === cardWinnerId ? (
+                <span className="text-success small fw-bold">คุณชนะ</span>
+              ) : isOutOfStock ? (
                 <span className="text-danger small fw-bold">หมดแล้ว</span>
               ) : (
-                <span className="text-muted small">เหลือ {remaining} ใบ</span>
+                <span className="text-muted small">{isAuctionCard ? 'เริ่มต้น' : 'เหลือ'} {isAuctionCard ? formatPrice(typeof card.price === 'number' ? card.price : 0) : `${remaining} ใบ`}</span>
               )}
             </div>
           </div>
 
+          {isAuctionCard && cardWinnerId && currentUser?.id === cardWinnerId && (
+          <div className="card-actions">
+            <a href="/cart" className="btn btn-success btn-sm w-100 text-decoration-none text-white text-center">
+              <i className="fas fa-shopping-cart me-1"></i>ไปตะกร้าเพื่อชำระเงิน
+            </a>
+          </div>
+          )}
+          {isAuctionCard && onPlaceBid && !cardWinnerId && (
+          <div className="card-actions">
+            <Button variant="primary" size="sm" className="w-100" onClick={() => onPlaceBid?.()} disabled={placingBid}>
+              {placingBid ? <><Spinner size="sm" className="me-2" />กำลังประมูล...</> : <><i className="fas fa-gavel me-1"></i>ประมูล</>}
+            </Button>
+          </div>
+          )}
+          {!readOnly && !isAuctionCard && (
           <div className="card-actions">
             {isInCart ? (
-              <Button
-                variant="outline-danger"
-                size="sm"
-                className="w-100"
-                onClick={handleRemoveFromCart}
-              >
-                <i className="fas fa-trash-alt me-1"></i>
-                ลบออกจากตะกร้า
+              <Button variant="outline-danger" size="sm" className="w-100" onClick={handleRemoveFromCart}>
+                <i className="fas fa-trash-alt me-1"></i> ลบออกจากตะกร้า
               </Button>
             ) : (
-              <Button
-                variant="primary"
-                size="sm"
-                className="w-100"
-                onClick={handleAddToCart}
-                disabled={isAddingToCart || post.status === 'sold' || isOutOfStock}
-              >
-                {isAddingToCart ? (
-                  <>
-                    <Spinner size="sm" className="me-2" />
-                    กำลังเพิ่ม...
-                  </>
-                ) : (
-                  <>
-                    <i className="fas fa-cart-plus me-1"></i>
-                    เพิ่มในตะกร้า
-                  </>
-                )}
+              <Button variant="primary" size="sm" className="w-100" onClick={handleAddToCart}
+                disabled={isAddingToCart || post.status === 'sold' || isOutOfStock}>
+                {isAddingToCart ? <><Spinner size="sm" className="me-2" />กำลังเพิ่ม...</> : <><i className="fas fa-cart-plus me-1"></i>เพิ่มในตะกร้า</>}
               </Button>
             )}
           </div>
+          )}
 
           {post.status === 'sold' && (
             <div className="sold-overlay">

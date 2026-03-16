@@ -10,16 +10,19 @@ import '../styles/cart.css';
 
 const Cart: React.FC = () => {
   const { cartItems, loading, error, removeFromCart, clearCart, getTotalPrice, formatPrice, fetchCartItems } = useCart();
-  const { currentUser } = useAuth();
+  const { currentUser, userProfile } = useAuth();
   const navigate = useNavigate();
   const [removingItem, setRemovingItem] = useState<string | null>(null);
   const [showClearModal, setShowClearModal] = useState<boolean>(false);
+  const [showCheckoutModal, setShowCheckoutModal] = useState<boolean>(false);
+  const [checkoutAddress, setCheckoutAddress] = useState<string>('');
+  const [checkoutPhone, setCheckoutPhone] = useState<string>('');
   const [clearingCart, setClearingCart] = useState<boolean>(false);
   const [checkingOut, setCheckingOut] = useState<boolean>(false);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
 
-  // Filter only normal sale items (not auction)
-  const normalCartItems = cartItems.filter(item => item.post.postType === 'sale');
+  // รวมทั้ง sale และ auction ที่ชนะแล้ว
+  const normalCartItems = cartItems;
 
   const getItemKey = (item: CartItem): string => item.id || `${item.postId}_${item.cardId || ''}`;
 
@@ -94,15 +97,31 @@ const Cart: React.FC = () => {
     return normalCartItems
       .filter(item => selectedItems.has(getItemKey(item)))
       .reduce((total, item) => {
-        const price = item.post.individualPrice || item.post.price || 0;
+        const price = item.unitPrice ?? item.post.individualPrice ?? item.post.price ?? item.post.currentBid ?? 0;
         const qty = item.quantity ?? 1;
         return total + price * qty;
       }, 0);
   };
 
-  const handleCheckout = async (): Promise<void> => {
+  const openCheckoutModal = (): void => {
+    setCheckoutAddress(userProfile?.address ?? (userProfile as any)?.address ?? '');
+    setCheckoutPhone(userProfile?.phone ?? (userProfile as any)?.phone ?? '');
+    setShowCheckoutModal(true);
+  };
+
+  const handleConfirmCheckout = async (): Promise<void> => {
     if (!currentUser) {
       navigate('/login');
+      return;
+    }
+    const address = checkoutAddress?.trim();
+    if (!address) {
+      toast.warning('กรุณากรอกที่อยู่จัดส่ง หรือเพิ่มที่อยู่ในโปรไฟล์');
+      return;
+    }
+    const phone = checkoutPhone?.trim();
+    if (!phone) {
+      toast.warning('กรุณากรอกเบอร์โทร หรือเพิ่มเบอร์โทรในโปรไฟล์');
       return;
     }
 
@@ -111,8 +130,9 @@ const Cart: React.FC = () => {
       toast.warning('กรุณาเลือกสินค้าที่ต้องการซื้อ');
       return;
     }
-
-    const cartItemIds = selected.map(item => item.id).filter((id): id is string => !!id);
+    const cartItemIds = selected
+      .map(item => (item as any).id ?? (item as any).Id ?? item.id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0);
     if (cartItemIds.length === 0) {
       toast.error('ไม่พบรหัสรายการตะกร้า กรุณารีเฟรชหน้า');
       return;
@@ -120,9 +140,12 @@ const Cart: React.FC = () => {
 
     setCheckingOut(true);
     try {
-      const result = await ordersAPI.checkout(cartItemIds);
+      const result = await ordersAPI.checkout({ cartItemIds, shippingAddress: address, shippingPhone: phone });
       if (result.success) {
         toast.success(result.message || 'สั่งซื้อสำเร็จ สถานะ: รอจัดส่ง');
+        setShowCheckoutModal(false);
+        setCheckoutAddress('');
+        setCheckoutPhone('');
         await fetchCartItems();
         navigate('/profile', { state: { tab: 'orders' } });
       } else {
@@ -133,6 +156,24 @@ const Cart: React.FC = () => {
     } finally {
       setCheckingOut(false);
     }
+  };
+
+  const handleCheckout = (): void => {
+    if (!currentUser) {
+      navigate('/login');
+      return;
+    }
+    const selected = normalCartItems.filter(item => selectedItems.has(getItemKey(item)));
+    if (selected.length === 0) {
+      toast.warning('กรุณาเลือกสินค้าที่ต้องการซื้อ');
+      return;
+    }
+    const cartItemIds = selected.map(item => item.id).filter((id): id is string => !!id);
+    if (cartItemIds.length === 0) {
+      toast.error('ไม่พบรหัสรายการตะกร้า กรุณารีเฟรชหน้า');
+      return;
+    }
+    openCheckoutModal();
   };
 
   if (loading) {
@@ -301,7 +342,7 @@ const Cart: React.FC = () => {
                           </div>
                           <div className="cart-item-price-section">
                             <div className="cart-item-price-value">
-                              {formatPrice((item.post.individualPrice || item.post.price || 0) * (item.quantity ?? 1))}
+                              {formatPrice((item.unitPrice ?? item.post.individualPrice ?? item.post.price ?? item.post.currentBid ?? 0) * (item.quantity ?? 1))}
                               {item.quantity && item.quantity > 1 && (
                                 <small className="text-muted ms-1">x{item.quantity}</small>
                               )}
@@ -388,6 +429,60 @@ const Cart: React.FC = () => {
           </>
         )}
       </Container>
+
+      {/* Checkout Modal: ที่อยู่ + mock payment */}
+      <Modal show={showCheckoutModal} onHide={() => !checkingOut && setShowCheckoutModal(false)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>ยืนยันการสั่งซื้อ</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <p className="text-muted small mb-2">ที่อยู่จัดส่ง (ดึงจากโปรไฟล์ หรือกรอกด้านล่าง)</p>
+          <Form.Group className="mb-3">
+            <Form.Control
+              as="textarea"
+              rows={3}
+              placeholder="กรอกที่อยู่จัดส่ง เช่น บ้านเลขที่ ถนน ตำบล อำเภอ จังหวัด รหัสไปรษณีย์"
+              value={checkoutAddress}
+              onChange={(e) => setCheckoutAddress(e.target.value)}
+              disabled={checkingOut}
+            />
+          </Form.Group>
+          <Form.Group className="mb-3">
+            <Form.Label className="text-muted small">เบอร์โทร (ดึงจากโปรไฟล์ หรือกรอกด้านล่าง)</Form.Label>
+            <Form.Control
+              type="tel"
+              placeholder="เช่น 08x-xxx-xxxx"
+              value={checkoutPhone}
+              onChange={(e) => setCheckoutPhone(e.target.value)}
+              disabled={checkingOut}
+            />
+          </Form.Group>
+          <Alert variant="warning" className="mb-0">
+            <small>
+              💳 <strong>การชำระเงินเป็นแบบ mock</strong> — ไม่มีการหักเงินจริง กดยืนยันเพื่อสร้างคำสั่งซื้อ
+            </small>
+          </Alert>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowCheckoutModal(false)} disabled={checkingOut}>
+            ยกเลิก
+          </Button>
+          <Button
+            className="btn-tcg-primary"
+            onClick={handleConfirmCheckout}
+            disabled={!checkoutAddress?.trim() || !checkoutPhone?.trim() || checkingOut}
+          >
+            {checkingOut ? (
+              <>
+                <Spinner size="sm" className="me-2" />
+                กำลังดำเนินการ...
+              </>
+            ) : (
+              'ยืนยันสั่งซื้อ'
+            )}
+          </Button>
+        </Modal.Footer>
+      </Modal>
 
       {/* Clear Cart Confirmation Modal */}
       <Modal show={showClearModal} onHide={() => setShowClearModal(false)} centered>

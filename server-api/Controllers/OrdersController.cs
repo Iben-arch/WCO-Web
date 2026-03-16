@@ -26,23 +26,48 @@ namespace ServerApi.Controllers
             try
             {
                 var userId = GetUserIdRequired();
-                var cartItems = await _supabaseService.QueryAsync("cart_items", "user_id", userId);
+                var cartItems = await _supabaseService.QueryAsync("cart_items", "user_id", userId, useServiceRole: true);
                 var idsToCheckout = request?.CartItemIds != null && request.CartItemIds.Count > 0
-                    ? request.CartItemIds.ToHashSet()
+                    ? new HashSet<string>(request.CartItemIds, StringComparer.OrdinalIgnoreCase)
                     : null;
 
                 var itemsToProcess = cartItems.Where(c =>
                 {
-                    var cartId = c.ContainsKey("id") ? c["id"]?.ToString() : null;
+                    var cartId = c.ContainsKey("id") ? c["id"]?.ToString()?.Trim() : null;
                     if (string.IsNullOrEmpty(cartId)) return false;
                     if (idsToCheckout != null && !idsToCheckout.Contains(cartId)) return false;
                     return true;
                 }).ToList();
 
+                // ถ้าส่ง cartItemIds มาแต่ filter ไม่ตรง (เช่น format ต่างกัน) แต่มีรายการในตะกร้า — ใช้ทั้งหมด
+                if (itemsToProcess.Count == 0 && cartItems.Count > 0)
+                {
+                    itemsToProcess = cartItems.Where(c =>
+                    {
+                        var cartId = c.ContainsKey("id") ? c["id"]?.ToString() : null;
+                        return !string.IsNullOrEmpty(cartId);
+                    }).ToList();
+                }
+
                 if (itemsToProcess.Count == 0)
                 {
                     return BadRequest(new { success = false, error = "ไม่มีรายการที่เลือกหรือตะกร้าว่าง" });
                 }
+
+                var profile = await _supabaseService.GetAsync("profiles", userId, useServiceRole: true, idField: "id");
+                var shippingAddress = request?.ShippingAddress?.Trim();
+                if (string.IsNullOrEmpty(shippingAddress))
+                    shippingAddress = profile?.TryGetValue("address", out var addr) == true && addr != null ? addr.ToString()?.Trim() : null;
+                if (string.IsNullOrEmpty(shippingAddress))
+                    return BadRequest(new { success = false, error = "กรุณากรอกที่อยู่จัดส่ง หรือเพิ่มที่อยู่ในโปรไฟล์" });
+
+                var shippingPhone = request?.ShippingPhone?.Trim();
+                if (string.IsNullOrEmpty(shippingPhone))
+                    shippingPhone = profile?.TryGetValue("phone", out var ph) == true && ph != null ? ph.ToString()?.Trim() : null;
+                if (string.IsNullOrEmpty(shippingPhone))
+                    return BadRequest(new { success = false, error = "กรุณากรอกเบอร์โทร หรือเพิ่มเบอร์โทรในโปรไฟล์" });
+
+                var buyerName = profile?.TryGetValue("username", out var un) == true && un != null ? un.ToString() : "ผู้ซื้อ";
 
                 var bySeller = new Dictionary<string, List<Dictionary<string, object>>>();
                 foreach (var item in itemsToProcess)
@@ -88,9 +113,12 @@ namespace ServerApi.Controllers
                     var orderData = new Dictionary<string, object>
                     {
                         ["buyer_id"] = userId,
+                        ["buyer_name"] = buyerName ?? "",
                         ["seller_id"] = sellerId,
                         ["seller_name"] = sellerName,
                         ["status"] = "pending_shipment",
+                        ["shipping_address"] = shippingAddress ?? "",
+                        ["shipping_phone"] = shippingPhone ?? "",
                         ["total_amount"] = total,
                         ["created_at"] = DateTime.UtcNow,
                         ["updated_at"] = DateTime.UtcNow
@@ -126,7 +154,7 @@ namespace ServerApi.Controllers
                 {
                     try
                     {
-                        await _supabaseService.DeleteAsync("cart_items", cartId);
+                        await _supabaseService.DeleteAsync("cart_items", cartId, null, true);
                     }
                     catch (Exception ex)
                     {
@@ -191,6 +219,9 @@ namespace ServerApi.Controllers
                         sellerName = o.ContainsKey("seller_name") ? o["seller_name"] : null,
                         status = o.ContainsKey("status") ? o["status"] : "pending_shipment",
                         receiptUrl = o.ContainsKey("receipt_url") ? o["receipt_url"] : null,
+                        shippingAddress = o.ContainsKey("shipping_address") ? o["shipping_address"] : null,
+                        shippingPhone = o.ContainsKey("shipping_phone") ? o["shipping_phone"] : null,
+                        buyerName = o.ContainsKey("buyer_name") ? o["buyer_name"] : null,
                         totalAmount = o.ContainsKey("total_amount") ? o["total_amount"] : 0,
                         createdAt = o.ContainsKey("created_at") ? o["created_at"] : null,
                         updatedAt = o.ContainsKey("updated_at") ? o["updated_at"] : null,
@@ -245,10 +276,13 @@ namespace ServerApi.Controllers
                     {
                         id = o["id"],
                         buyerId = o.ContainsKey("buyer_id") ? o["buyer_id"] : null,
+                        buyerName = o.ContainsKey("buyer_name") ? o["buyer_name"] : null,
                         sellerId = o.ContainsKey("seller_id") ? o["seller_id"] : null,
                         sellerName = o.ContainsKey("seller_name") ? o["seller_name"] : null,
                         status = o.ContainsKey("status") ? o["status"] : "pending_shipment",
                         receiptUrl = o.ContainsKey("receipt_url") ? o["receipt_url"] : null,
+                        shippingAddress = o.ContainsKey("shipping_address") ? o["shipping_address"] : null,
+                        shippingPhone = o.ContainsKey("shipping_phone") ? o["shipping_phone"] : null,
                         totalAmount = o.ContainsKey("total_amount") ? o["total_amount"] : 0,
                         createdAt = o.ContainsKey("created_at") ? o["created_at"] : null,
                         updatedAt = o.ContainsKey("updated_at") ? o["updated_at"] : null,
@@ -290,13 +324,13 @@ namespace ServerApi.Controllers
 
                 var updateData = new Dictionary<string, object>
                 {
-                    ["status"] = "sold",
+                    ["status"] = "shipped",
                     ["receipt_url"] = receiptUrl,
                     ["updated_at"] = DateTime.UtcNow
                 };
                 await _supabaseService.UpdateAsync("orders", id, updateData, null, true);
 
-                return Ok(new { success = true, message = "ยืนยันการส่งแล้ว สถานะเปลี่ยนเป็นขายแล้ว" });
+                return Ok(new { success = true, message = "ยืนยันการส่งแล้ว สถานะ: จัดส่งแล้ว" });
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -310,6 +344,74 @@ namespace ServerApi.Controllers
         }
 
         /// <summary>
+        /// ผู้ซื้อยืนยันได้รับของแล้ว → สถานะเป็น sold และอัปเดตโพสเป็นขายแล้ว
+        /// </summary>
+        [HttpPost("{id}/confirm-received")]
+        public async Task<IActionResult> ConfirmReceived(string id)
+        {
+            try
+            {
+                var userId = GetUserIdRequired();
+                var order = await _supabaseService.GetAsync("orders", id, useServiceRole: true);
+                if (order == null)
+                    return NotFound(new { success = false, error = "ไม่พบคำสั่งซื้อ" });
+                var buyerId = order.ContainsKey("buyer_id") ? order["buyer_id"]?.ToString() : null;
+                if (buyerId != userId)
+                    return Forbid();
+                var status = order.ContainsKey("status") ? order["status"]?.ToString() : null;
+                if (status != "shipped")
+                    return BadRequest(new { success = false, error = "สามารถกดได้รับของแล้วได้เมื่อสถานะเป็นจัดส่งแล้วเท่านั้น" });
+
+                var updateData = new Dictionary<string, object>
+                {
+                    ["status"] = "sold",
+                    ["updated_at"] = DateTime.UtcNow
+                };
+                await _supabaseService.UpdateAsync("orders", id, updateData, null, true);
+
+                var items = await _supabaseService.QueryAsync("order_items", "order_id", id, useServiceRole: true);
+                foreach (var it in items ?? new List<Dictionary<string, object>>())
+                {
+                    var postId = it.ContainsKey("post_id") ? it["post_id"]?.ToString() : null;
+                    if (!string.IsNullOrEmpty(postId))
+                    {
+                        var postUpdate = new Dictionary<string, object> { ["status"] = "sold", ["updatedAt"] = DateTime.UtcNow };
+                        await _supabaseService.UpdateAsync("posts", postId, postUpdate, null, true);
+                    }
+                }
+
+                return Ok(new { success = true, message = "ยืนยันได้รับของแล้ว เสร็จสิ้นกระบวนการ" });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { success = false, error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "ConfirmReceived error");
+                return StatusCode(500, new { success = false, error = "เกิดข้อผิดพลาด", message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// ดึงค่าตัวเลขจาก dictionary โดยลองหลายคีย์ (รองรับทั้ง camelCase และ lowercase จาก DB)
+        /// </summary>
+        private static double GetNumeric(Dictionary<string, object> dict, params string[] keys)
+        {
+            foreach (var key in keys)
+            {
+                if (!dict.TryGetValue(key, out var v) || v == null) continue;
+                if (v is decimal dm) return (double)dm;
+                if (v is double dbl) return dbl;
+                if (v is int i) return i;
+                if (v is long l) return l;
+                if (double.TryParse(v.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsed))
+                    return parsed;
+            }
+            return 0;
+        }
+
+        /// <summary>
         /// ราคาต่อหน่วยสำหรับ order item: แยกใบใช้ราคาจาก individualCards[].price ไม่ใช่ individualPrice
         /// </summary>
         private static double GetUnitPriceForOrderItem(Dictionary<string, object>? p, string? cardId)
@@ -319,14 +421,15 @@ namespace ServerApi.Controllers
             {
                 foreach (var c in cards)
                 {
-                    if (c is Dictionary<string, object> card && card.ContainsKey("id") && card["id"]?.ToString() == cardId && card.ContainsKey("price") && card["price"] != null)
-                        return Convert.ToDouble(card["price"]);
+                    if (c is not Dictionary<string, object> card) continue;
+                    var cid = card.TryGetValue("id", out var idVal) ? idVal?.ToString() : null;
+                    if (cid != cardId) continue;
+                    var cardPrice = GetNumeric(card, "price", "Price");
+                    if (cardPrice > 0) return cardPrice;
                 }
             }
-            if (p.ContainsKey("individualPrice") && p["individualPrice"] != null)
-                return Convert.ToDouble(p["individualPrice"]);
-            if (p.ContainsKey("price") && p["price"] != null)
-                return Convert.ToDouble(p["price"]);
+            var fromPost = GetNumeric(p, "individualPrice", "individualprice", "price", "Price");
+            if (fromPost > 0) return fromPost;
             return 0;
         }
     }
@@ -334,6 +437,8 @@ namespace ServerApi.Controllers
     public class CheckoutRequest
     {
         public List<string>? CartItemIds { get; set; }
+        public string? ShippingAddress { get; set; }
+        public string? ShippingPhone { get; set; }
     }
 
     public class ConfirmShipmentRequest

@@ -336,21 +336,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      (event, session) => {
         if (!mounted) return;
         clearTimeout(timeoutId);
 
         // Handle token refresh
         if (event === 'TOKEN_REFRESHED' && session?.user) {
           setCurrentUser(session.user);
+          setLoading(false);
           return;
         }
 
         if (session?.user) {
           setCurrentUser(session.user);
-          await fetchProfile(session.user.id).catch((err) => {
+          // โหลด profile ในพื้นหลัง ไม่บล็อก setLoading (แก้ปัญหา loading ค้างหลังสมัครสมาชิก)
+          fetchProfile(session.user.id).catch((err) => {
             console.error('Error fetching profile on auth change:', err);
-            // Don't clear user if profile fetch fails
           });
         } else {
           // Only clear user on explicit sign out or session expiration

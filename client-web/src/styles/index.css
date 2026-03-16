@@ -89,6 +89,10 @@
   --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
+  /* Motion easing (animate skill) */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   
   /* Z-index */
   --z-dropdown: 1000;
@@ -242,29 +246,38 @@ html {
   }
 }
 
+/* Respect users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 /* Animation Classes */
 .animate-fade-in {
-  animation: fadeIn var(--transition-slow) ease-out;
+  animation: fadeIn var(--transition-slow) var(--ease-out-quart);
 }
 
 .animate-fade-in-up {
-  animation: fadeInUp var(--transition-slow) ease-out;
+  animation: fadeInUp var(--transition-slow) var(--ease-out-quart);
 }
 
 .animate-fade-in-down {
-  animation: fadeInDown var(--transition-base) ease-out;
+  animation: fadeInDown var(--transition-base) var(--ease-out-quint);
 }
 
 .animate-slide-in-right {
-  animation: slideInRight var(--transition-slow) ease-out;
+  animation: slideInRight var(--transition-slow) var(--ease-out-expo);
 }
 
 .animate-slide-in-left {
-  animation: slideInLeft var(--transition-slow) ease-out;
+  animation: slideInLeft var(--transition-slow) var(--ease-out-expo);
 }
 
 .animate-scale-in {
-  animation: scaleIn var(--transition-base) ease-out;
+  animation: scaleIn var(--transition-base) var(--ease-out-quint);
 }
 
 .animate-pulse {

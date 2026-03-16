@@ -138,13 +138,10 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
   const fetchLikedItems = async (): Promise<void> => {
     try {
       const response = await axios.get('/api/auth/liked-items');
-      setLikedItems(response.data);
+      setLikedItems(Array.isArray(response.data) ? response.data : []);
     } catch (error: any) {
       console.error('Error fetching liked items:', error);
-      // If user is not authenticated, set empty array
-      if (error.response?.status === 401) {
-        setLikedItems([]);
-      }
+      setLikedItems([]);
     }
   };
 
@@ -960,8 +957,8 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
                       <div className="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
                         <div>
                           <span className="me-2">
-                            <Badge bg={order.status === 'sold' ? 'success' : 'warning'}>
-                              {order.status === 'pending_shipment' ? 'รอจัดส่ง' : 'ขายแล้ว'}
+                            <Badge bg={order.status === 'sold' ? 'success' : order.status === 'shipped' ? 'info' : 'warning'}>
+                              {order.status === 'pending_shipment' ? 'รอจัดส่ง' : order.status === 'shipped' ? 'จัดส่งแล้ว' : 'ขายแล้ว'}
                             </Badge>
                           </span>
                           <span className="text-muted small">ผู้ขาย: {order.sellerName || '-'}</span>
@@ -974,10 +971,28 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
                       <ul className="list-unstyled small mb-2">
                         {order.items?.map((it, idx) => renderOrderItemRow(it, idx, true))}
                       </ul>
-                      {order.status === 'sold' && order.receiptUrl && (
+                      {order.status === 'shipped' && (
+                        <Button
+                          size="sm"
+                          className="btn-tcg-primary me-2"
+                          onClick={async () => {
+                            const result = await ordersAPI.confirmReceived(order.id);
+                            if (result.success) {
+                              toast.success(result.message);
+                              fetchOrders();
+                            } else {
+                              toast.error(result.error);
+                            }
+                          }}
+                        >
+                          ✅ ได้รับของแล้ว
+                        </Button>
+                      )}
+                      {(order.status === 'shipped' || order.status === 'sold') && order.receiptUrl && (
                         <Button
                           size="sm"
                           variant="outline-primary"
+                          className="me-2"
                           onClick={() => window.open(order.receiptUrl!, '_blank')}
                         >
                           📄 ดูใบเสร็จ
@@ -1014,14 +1029,28 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
                       <div className="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
                         <div>
                           <span className="me-2">
-                            <Badge bg={order.status === 'sold' ? 'success' : 'warning'}>
-                              {order.status === 'pending_shipment' ? 'รอจัดส่ง' : 'ขายแล้ว'}
+                            <Badge bg={order.status === 'sold' ? 'success' : order.status === 'shipped' ? 'info' : 'warning'}>
+                              {order.status === 'pending_shipment' ? 'รอจัดส่ง' : order.status === 'shipped' ? 'จัดส่งแล้ว' : 'ขายแล้ว'}
                             </Badge>
                           </span>
                           <span className="text-muted small">ยอดรวม: {formatPrice(Number(order.totalAmount))}</span>
                         </div>
                         <div className="text-end small text-muted">{formatOrderDate(order.createdAt)}</div>
                       </div>
+                      {order.buyerName != null && (
+                        <p className="small mb-1"><strong>ผู้ซื้อ:</strong> {order.buyerName || '-'}</p>
+                      )}
+                      {order.shippingAddress != null && order.shippingAddress !== '' && (
+                        <p className="small text-muted mb-2">
+                          <strong>ที่อยู่จัดส่ง:</strong><br />
+                          <span style={{ whiteSpace: 'pre-wrap' }}>{order.shippingAddress}</span>
+                        </p>
+                      )}
+                      {order.shippingPhone != null && order.shippingPhone !== '' && (
+                        <p className="small text-muted mb-2">
+                          <strong>เบอร์โทร:</strong> {order.shippingPhone}
+                        </p>
+                      )}
                       <ul className="list-unstyled small mb-2">
                         {order.items?.map((it, idx) => renderOrderItemRow(it, idx, false))}
                       </ul>
@@ -1038,7 +1067,7 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
                           ยืนยันการส่ง (แนบใบเสร็จ)
                         </Button>
                       )}
-                      {order.status === 'sold' && order.receiptUrl && (
+                      {(order.status === 'shipped' || order.status === 'sold') && order.receiptUrl && (
                         <Button
                           size="sm"
                           variant="outline-secondary"
@@ -1081,7 +1110,7 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
                 setConfirmShipmentLoading(true);
                 try {
                   const ext = receiptFile.name.split('.').pop() || 'jpg';
-                  const fileName = `receipts/${confirmShipmentOrderId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+                  const fileName = `${currentUser.id}/receipts/${confirmShipmentOrderId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
                   const { error } = await supabase.storage.from('posts').upload(fileName, receiptFile, { cacheControl: '3600', upsert: false });
                   if (error) throw error;
                   const { data: { publicUrl } } = supabase.storage.from('posts').getPublicUrl(fileName);

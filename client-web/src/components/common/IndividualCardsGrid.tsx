@@ -5,20 +5,27 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useCart } from '../../contexts/CartContext';
 import { Post, IndividualCardItem, CardForCart } from '../../types';
 import axios from '../../utils/axiosInterceptor';
+import { auctionAPI } from '../../api/api';
 import { toast } from 'react-toastify';
 
 interface IndividualCardsGridProps {
   post: Post;
   onCardProcessed?: (cards: IndividualCardItem[]) => void;
+  readOnly?: boolean;
+  isAuctionIndividual?: boolean;
+  onOpenBidModal?: (cardId: string, minBid: number) => void;
+  placingBid?: boolean;
 }
 
-const IndividualCardsGrid: React.FC<IndividualCardsGridProps> = ({ post, onCardProcessed }) => {
+const IndividualCardsGrid: React.FC<IndividualCardsGridProps> = ({ post, onCardProcessed, readOnly = false, isAuctionIndividual = false, onOpenBidModal, placingBid = false }) => {
   const { currentUser } = useAuth();
   const { addToCart, removeFromCart, isInCart } = useCart();
   const [cards, setCards] = useState<IndividualCardItem[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [processing, setProcessing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [cardBids, setCardBids] = useState<Record<string, number>>({});
+  const [cardWinners, setCardWinners] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (post && post.individualCards && post.individualCards.length > 0) {
@@ -32,6 +39,37 @@ const IndividualCardsGrid: React.FC<IndividualCardsGridProps> = ({ post, onCardP
       setCards(convertedCards);
     }
   }, [post]);
+
+  useEffect(() => {
+    if (!isAuctionIndividual || !post?.id || cards.length === 0) return;
+    const load = async () => {
+      try {
+        const [bids, winners] = await Promise.all([
+          auctionAPI.getBids(post.id),
+          auctionAPI.getCardWinners(post.id)
+        ]);
+        const bidsByCard: Record<string, number> = {};
+        (bids || []).forEach((b: { cardId?: string; bidAmount: number }) => {
+          if (b.cardId) {
+            const cur = bidsByCard[b.cardId] ?? 0;
+            if (b.bidAmount > cur) bidsByCard[b.cardId] = b.bidAmount;
+          }
+        });
+        const winnersByCard: Record<string, string> = {};
+        (winners || []).forEach((w: { cardId: string; winnerId: string }) => {
+          winnersByCard[w.cardId] = w.winnerId;
+        });
+        setCardBids(bidsByCard);
+        setCardWinners(winnersByCard);
+      } catch {
+        setCardBids({});
+        setCardWinners({});
+      }
+    };
+    load();
+    const t = setInterval(load, 5000);
+    return () => clearInterval(t);
+  }, [isAuctionIndividual, post?.id, cards.length]);
 
   const processPostImages = async (): Promise<void> => {
     if (!post || !post.images || post.images.length === 0) {
@@ -116,11 +154,11 @@ const IndividualCardsGrid: React.FC<IndividualCardsGridProps> = ({ post, onCardP
           การ์ดแต่ละใบ
         </h5>
         <p className="section-description">
-          เลือกการ์ดที่ต้องการซื้อได้จากรายการด้านล่าง
+          {isAuctionIndividual ? 'ประมูลแต่ละใบ เมื่อชนะใบนั้นจะเข้าตะกร้า' : readOnly ? 'การ์ดที่รวมอยู่ในรายการประมูล' : 'เลือกการ์ดที่ต้องการซื้อได้จากรายการด้านล่าง'}
         </p>
       </div>
 
-      {cards.length === 0 && !processing && !loading && (
+      {cards.length === 0 && !processing && !loading && !readOnly && (
         <div className="no-cards-container">
           <Alert variant="info" className="no-cards-alert">
             <div className="no-cards-content">
@@ -186,6 +224,7 @@ const IndividualCardsGrid: React.FC<IndividualCardsGridProps> = ({ post, onCardP
               <i className="fas fa-layer-group me-1"></i>
               พบการ์ด {cards.length} ใบ
             </div>
+            {!readOnly && !isAuctionIndividual && (
             <div className="cards-actions">
               <Button
                 variant="outline-primary"
@@ -197,6 +236,7 @@ const IndividualCardsGrid: React.FC<IndividualCardsGridProps> = ({ post, onCardP
                 ประมวลผลใหม่
               </Button>
             </div>
+            )}
           </div>
 
           <div className="individual-cards-grid">
@@ -209,6 +249,15 @@ const IndividualCardsGrid: React.FC<IndividualCardsGridProps> = ({ post, onCardP
                 onRemoveFromCart={handleRemoveFromCart}
                 isInCart={isInCart(post.id, card.id)}
                 isAddingToCart={loading}
+                readOnly={readOnly && !isAuctionIndividual}
+                isAuctionCard={isAuctionIndividual}
+                cardCurrentBid={cardBids[card.id]}
+                cardWinnerId={cardWinners[card.id]}
+                onPlaceBid={onOpenBidModal ? () => {
+                  const min = (cardBids[card.id] ?? 0) || (typeof card.price === 'number' ? card.price : 0);
+                  onOpenBidModal(card.id, min);
+                } : undefined}
+                placingBid={placingBid}
               />
             ))}
           </div>

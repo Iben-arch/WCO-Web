@@ -30,7 +30,7 @@ namespace ServerApi.Controllers
             try
             {
                 var userId = GetUserIdRequired();
-                var cartItems = await _supabaseService.QueryAsync("cart_items", "user_id", userId);
+                var cartItems = await _supabaseService.QueryAsync("cart_items", "user_id", userId, useServiceRole: true);
 
                 var result = new List<object>();
                 foreach (var item in cartItems)
@@ -38,12 +38,33 @@ namespace ServerApi.Controllers
                     var postId = item.ContainsKey("post_id") ? item["post_id"]?.ToString() : null;
                     if (string.IsNullOrEmpty(postId)) continue;
 
-                    var post = await _supabaseService.GetAsync("posts", postId);
+                    var post = await _supabaseService.GetAsync("posts", postId, useServiceRole: true);
                     if (post == null) continue;
 
                     var cartItemId = item.ContainsKey("id") ? item["id"]?.ToString() : null;
                     var cardId = item.ContainsKey("card_id") ? item["card_id"]?.ToString() : null;
                     var quantity = item.ContainsKey("quantity") ? Convert.ToInt32(item["quantity"]) : 1;
+
+                    double? unitPrice = null;
+                    var postType = post.TryGetValue("postType", out var pt) ? pt?.ToString() : null;
+                    var saleType = post.TryGetValue("saleType", out var st) ? st?.ToString() : null;
+                    if (postType == "auction" && saleType == "individual" && !string.IsNullOrEmpty(cardId))
+                    {
+                        var winners = await _supabaseService.QueryAsync("auction_card_winners", "post_id", postId, useServiceRole: true);
+                        var winnerRow = winners?.FirstOrDefault(w =>
+                            string.Equals(w.TryGetValue("card_id", out var cid) ? cid?.ToString() : null, cardId, StringComparison.OrdinalIgnoreCase));
+                        if (winnerRow != null && winnerRow.TryGetValue("bid_amount", out var amt) && amt != null)
+                        {
+                            if (amt is decimal dm) unitPrice = (double)dm;
+                            else if (amt is double d) unitPrice = d;
+                            else if (double.TryParse(amt.ToString(), out var parsed)) unitPrice = parsed;
+                        }
+                    }
+                    else if (postType == "auction" && string.IsNullOrEmpty(cardId) && post.TryGetValue("currentBid", out var cb) && cb != null)
+                    {
+                        if (cb is decimal dm) unitPrice = (double)dm;
+                        else if (cb is double d) unitPrice = d;
+                    }
 
                     result.Add(new
                     {
@@ -52,6 +73,7 @@ namespace ServerApi.Controllers
                         post = MapPostToResponse(post),
                         cardId = string.IsNullOrEmpty(cardId) ? (string?)null : cardId,
                         quantity = quantity,
+                        unitPrice = unitPrice,
                         addedAt = item.ContainsKey("created_at") ? item["created_at"] : null
                     });
                 }
@@ -127,16 +149,7 @@ namespace ServerApi.Controllers
 
                 var cartItemId = await _supabaseService.CreateAsync("cart_items", cartData, useServiceRole: true);
 
-                // อัปเดตสถานะโพสต์เป็น pending เมื่อมีคนเพิ่มลงตะกร้า (รอการชำระเงิน)
-                if (status == "active")
-                {
-                    var updateData = new Dictionary<string, object>
-                    {
-                        ["status"] = "pending",
-                        ["updatedAt"] = DateTime.UtcNow
-                    };
-                    await _supabaseService.UpdateAsync("posts", request.PostId, updateData, null, true);
-                }
+                // ไม่เปลี่ยน status โพสต์ตอนเพิ่มตะกร้า — ให้โพสต์หายเมื่อชำระเงินแล้วเท่านั้น
 
                 return Ok(new
                 {
@@ -176,7 +189,7 @@ namespace ServerApi.Controllers
             {
                 var userId = GetUserIdRequired();
 
-                var cartItems = await _supabaseService.QueryAsync("cart_items", "user_id", userId);
+                var cartItems = await _supabaseService.QueryAsync("cart_items", "user_id", userId, useServiceRole: true);
                 var item = cartItems.FirstOrDefault(i =>
                 {
                     var itemId = i.ContainsKey("id") ? i["id"]?.ToString() : null;
@@ -203,7 +216,7 @@ namespace ServerApi.Controllers
                     return NotFound(new { success = false, message = "ไม่พบรายการในตะกร้า" });
                 }
 
-                await _supabaseService.DeleteAsync("cart_items", itemId);
+                await _supabaseService.DeleteAsync("cart_items", itemId, null, true);
 
                 // ถ้าไม่มีใครมีโพสต์นี้ในตะกร้าแล้ว ให้เปลี่ยนสถานะกลับเป็น active
                 if (!string.IsNullOrEmpty(postId))
@@ -252,7 +265,7 @@ namespace ServerApi.Controllers
             try
             {
                 var userId = GetUserIdRequired();
-                var cartItems = await _supabaseService.QueryAsync("cart_items", "user_id", userId);
+                var cartItems = await _supabaseService.QueryAsync("cart_items", "user_id", userId, useServiceRole: true);
                 var postIdsToCheck = new List<string>();
 
                 foreach (var item in cartItems)
@@ -261,7 +274,7 @@ namespace ServerApi.Controllers
                     var postId = item.ContainsKey("post_id") ? item["post_id"]?.ToString() : null;
                     if (!string.IsNullOrEmpty(itemId))
                     {
-                        await _supabaseService.DeleteAsync("cart_items", itemId);
+                        await _supabaseService.DeleteAsync("cart_items", itemId, null, true);
                         if (!string.IsNullOrEmpty(postId))
                             postIdsToCheck.Add(postId);
                     }
