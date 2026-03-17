@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Button, Alert, Spinner } from 'react-bootstrap';
+import { Container, Alert, Spinner } from 'react-bootstrap';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import axios from '../utils/axiosInterceptor';
 import { toast } from 'react-toastify';
+import { PrimaryActionButton, SecondaryActionButton } from '../components/common/ButtonComponents';
 import '../styles/seller-profile.css';
 import { Seller, Post, FirestoreTimestamp } from '../types';
 
@@ -94,9 +95,9 @@ const SellerProfile: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="seller-profile-loading">
-        <Spinner animation="border" variant="primary" />
-        <p className="mt-3 text-muted" style={{ fontSize: '0.875rem' }}>กำลังโหลดข้อมูลผู้ขาย...</p>
+      <div className="seller-profile-loading" aria-live="polite" aria-busy="true">
+        <Spinner animation="border" variant="primary" className="seller-profile-loading-spinner" />
+        <p className="seller-profile-loading-text">กำลังโหลดข้อมูลผู้ขาย...</p>
       </div>
     );
   }
@@ -105,16 +106,20 @@ const SellerProfile: React.FC = () => {
     return (
       <div className="seller-profile-error">
         <Container>
-          <div className="text-center py-5">
-            <Alert variant="light" className="d-inline-block px-4 py-4 rounded-3" style={{ border: '1px solid var(--gray-200)', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }}>
-              <div className="mb-3" style={{ fontSize: '2.5rem' }}>👤</div>
-              <h5 className="mb-2">ไม่พบข้อมูลผู้ขาย</h5>
-              <p className="text-muted mb-3" style={{ fontSize: '0.875rem' }}>{error || 'ผู้ขายนี้อาจถูกลบหรือไม่พบในระบบ'}</p>
-              <div className="d-flex gap-2 justify-content-center flex-wrap">
-                <Button as={Link as any} to="/" variant="primary" size="sm">🏠 กลับหน้าแรก</Button>
-                <Button variant="outline-secondary" size="sm" onClick={() => window.history.back()}>← กลับ</Button>
-              </div>
-            </Alert>
+          <div className="seller-profile-error-card">
+            <div className="seller-profile-error-icon" aria-hidden>
+              <i className="fas fa-user-slash" />
+            </div>
+            <h5 className="seller-profile-error-title">ไม่พบข้อมูลผู้ขาย</h5>
+            <p className="seller-profile-error-desc">{error || 'ผู้ขายนี้อาจถูกลบหรือไม่พบในระบบ'}</p>
+            <div className="seller-profile-error-actions">
+              <PrimaryActionButton as={Link as any} to="/" size="sm" icon={<i className="fas fa-home" />}>
+                กลับหน้าแรก
+              </PrimaryActionButton>
+              <SecondaryActionButton type="button" size="sm" onClick={() => window.history.back()} icon={<i className="fas fa-arrow-left" />}>
+                กลับ
+              </SecondaryActionButton>
+            </div>
           </div>
         </Container>
       </div>
@@ -143,11 +148,8 @@ const SellerProfile: React.FC = () => {
                   className="seller-mercari-avatar"
                 />
               ) : (
-                <div className="seller-mercari-avatar-placeholder">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M12 12c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5z" />
-                    <path d="M20.59 22c0-4.87-3.86-9-8.59-9S3.41 17.13 3.41 22" />
-                  </svg>
+                <div className="seller-mercari-avatar-placeholder" aria-hidden>
+                  <i className="fas fa-user" />
                 </div>
               )}
             </div>
@@ -161,13 +163,13 @@ const SellerProfile: React.FC = () => {
               </div>
               {seller.phone && (
                 <div className="seller-mercari-contact">
-                  <span className="seller-mercari-contact-label">📞 โทร:</span>
+                  <span className="seller-mercari-contact-label"><i className="fas fa-phone me-1" aria-hidden />โทร:</span>
                   <span className="seller-mercari-contact-value">{seller.phone}</span>
                 </div>
               )}
               {currentUser && String(currentUser.id) !== String(sellerId) && (
-                <button type="button" className="seller-mercari-chat-btn" onClick={handleStartChat}>
-                  💬 เริ่มแชท
+                <button type="button" className="seller-mercari-chat-btn" onClick={handleStartChat} aria-label="เริ่มแชท">
+                  <i className="fas fa-comment-dots me-1" aria-hidden />เริ่มแชท
                 </button>
               )}
             </div>
@@ -175,10 +177,9 @@ const SellerProfile: React.FC = () => {
         </Container>
       </div>
 
-      {/* Page title - "Items listed by [name]" */}
       <div className="seller-mercari-title">
         <Container>
-          <h1>สินค้าที่ {seller.displayName} ขาย</h1>
+          <h1 className="seller-mercari-title-text"><i className="fas fa-store me-2" aria-hidden />สินค้าที่ {seller.displayName} ขาย</h1>
         </Container>
       </div>
 
@@ -186,27 +187,36 @@ const SellerProfile: React.FC = () => {
       {sellerPosts.length > 0 && (
         <div className="seller-mercari-tabs">
           <Container>
-            <div className="d-flex gap-2 flex-wrap">
+            <div className="seller-mercari-tabs-inner" role="tablist" aria-label="กรองรายการโพสต์">
               <button
                 type="button"
+                role="tab"
+                aria-selected={postFilter === 'all'}
+                aria-label={`ทั้งหมด ${sellerPosts.length} รายการ`}
                 className={`seller-mercari-tab ${postFilter === 'all' ? 'active' : ''}`}
                 onClick={() => setPostFilter('all')}
               >
-                ทั้งหมด ({sellerPosts.length})
+                <i className="fas fa-th-large me-1" aria-hidden />ทั้งหมด ({sellerPosts.length})
               </button>
               <button
                 type="button"
+                role="tab"
+                aria-selected={postFilter === 'active'}
+                aria-label={`กำลังขาย ${activeCount} รายการ`}
                 className={`seller-mercari-tab ${postFilter === 'active' ? 'active' : ''}`}
                 onClick={() => setPostFilter('active')}
               >
-                กำลังขาย ({activeCount})
+                <i className="fas fa-tag me-1" aria-hidden />กำลังขาย ({activeCount})
               </button>
               <button
                 type="button"
+                role="tab"
+                aria-selected={postFilter === 'sold'}
+                aria-label={`ขายแล้ว ${soldCount} รายการ`}
                 className={`seller-mercari-tab ${postFilter === 'sold' ? 'active' : ''}`}
                 onClick={() => setPostFilter('sold')}
               >
-                ขายแล้ว ({soldCount})
+                <i className="fas fa-check-circle me-1" aria-hidden />ขายแล้ว ({soldCount})
               </button>
             </div>
           </Container>
@@ -218,7 +228,9 @@ const SellerProfile: React.FC = () => {
         <Container>
           {filteredPosts.length === 0 ? (
             <div className="seller-mercari-empty">
-              <div className="seller-mercari-empty-icon">🛍️</div>
+              <div className="seller-mercari-empty-icon" aria-hidden>
+                <i className="fas fa-shopping-bag" />
+              </div>
               <h3>{sellerPosts.length === 0 ? 'ยังไม่มีโพสต์' : 'ไม่พบรายการที่ตรงกับตัวกรอง'}</h3>
               <p>{sellerPosts.length === 0 ? 'ผู้ขายยังไม่ได้โพสต์สินค้าใดๆ' : 'ลองเลือกตัวกรองอื่น'}</p>
             </div>
@@ -237,7 +249,7 @@ const SellerProfile: React.FC = () => {
                     {post.images && post.images.length > 0 ? (
                       <img src={post.images[0]} alt={post.title} />
                     ) : (
-                      <div className="seller-mercari-card-image-placeholder">🃏</div>
+                      <div className="seller-mercari-card-image-placeholder" aria-hidden><i className="fas fa-image" /></div>
                     )}
                   </div>
                   <div className="seller-mercari-card-body">
@@ -246,10 +258,10 @@ const SellerProfile: React.FC = () => {
                         ? formatPrice(post.startingBid)
                         : formatPrice(post.price)}
                       {post.postType === 'auction' && (
-                        <span className="seller-mercari-status active">ประมูล</span>
+                        <span className="seller-mercari-status active"><i className="fas fa-gavel me-1" aria-hidden />ประมูล</span>
                       )}
                       {post.status === 'sold' && (
-                        <span className="seller-mercari-status sold">ขายแล้ว</span>
+                        <span className="seller-mercari-status sold"><i className="fas fa-check me-1" aria-hidden />ขายแล้ว</span>
                       )}
                     </div>
                     <p className="seller-mercari-card-title">{post.title}</p>

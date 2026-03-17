@@ -606,75 +606,41 @@ const CreatePost: React.FC = () => {
               overflow: 'hidden',
               background: 'var(--bg-primary)'
             }}>
-              <Card.Header className="create-post-header" style={{
-                background: 'linear-gradient(135deg, var(--deep-twilight) 0%, var(--french-blue) 25%, var(--bright-teal-blue) 50%, var(--turquoise-surf) 75%, var(--sky-aqua) 100%)',
-                color: 'var(--text-light)',
-                border: 'none',
-                padding: '2rem 2.5rem',
-                position: 'relative',
-                overflow: 'hidden'
-              }}>
-                <div style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  background: 'radial-gradient(circle at 20% 50%, rgba(255, 255, 255, 0.15) 0%, transparent 50%)',
-                  pointerEvents: 'none'
-                }}></div>
-                <div style={{ position: 'relative', zIndex: 1 }}>
-                  <h2 className="mb-2" style={{
-                    fontSize: '2rem',
-                    fontWeight: '700',
-                    textShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
-                    margin: 0
-                  }}>
-                    {formData.postType === 'auction' ? 'ประมูลการ์ดเกม' : 'ขายการ์ดเกม'}
-                  </h2>
-                  <p className="mb-0" style={{
-                    fontSize: '1rem',
-                    opacity: 0.95,
-                    fontWeight: '400'
-                  }}>
-                    {formData.postType === 'auction' 
-                      ? 'สร้างการประมูลการ์ดเกมของคุณ' 
-                      : 'สร้างโพสต์ขายการ์ดเกมของคุณ'}
+              <Card.Header className="create-post-header">
+                <div className="create-post-header-inner">
+                  <h2>{formData.postType === 'auction' ? 'ประมูลการ์ดเกม' : 'ขายการ์ดเกม'}</h2>
+                  <p className="create-post-header-desc">
+                    {formData.postType === 'auction' ? 'สร้างการประมูลการ์ดเกมของคุณ' : 'สร้างโพสต์ขายการ์ดเกมของคุณ'}
                   </p>
                 </div>
               </Card.Header>
-              <Card.Body style={{ padding: '2.5rem' }}>
+              <Card.Body className="create-post-body">
                 {error && (
-                  <Alert variant="danger" className="alert-sakura-danger mb-4" style={{
-                    borderRadius: 'var(--radius-lg)',
-                    border: 'none',
-                    padding: '1rem 1.25rem',
-                    background: 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)',
-                    color: '#991b1b',
-                    boxShadow: 'var(--shadow-sm)'
-                  }}>
+                  <Alert variant="danger" className="create-post-error mb-4" role="alert">
                     <strong>เกิดข้อผิดพลาด:</strong> {error}
                   </Alert>
                 )}
 
-                {/* Stepper */}
-                <div className="create-post-stepper mb-4">
-                  <div className="stepper-track">
+                <nav className="create-post-stepper mb-4" aria-label="ขั้นตอนการสร้างโพสต์">
+                  <div className="stepper-track" role="list">
                     {STEPS.map((step, idx) => (
                       <div
                         key={step.id}
+                        role="listitem"
+                        aria-current={currentStep === step.id ? 'step' : undefined}
+                        aria-label={`ขั้นตอนที่ ${step.id}: ${step.label}`}
                         className={`stepper-step ${currentStep >= step.id ? 'active' : ''} ${currentStep === step.id ? 'current' : ''}`}
                         onClick={() => currentStep > step.id && setCurrentStep(step.id)}
                       >
                         <div className="stepper-circle">
-                          <span>{currentStep > step.id ? '✓' : step.id}</span>
+                          <span>{currentStep > step.id ? <i className="fas fa-check" aria-hidden /> : step.id}</span>
                         </div>
                         <span className="stepper-label">{step.label}</span>
-                        {idx < STEPS.length - 1 && <div className="stepper-line" />}
+                        {idx < STEPS.length - 1 && <div className="stepper-line" aria-hidden />}
                       </div>
                     ))}
                   </div>
-                </div>
+                </nav>
 
                 <Form onSubmit={handleSubmit} className="create-post-form">
                   {/* Step 1: Post Type Selection */}
@@ -724,7 +690,7 @@ const CreatePost: React.FC = () => {
                       />
                     </div>
                     <div className="stepper-actions mt-4">
-                      <PrimaryActionButton type="button" onClick={goNextStep} icon={null}>
+                      <PrimaryActionButton type="button" onClick={goNextStep} icon={<i className="fas fa-arrow-right" />}>
                         ถัดไป: อัปโหลดรูป
                       </PrimaryActionButton>
                     </div>
@@ -753,7 +719,7 @@ const CreatePost: React.FC = () => {
                         />
                         <label htmlFor="image-upload" className="file-upload-label">
                           <div className="file-upload-content">
-                            <span className="file-upload-icon">📤</span>
+                            <span className="file-upload-icon"><i className="fas fa-cloud-upload-alt" aria-hidden /></span>
                             <div>
                               <div className="file-upload-text">
                                 คลิกเพื่อเลือกไฟล์ หรือลากไฟล์มาวางที่นี่
@@ -784,50 +750,11 @@ const CreatePost: React.FC = () => {
                         </div>
                       )}
                     </Form.Group>
-                    {((formData.postType === 'sale' || formData.postType === 'auction') && formData.saleType === 'individual' && formData.images.length > 0) && (
-                      <div className="card-detection-section mt-4">
-                        <div className="detection-header">
-                          <div>
-                            <h6 className="detection-title">
-                              การแยกการ์ดอัตโนมัติ
-                            </h6>
-                            <p className="detection-description">
-                              ใช้ AI ในการแยกการ์ดแต่ละใบจากภาพอัตโนมัติ
-                            </p>
-                          </div>
-                          <Button
-                            variant="outline-primary"
-                            size="sm"
-                            onClick={processImagesForCards}
-                            disabled={processingCards}
-                            className="detection-button"
-                          >
-                            {processingCards ? (
-                              <>
-                                <Spinner size="sm" className="me-2" />
-                                กำลังประมวลผล...
-                              </>
-                            ) : (
-                              'แยกการ์ดอัตโนมัติ'
-                            )}
-                          </Button>
-                        </div>
-                        {detectedCards.length > 0 && (
-                      <div className="detected-cards-preview mt-4">
-                            <div className="detected-cards-header">
-                              <div className="success-badge">
-                                <span>พบการ์ด {detectedCards.length} ใบ - กรอกราคาในขั้นตอนถัดไป</span>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
                     <div className="stepper-actions mt-4 d-flex gap-2">
-                      <SecondaryActionButton type="button" onClick={goPrevStep} icon={null}>
+                      <SecondaryActionButton type="button" onClick={goPrevStep} icon={<i className="fas fa-arrow-left" />}>
                         ย้อนกลับ
                       </SecondaryActionButton>
-                      <PrimaryActionButton type="button" onClick={goNextStep} disabled={!canProceedFromStep2()} icon={null}>
+                      <PrimaryActionButton type="button" onClick={goNextStep} disabled={!canProceedFromStep2()} icon={<i className="fas fa-arrow-right" />}>
                         ถัดไป: กรอกข้อมูล
                       </PrimaryActionButton>
                     </div>
@@ -898,7 +825,7 @@ const CreatePost: React.FC = () => {
                   <div className="form-section mb-4">
                     <div className="section-header mb-3">
                       <h5 className="section-title">
-                        <span className="section-icon">📝</span>
+                        <span className="section-icon"><i className="fas fa-edit" aria-hidden /></span>
                         ข้อมูลพื้นฐาน
                       </h5>
                       <p className="section-description">กรอกข้อมูลพื้นฐานของการ์ด</p>
@@ -1010,7 +937,7 @@ const CreatePost: React.FC = () => {
                     <div className="form-section mb-4">
                       <div className="section-header mb-3">
                         <h5 className="section-title">
-                          <span className="section-icon">🃏</span>
+                          <span className="section-icon"><i className="fas fa-layer-group" aria-hidden /></span>
                           ข้อมูลเด็ค
                         </h5>
                         <p className="section-description">กรอกข้อมูลเกี่ยวกับเด็คการ์ด</p>
@@ -1060,63 +987,7 @@ const CreatePost: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Crop cards from image - Step 3 when sale individual */}
-                  {((formData.postType === 'sale' || formData.postType === 'auction') && formData.saleType === 'individual' && formData.images.length > 0) && (
-                    <div className="form-section mb-4">
-                      <div className="section-header mb-3">
-                        <h5 className="section-title">
-                          <span className="section-icon">✂️</span>
-                          ครอปการ์ดจากรูป
-                        </h5>
-                        <p className="section-description">เลือกรูปแล้วลากกำหนดพื้นที่การ์ด 1 ใบ แล้วกดเพิ่มการ์ด (ทำซ้ำได้หลายใบ)</p>
-                      </div>
-                      <div className="mb-3">
-                        <Form.Label className="form-label-sakura">เลือกรูปที่จะครอป</Form.Label>
-                        <Form.Select
-                          value={cropImageIndex}
-                          onChange={(e) => setCropImageIndex(Number(e.target.value))}
-                          className="form-control-sakura"
-                        >
-                          {formData.images.map((_, i) => (
-                            <option key={i} value={i}>รูปที่ {i + 1}</option>
-                          ))}
-                        </Form.Select>
-                      </div>
-                      {cropImageObjectUrl && (
-                        <div className="crop-container-wrapper" style={{ position: 'relative', height: 400, background: '#000' }}>
-                          <Cropper
-                            image={cropImageObjectUrl}
-                            crop={cropPosition}
-                            zoom={cropZoom}
-                            onCropChange={setCropPosition}
-                            onZoomChange={setCropZoom}
-                            onCropComplete={(_area, croppedAreaPixels) => setCropAreaPixels(croppedAreaPixels)}
-                            aspect={2.5 / 3.5}
-                            objectFit="contain"
-                          />
-                        </div>
-                      )}
-                      <div className="mt-2">
-                        <Button
-                          type="button"
-                          variant="outline-primary"
-                          onClick={handleAddCroppedCard}
-                          disabled={addingCrop || !cropAreaPixels}
-                        >
-                          {addingCrop ? (
-                            <>
-                              <Spinner size="sm" className="me-2" />
-                              กำลังเพิ่ม...
-                            </>
-                          ) : (
-                            'เพิ่มการ์ดจากพื้นที่ที่เลือก'
-                          )}
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Section 5: Individual card-specific fields */}
+                  {/* Section 5: Individual card-specific fields + detection/crop tools */}
                   {((formData.postType === 'sale' && formData.saleType === 'individual') || (formData.postType === 'auction' && formData.saleType === 'individual')) && (
                     <div className="form-section mb-4">
                       <div className="section-header mb-3">
@@ -1125,12 +996,114 @@ const CreatePost: React.FC = () => {
                       </h5>
                         <p className="section-description">กรอกข้อมูลเกี่ยวกับการ์ดแยกใบ</p>
                       </div>
+                      {formData.images.length > 0 && (
+                        <div className="card-detection-section mb-4">
+                          <div className="detection-header">
+                            <div>
+                              <h6 className="detection-title">
+                                การแยกการ์ดอัตโนมัติ
+                              </h6>
+                              <p className="detection-description">
+                                ใช้ AI แยกการ์ดแต่ละใบจากภาพ แล้วปรับราคา/จำนวนด้านล่าง หรือเพิ่มจากครอปเอง
+                              </p>
+                            </div>
+                            <Button
+                              variant="outline-primary"
+                              size="sm"
+                              onClick={processImagesForCards}
+                              disabled={processingCards}
+                              className="detection-button btn-tcg-outline"
+                            >
+                              {processingCards ? (
+                                <>
+                                  <Spinner size="sm" className="me-2" as="span" />
+                                  กำลังประมวลผล...
+                                </>
+                              ) : (
+                                <>
+                                  <i className="fas fa-magic me-2" aria-hidden />
+                                  แยกการ์ดอัตโนมัติ
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                          {detectedCards.length > 0 && (
+                            <div className="detected-cards-preview mt-3">
+                              <div className="detected-cards-header">
+                                <div className="success-badge">
+                                  <span>ใช้ผลการแยก {detectedCards.length} ใบ แล้วปรับราคา/จำนวนต่อใบด้านล่าง</span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {formData.images.length > 0 && (
+                        <div className="form-section mb-4">
+                          <div className="section-header mb-3">
+                            <h5 className="section-title">
+                              <span className="section-icon"><i className="fas fa-crop-alt" aria-hidden /></span>
+                              ครอปการ์ดจากรูปเพิ่มเอง
+                            </h5>
+                            <p className="section-description">เลือกรูปแล้วลากกำหนดพื้นที่การ์ด 1 ใบ แล้วกดเพิ่มการ์ด (ทำซ้ำได้หลายใบ)</p>
+                          </div>
+                          <div className="mb-3">
+                            <Form.Label className="form-label-sakura">เลือกรูปที่จะครอป</Form.Label>
+                            <Form.Select
+                              value={cropImageIndex}
+                              onChange={(e) => setCropImageIndex(Number(e.target.value))}
+                              className="form-control-sakura"
+                            >
+                              {formData.images.map((_, i) => (
+                                <option key={i} value={i}>รูปที่ {i + 1}</option>
+                              ))}
+                            </Form.Select>
+                          </div>
+                          {cropImageObjectUrl && (
+                            <div className="crop-container-wrapper" style={{ position: 'relative', height: 400, background: '#000' }}>
+                              <Cropper
+                                image={cropImageObjectUrl}
+                                crop={cropPosition}
+                                zoom={cropZoom}
+                                onCropChange={setCropPosition}
+                                onZoomChange={setCropZoom}
+                                onCropComplete={(_area, croppedAreaPixels) => setCropAreaPixels(croppedAreaPixels)}
+                                aspect={2.5 / 3.5}
+                                objectFit="contain"
+                              />
+                            </div>
+                          )}
+                          <div className="mt-2">
+                            <Button
+                              type="button"
+                              variant="outline-primary"
+                              className="btn-tcg-outline"
+                              onClick={handleAddCroppedCard}
+                              disabled={addingCrop || !cropAreaPixels}
+                            >
+                              {addingCrop ? (
+                                <>
+                                  <Spinner size="sm" className="me-2" as="span" />
+                                  กำลังเพิ่ม...
+                                </>
+                              ) : (
+                                <>
+                                  <i className="fas fa-plus-circle me-2" aria-hidden />
+                                  เพิ่มการ์ดจากพื้นที่ที่เลือก
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
                       <Row>
                         {!(formData.postType === 'sale' && formData.saleType === 'individual') && (
                           <Col md={6}>
                             <Form.Group className="mb-3 form-group-sakura">
                               <Form.Label className="form-label-sakura">
-                                📦 จำนวนที่ขายได้
+                                <i className="fas fa-box-open me-1" aria-hidden /> จำนวนที่ขายได้
                                 <span className="required-badge">*</span>
                               </Form.Label>
                               <Form.Control
@@ -1267,7 +1240,7 @@ const CreatePost: React.FC = () => {
                   <div className="form-section mb-4">
                     <div className="section-header mb-3">
                       <h5 className="section-title">
-                        <span className="section-icon">📝</span>
+                        <span className="section-icon"><i className="fas fa-align-left" aria-hidden /></span>
                         รายละเอียดเพิ่มเติม
                         <span className="optional-badge">(ไม่บังคับ)</span>
                       </h5>
@@ -1358,10 +1331,10 @@ const CreatePost: React.FC = () => {
                   )}
 
                     <div className="stepper-actions mt-4 d-flex gap-2">
-                      <SecondaryActionButton type="button" onClick={goPrevStep} icon={null}>
+                      <SecondaryActionButton type="button" onClick={goPrevStep} icon={<i className="fas fa-arrow-left" />}>
                         ย้อนกลับ
                       </SecondaryActionButton>
-                      <PrimaryActionButton type="button" onClick={goNextStep} disabled={!canProceedFromStep3()} icon={null}>
+                      <PrimaryActionButton type="button" onClick={goNextStep} disabled={!canProceedFromStep3()} icon={<i className="fas fa-arrow-right" />}>
                         ถัดไป: สรุป
                       </PrimaryActionButton>
                     </div>
@@ -1374,7 +1347,7 @@ const CreatePost: React.FC = () => {
                   <div className="form-section mb-4">
                     <div className="section-header mb-3">
                       <h5 className="section-title">
-                        <span className="section-icon">✅</span>
+                        <span className="section-icon"><i className="fas fa-check-circle" aria-hidden /></span>
                         สรุปข้อมูล
                       </h5>
                       <p className="section-description">ตรวจสอบข้อมูลก่อนส่ง</p>
@@ -1399,18 +1372,18 @@ const CreatePost: React.FC = () => {
                       </Card.Body>
                     </Card>
                     <div className="stepper-actions mt-4 d-flex gap-2 flex-wrap">
-                      <SecondaryActionButton type="button" onClick={goPrevStep} icon={null}>
+                      <SecondaryActionButton type="button" onClick={goPrevStep} icon={<i className="fas fa-arrow-left" />}>
                         ย้อนกลับ
                       </SecondaryActionButton>
                       <PrimaryActionButton
                         type="submit"
                         disabled={loading}
                         className="submit-button"
-                        icon={null}
+                        icon={loading ? null : <i className="fas fa-paper-plane" />}
                       >
                         {loading ? (
                           <>
-                            <Spinner size="sm" className="me-2" />
+                            <Spinner size="sm" className="me-2" as="span" />
                             {formData.postType === 'auction' ? 'กำลังสร้างการประมูล...' : 'กำลังสร้างโพสต์...'}
                           </>
                         ) : (
@@ -1448,7 +1421,7 @@ const CreatePost: React.FC = () => {
                       type="button"
                       onClick={() => navigate('/')}
                       className="cancel-button"
-                      icon={null}
+                      icon={<i className="fas fa-times" />}
                     >
                       ยกเลิก
                     </SecondaryActionButton>
@@ -1462,17 +1435,19 @@ const CreatePost: React.FC = () => {
                   onHide={() => setPreviewImageIndex(null)}
                   centered
                   size="lg"
-                  style={{ backdropFilter: 'blur(4px)' }}
+                  className="create-post-preview-modal"
+                  aria-label="ดูรูปตัวอย่าง"
                 >
                   <Modal.Header closeButton>
-                    <Modal.Title>รูปที่ {previewImageIndex !== null ? previewImageIndex + 1 : ''}</Modal.Title>
+                    <Modal.Title><i className="fas fa-image me-2" aria-hidden />รูปที่ {previewImageIndex !== null ? previewImageIndex + 1 : ''}</Modal.Title>
                   </Modal.Header>
-                  <Modal.Body className="text-center p-0">
+                  <Modal.Body className="text-center p-0 create-post-preview-body">
                     {previewImageUrl && (
                       <img
                         src={previewImageUrl}
-                        alt={`รูป ${previewImageIndex !== null ? previewImageIndex + 1 : ''}`}
-                        style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain' }}
+                        alt={`รูปที่ ${previewImageIndex !== null ? previewImageIndex + 1 : ''}`}
+                        className="img-fluid"
+                        style={{ maxHeight: '70vh', objectFit: 'contain' }}
                       />
                     )}
                   </Modal.Body>

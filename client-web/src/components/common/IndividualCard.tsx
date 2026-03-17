@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { Card, Button, Badge, Modal, Spinner } from 'react-bootstrap';
+import React, { useState, useEffect } from 'react';
+import { Card, Button, Badge, Modal, Spinner, Form } from 'react-bootstrap';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCart } from '../../contexts/CartContext';
 import { Post, IndividualCardItem, CardForCart } from '../../types';
@@ -41,11 +42,19 @@ const IndividualCard: React.FC<IndividualCardProps> = ({
   const [showImageModal, setShowImageModal] = useState<boolean>(false);
   const [imageLoading, setImageLoading] = useState<boolean>(false);
   const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
+  const [selectedQty, setSelectedQty] = useState<number>(1);
 
   const cardQty = typeof card.quantity === 'number' ? card.quantity : 1;
   const inCartQty = getQuantityInCart(post.id, card.id);
   const remaining = Math.max(0, cardQty - inCartQty);
   const isOutOfStock = remaining <= 0;
+  const unitPrice = typeof card.price === 'number' ? card.price : (post.individualPrice || post.price || 0);
+  const totalPrice = unitPrice * selectedQty;
+
+  useEffect(() => {
+    const max = Math.max(1, remaining);
+    setSelectedQty(prev => (prev > max ? max : prev < 1 ? 1 : prev));
+  }, [remaining]);
 
   const formatPrice = (price: number): string => {
     return new Intl.NumberFormat('th-TH', {
@@ -76,19 +85,20 @@ const IndividualCard: React.FC<IndividualCardProps> = ({
     }
 
     try {
+      const qty = Math.min(Math.max(1, selectedQty), remaining);
       const cardForCart: CardForCart = {
         id: `${post.id}_${card.id}`,
         postId: post.id,
         cardId: card.id,
         cardImage: card.imageUrl,
         cardTitle: post.title || 'การ์ดเกม',
-        price: typeof card.price === 'number' ? card.price : (post.individualPrice || post.price || 0),
+        price: unitPrice,
         sellerId: post.sellerId,
         sellerName: post.sellerName,
         category: post.category,
         isIndividualCard: true,
         originalPost: post,
-        quantityToAdd: Math.min(remaining, cardQty)
+        quantityToAdd: qty
       };
 
       await onAddToCart(cardForCart);
@@ -120,7 +130,14 @@ const IndividualCard: React.FC<IndividualCardProps> = ({
   return (
     <>
       <Card className="individual-card">
-        <div className="card-image-container" onClick={handleImageClick}>
+        <div
+          className="card-image-container"
+          role="button"
+          tabIndex={0}
+          onClick={handleImageClick}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleImageClick(); } }}
+          aria-label="ดูภาพขยาย"
+        >
           {imageLoading && (
             <div className="image-loading">
               <Spinner animation="border" size="sm" />
@@ -171,17 +188,62 @@ const IndividualCard: React.FC<IndividualCardProps> = ({
             </div>
           </div>
 
+          {!readOnly && !isAuctionCard && !isOutOfStock && remaining > 0 && (
+          <div className="card-quantity-selector mb-2">
+            <div className="d-flex align-items-center justify-content-between small text-muted mb-1">
+              <span>จำนวนใบ</span>
+              <span className="fw-semibold text-dark">รวม {formatPrice(totalPrice)}</span>
+            </div>
+            <div className="d-flex align-items-center gap-1">
+              <Button
+                variant="outline-secondary"
+                size="sm"
+                className="p-1"
+                style={{ minWidth: '32px' }}
+                onClick={() => setSelectedQty(q => Math.max(1, q - 1))}
+                disabled={selectedQty <= 1}
+              >
+                −
+              </Button>
+              <Form.Control
+                type="number"
+                min={1}
+                max={remaining}
+                value={selectedQty}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  if (e.target.value === '') return;
+                  if (!Number.isNaN(v)) setSelectedQty(Math.min(remaining, Math.max(1, v)));
+                }}
+                className="text-center py-1"
+                style={{ width: '56px' }}
+              />
+              <Button
+                variant="outline-secondary"
+                size="sm"
+                className="p-1"
+                style={{ minWidth: '32px' }}
+                onClick={() => setSelectedQty(q => Math.min(remaining, q + 1))}
+                disabled={selectedQty >= remaining}
+              >
+                +
+              </Button>
+            </div>
+          </div>
+          )}
+
           {isAuctionCard && cardWinnerId && currentUser?.id === cardWinnerId && (
           <div className="card-actions">
-            <a href="/cart" className="btn btn-success btn-sm w-100 text-decoration-none text-white text-center">
-              <i className="fas fa-shopping-cart me-1"></i>ไปตะกร้าเพื่อชำระเงิน
-            </a>
+            <Link to="/cart" className="btn btn-success btn-sm w-100 text-decoration-none text-white text-center d-inline-flex align-items-center justify-content-center gap-1">
+              <i className="fas fa-shopping-cart" aria-hidden></i>
+              ไปตะกร้าเพื่อชำระเงิน
+            </Link>
           </div>
           )}
           {isAuctionCard && onPlaceBid && !cardWinnerId && (
           <div className="card-actions">
-            <Button variant="primary" size="sm" className="w-100" onClick={() => onPlaceBid?.()} disabled={placingBid}>
-              {placingBid ? <><Spinner size="sm" className="me-2" />กำลังประมูล...</> : <><i className="fas fa-gavel me-1"></i>ประมูล</>}
+            <Button variant="primary" size="sm" className="btn-tcg-primary w-100" onClick={() => onPlaceBid?.()} disabled={placingBid}>
+              {placingBid ? <><Spinner size="sm" className="me-2" />กำลังประมูล...</> : <><i className="fas fa-gavel me-1" aria-hidden></i>ประมูล</>}
             </Button>
           </div>
           )}
@@ -189,12 +251,12 @@ const IndividualCard: React.FC<IndividualCardProps> = ({
           <div className="card-actions">
             {isInCart ? (
               <Button variant="outline-danger" size="sm" className="w-100" onClick={handleRemoveFromCart}>
-                <i className="fas fa-trash-alt me-1"></i> ลบออกจากตะกร้า
+                <i className="fas fa-trash-alt me-1" aria-hidden></i> ลบออกจากตะกร้า
               </Button>
             ) : (
-              <Button variant="primary" size="sm" className="w-100" onClick={handleAddToCart}
+              <Button variant="primary" size="sm" className="btn-tcg-primary w-100" onClick={handleAddToCart}
                 disabled={isAddingToCart || post.status === 'sold' || isOutOfStock}>
-                {isAddingToCart ? <><Spinner size="sm" className="me-2" />กำลังเพิ่ม...</> : <><i className="fas fa-cart-plus me-1"></i>เพิ่มในตะกร้า</>}
+                {isAddingToCart ? <><Spinner size="sm" className="me-2" />กำลังเพิ่ม...</> : <><i className="fas fa-cart-plus me-1" aria-hidden></i>เพิ่มในตะกร้า</>}
               </Button>
             )}
           </div>
@@ -273,6 +335,7 @@ const IndividualCard: React.FC<IndividualCardProps> = ({
           </Button>
           <Button
             variant="primary"
+            className="btn-tcg-primary"
             onClick={() => {
               setShowLoginModal(false);
               window.location.href = '/login';

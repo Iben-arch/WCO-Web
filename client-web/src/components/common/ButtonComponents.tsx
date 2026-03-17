@@ -1,7 +1,8 @@
 import React, { ReactNode } from 'react';
 import { Button as BootstrapButton } from 'react-bootstrap';
+import '../../styles/button-components.css';
 
-// TCG Thailand Inspired Button Components
+// TCG Thailand — Button set (design tokens from index.css)
 
 type ButtonVariant = 'primary' | 'secondary' | 'success' | 'danger' | 'warning' | 'info' | 'outline' | 'ghost';
 type ButtonSize = 'sm' | 'md' | 'lg' | 'xl';
@@ -23,11 +24,29 @@ interface TCGButtonProps {
   [key: string]: any;
 }
 
-export const TCGButton: React.FC<TCGButtonProps> = ({ 
-  children, 
-  variant = 'primary', 
-  size = 'md', 
-  icon = null, 
+const VARIANT_CLASSES: Record<ButtonVariant, string> = {
+  primary: 'btn-tcg-primary',
+  secondary: 'btn-tcg-secondary',
+  success: 'btn-tcg-success',
+  danger: 'btn-tcg-danger',
+  warning: 'btn-tcg-warning',
+  info: 'btn-tcg-info',
+  outline: 'btn-tcg-outline',
+  ghost: 'btn-tcg-ghost'
+};
+
+const SIZE_CLASSES: Record<ButtonSize, string> = {
+  sm: 'btn-tcg-sm',
+  md: 'btn-tcg-md',
+  lg: 'btn-tcg-lg',
+  xl: 'btn-tcg-xl'
+};
+
+export const TCGButton: React.FC<TCGButtonProps> = ({
+  children,
+  variant = 'primary',
+  size = 'md',
+  icon = null,
   iconPosition = 'left',
   loading = false,
   disabled = false,
@@ -35,34 +54,17 @@ export const TCGButton: React.FC<TCGButtonProps> = ({
   onClick,
   type = 'button',
   fullWidth = false,
-  ...props 
+  ...props
 }) => {
-  const baseClasses = 'btn-tcg';
-  const variantClasses: { [key: string]: string } = {
-    primary: 'btn-tcg-primary',
-    secondary: 'btn-tcg-secondary',
-    success: 'btn-tcg-success',
-    danger: 'btn-tcg-danger',
-    warning: 'btn-tcg-warning',
-    info: 'btn-tcg-info',
-    outline: 'btn-tcg-outline',
-    ghost: 'btn-tcg-ghost'
-  };
-  
-  const sizeClasses: { [key: string]: string } = {
-    sm: 'btn-tcg-sm',
-    md: 'btn-tcg-md',
-    lg: 'btn-tcg-lg',
-    xl: 'btn-tcg-xl'
-  };
-
   const buttonClasses = [
-    baseClasses,
-    variantClasses[variant] || variantClasses.primary,
-    sizeClasses[size] || sizeClasses.md,
+    'btn-tcg',
+    VARIANT_CLASSES[variant] ?? VARIANT_CLASSES.primary,
+    SIZE_CLASSES[size] ?? SIZE_CLASSES.md,
     fullWidth ? 'btn-tcg-full-width' : '',
     className
-  ].filter(Boolean).join(' ');
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <BootstrapButton
@@ -70,19 +72,20 @@ export const TCGButton: React.FC<TCGButtonProps> = ({
       disabled={disabled || loading}
       onClick={onClick}
       type={type}
+      aria-busy={loading}
       {...props}
     >
       {loading && (
-        <span className="btn-tcg-spinner me-2">
-          <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+        <span className="btn-tcg-spinner me-2" aria-hidden>
+          <span className="spinner-border spinner-border-sm" role="status" aria-label="กำลังโหลด" />
         </span>
       )}
       {!loading && icon && iconPosition === 'left' && (
-        <span className="btn-tcg-icon me-2">{icon}</span>
+        <span className="btn-tcg-icon me-2" aria-hidden>{icon}</span>
       )}
       <span className="btn-tcg-text">{children}</span>
       {!loading && icon && iconPosition === 'right' && (
-        <span className="btn-tcg-icon ms-2">{icon}</span>
+        <span className="btn-tcg-icon ms-2" aria-hidden>{icon}</span>
       )}
     </BootstrapButton>
   );
@@ -94,15 +97,14 @@ interface PrimaryActionButtonProps {
   [key: string]: any;
 }
 
-// Primary Action Button (Add to Cart, Buy Now, etc.)
-export const PrimaryActionButton: React.FC<PrimaryActionButtonProps> = ({ children, icon = '🛒', ...props }) => (
-  <TCGButton 
-    variant="primary" 
-    size="lg" 
-    icon={icon}
-    fullWidth
-    {...props}
-  >
+const defaultPrimaryIcon = <i className="fas fa-cart-plus" />;
+
+export const PrimaryActionButton: React.FC<PrimaryActionButtonProps> = ({
+  children,
+  icon = defaultPrimaryIcon,
+  ...props
+}) => (
+  <TCGButton variant="primary" size="lg" icon={icon} fullWidth {...props}>
     {children}
   </TCGButton>
 );
@@ -113,14 +115,14 @@ interface SecondaryActionButtonProps {
   [key: string]: any;
 }
 
-// Secondary Action Button (Add to Wishlist, Compare, etc.)
-export const SecondaryActionButton: React.FC<SecondaryActionButtonProps> = ({ children, icon = '❤️', ...props }) => (
-  <TCGButton 
-    variant="outline" 
-    size="md" 
-    icon={icon}
-    {...props}
-  >
+const defaultSecondaryIcon = <i className="fas fa-heart" />;
+
+export const SecondaryActionButton: React.FC<SecondaryActionButtonProps> = ({
+  children,
+  icon = defaultSecondaryIcon,
+  ...props
+}) => (
+  <TCGButton variant="outline" size="md" icon={icon} {...props}>
     {children}
   </TCGButton>
 );
@@ -133,19 +135,19 @@ interface CategoryButtonProps {
   [key: string]: any;
 }
 
-// Category Filter Button
-export const CategoryButton: React.FC<CategoryButtonProps> = ({ 
-  children, 
-  active = false, 
+export const CategoryButton: React.FC<CategoryButtonProps> = ({
+  children,
+  active = false,
   onClick,
   category = '',
-  ...props 
+  ...props
 }) => (
   <TCGButton
     variant={active ? 'primary' : 'ghost'}
     size="sm"
-    className={`category-filter-btn ${active ? 'active' : ''}`}
-    onClick={() => onClick && onClick(category)}
+    className={`tcg-category-btn ${active ? 'tcg-category-btn--active' : ''}`}
+    onClick={() => onClick?.(category)}
+    aria-pressed={active}
     {...props}
   >
     {children}
@@ -157,15 +159,10 @@ interface SearchButtonProps {
   [key: string]: any;
 }
 
-// Search Button
+const searchIcon = <i className="fas fa-search" />;
+
 export const SearchButton: React.FC<SearchButtonProps> = ({ loading = false, ...props }) => (
-  <TCGButton
-    variant="primary"
-    size="md"
-    icon="🔍"
-    loading={loading}
-    {...props}
-  >
+  <TCGButton variant="primary" size="md" icon={searchIcon} loading={loading} {...props}>
     ค้นหา
   </TCGButton>
 );
@@ -178,36 +175,24 @@ interface ActionButtonGroupProps {
   disabled?: boolean;
 }
 
-// Action Button Group (for product cards)
-export const ActionButtonGroup: React.FC<ActionButtonGroupProps> = ({ 
-  onViewDetails, 
-  onAddToCart, 
+export const ActionButtonGroup: React.FC<ActionButtonGroupProps> = ({
+  onViewDetails,
+  onAddToCart,
   onAddToWishlist,
   loading = false,
-  disabled = false 
+  disabled = false
 }) => (
-  <div className="action-button-group">
-    <div className="primary-actions">
-      <PrimaryActionButton 
-        onClick={onAddToCart}
-        loading={loading}
-        disabled={disabled}
-      >
+  <div className="tcg-action-group">
+    <div className="tcg-action-group__primary">
+      <PrimaryActionButton onClick={onAddToCart} loading={loading} disabled={disabled}>
         เพิ่มลงตะกร้า
       </PrimaryActionButton>
     </div>
-    <div className="secondary-actions">
-      <SecondaryActionButton 
-        onClick={onViewDetails}
-        disabled={disabled}
-      >
+    <div className="tcg-action-group__secondary">
+      <SecondaryActionButton onClick={onViewDetails} disabled={disabled} icon={<i className="fas fa-eye" />}>
         ดูรายละเอียด
       </SecondaryActionButton>
-      <SecondaryActionButton 
-        onClick={onAddToWishlist}
-        disabled={disabled}
-        icon="❤️"
-      >
+      <SecondaryActionButton onClick={onAddToWishlist} disabled={disabled}>
         รายการโปรด
       </SecondaryActionButton>
     </div>
@@ -222,19 +207,18 @@ interface FloatingActionButtonProps {
   [key: string]: any;
 }
 
-// Floating Action Button (for mobile)
-export const FloatingActionButton: React.FC<FloatingActionButtonProps> = ({ 
-  children, 
-  icon, 
+export const FloatingActionButton: React.FC<FloatingActionButtonProps> = ({
+  children,
+  icon,
   position = 'bottom-right',
   onClick,
-  ...props 
+  ...props
 }) => (
   <TCGButton
     variant="primary"
     size="xl"
     icon={icon}
-    className={`fab fab-${position}`}
+    className={`tcg-fab tcg-fab--${position}`}
     onClick={onClick}
     {...props}
   >
@@ -249,18 +233,17 @@ interface QuickActionButtonsProps {
   disabled?: boolean;
 }
 
-// Quick Action Buttons (for product quick actions)
-export const QuickActionButtons: React.FC<QuickActionButtonsProps> = ({ 
-  onQuickBuy, 
-  onQuickView, 
+export const QuickActionButtons: React.FC<QuickActionButtonsProps> = ({
+  onQuickBuy,
+  onQuickView,
   onShare,
-  disabled = false 
+  disabled = false
 }) => (
-  <div className="quick-action-buttons">
+  <div className="tcg-quick-actions">
     <TCGButton
       variant="primary"
       size="sm"
-      icon="⚡"
+      icon={<i className="fas fa-bolt" />}
       onClick={onQuickBuy}
       disabled={disabled}
     >
@@ -269,7 +252,7 @@ export const QuickActionButtons: React.FC<QuickActionButtonsProps> = ({
     <TCGButton
       variant="outline"
       size="sm"
-      icon="👁️"
+      icon={<i className="fas fa-eye" />}
       onClick={onQuickView}
       disabled={disabled}
     >
@@ -278,7 +261,7 @@ export const QuickActionButtons: React.FC<QuickActionButtonsProps> = ({
     <TCGButton
       variant="ghost"
       size="sm"
-      icon="📤"
+      icon={<i className="fas fa-share-alt" />}
       onClick={onShare}
       disabled={disabled}
     >
@@ -294,19 +277,16 @@ interface ButtonWithBadgeProps {
   [key: string]: any;
 }
 
-// Button with Badge (for notifications, counts, etc.)
-export const ButtonWithBadge: React.FC<ButtonWithBadgeProps> = ({ 
-  children, 
-  badge = null, 
+export const ButtonWithBadge: React.FC<ButtonWithBadgeProps> = ({
+  children,
+  badge = null,
   badgeVariant = 'danger',
-  ...props 
+  ...props
 }) => (
-  <div className="btn-with-badge">
-    <TCGButton {...props}>
-      {children}
-    </TCGButton>
-    {badge && (
-      <span className={`badge badge-${badgeVariant} btn-badge`}>
+  <div className="tcg-btn-badge-wrap">
+    <TCGButton {...props}>{children}</TCGButton>
+    {badge != null && (
+      <span className={`tcg-btn-badge tcg-btn-badge--${badgeVariant}`} aria-hidden>
         {badge}
       </span>
     )}

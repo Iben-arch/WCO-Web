@@ -65,6 +65,44 @@ namespace ServerApi.Controllers
                         if (cb is decimal dm) unitPrice = (double)dm;
                         else if (cb is double d) unitPrice = d;
                     }
+                    else if (postType == "sale")
+                    {
+                        // ขายแยกใบ: ใช้ราคาจาก individualCards[].price ของการ์ดที่ตรง cardId
+                        if (saleType == "individual" && !string.IsNullOrEmpty(cardId) && post.TryGetValue("individualCards", out var cardsObj) && cardsObj is System.Collections.IEnumerable cardsEnum)
+                        {
+                            foreach (var c in cardsEnum)
+                            {
+                                var card = c as Dictionary<string, object>;
+                                if (card == null) continue;
+                                var cid = card.TryGetValue("id", out var idVal) ? idVal?.ToString() : null;
+                                if (string.IsNullOrEmpty(cid) || !string.Equals(cid, cardId, StringComparison.OrdinalIgnoreCase)) continue;
+                                if (card.TryGetValue("price", out var priceVal) && priceVal != null)
+                                {
+                                    if (priceVal is decimal pm) unitPrice = (double)pm;
+                                    else if (priceVal is double pd) unitPrice = pd;
+                                    else if (priceVal is int pi) unitPrice = pi;
+                                    else if (double.TryParse(priceVal.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsed)) unitPrice = parsed;
+                                    break;
+                                }
+                            }
+                        }
+                        // ถ้ายังไม่มี unitPrice (ขายทั้งเด็ค หรือไม่พบการ์ด) ใช้ individualPrice / price ของโพสต์
+                        if (unitPrice == null)
+                        {
+                            if (post.TryGetValue("individualPrice", out var ip) && ip != null)
+                            {
+                                if (ip is decimal dm) unitPrice = (double)dm;
+                                else if (ip is double d) unitPrice = d;
+                                else if (double.TryParse(ip.ToString(), out var p)) unitPrice = p;
+                            }
+                            if (unitPrice == null && post.TryGetValue("price", out var pp) && pp != null)
+                            {
+                                if (pp is decimal dm) unitPrice = (double)dm;
+                                else if (pp is double d) unitPrice = d;
+                                else if (double.TryParse(pp.ToString(), out var p)) unitPrice = p;
+                            }
+                        }
+                    }
 
                     result.Add(new
                     {

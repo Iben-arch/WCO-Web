@@ -35,15 +35,16 @@ const Navbar: React.FC = () => {
 
   return (
     <BootstrapNavbar className={`navbar-sakura ${scrolled ? 'scrolled' : ''}`} expand="lg" expanded={expanded}>
-      <div className="navbar-pattern-overlay"></div>
       <Container className="navbar-container-wide">
-        <BootstrapNavbar.Brand as={Link} to="/" className="navbar-brand-decorated">
-          <span className="brand-icon">🎴</span>
+        <BootstrapNavbar.Brand as={Link} to="/" className="navbar-brand-decorated" aria-label="WCO Thailand หน้าแรก">
+          <span className="brand-icon" aria-hidden>🎴</span>
           <span className="brand-text">WCO Thailand</span>
         </BootstrapNavbar.Brand>
         
         <BootstrapNavbar.Toggle 
-          aria-controls="basic-navbar-nav" 
+          aria-controls="basic-navbar-nav"
+          aria-expanded={expanded}
+          aria-label="เปิดเมนู"
           onClick={() => setExpanded(!expanded)}
         />
         

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, FormEvent, ChangeEvent } from 'react';
 import { Container, Row, Col, Card, Form, Button, Spinner, Alert, Modal } from 'react-bootstrap';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { postsAPI, authAPI } from '../api/api';
 import { toast } from 'react-toastify';
 import { useAuth } from '../contexts/AuthContext';
@@ -365,21 +365,18 @@ const Home: React.FC = () => {
 
   return (
     <div className="marketplace-container">
-      {/* Hero Banner Section */}
-      <div className="hero-banner-section">
+      {/* Hero — ข้อความสั้น ตรงไปตรงมา ไม่ใช่สโลแกนบริษัท */}
+      <section className="hero-banner-section" aria-label="แนะนำเว็บ">
         <Container>
           <div className="hero-banner-content">
-            <h1 className="hero-banner-title">
-              เรามุ่งมั่นที่จะผลักดันวงการการ์ดเกมประเทศไทย<br />
-              ให้เติบโตและพัฒนาไปข้างหน้าอย่างก้าวกระโดด
-            </h1>
-            <p className="hero-banner-subtitle">WCO Thailand - ตลาดการ์ดเกมที่ใหญ่ที่สุดในประเทศไทย</p>
+            <h1 className="hero-banner-title">เลือกการ์ดที่ชอบ จากคนขายที่เชื่อถือได้</h1>
+            <p className="hero-banner-subtitle">WCO Thailand — ตลาดการ์ดเกมที่ใหญ่ที่สุดในไทย</p>
           </div>
         </Container>
-      </div>
+      </section>
 
-      <Container className="py-4">
-        <Row>
+      <Container className="py-4 home-main-container">
+        <Row className="g-4">
           {/* Sidebar - Categories */}
           <Col lg={3} md={4} className="d-none d-md-block">
             <div className="category-sidebar">
@@ -412,7 +409,7 @@ const Home: React.FC = () => {
               <div className="sidebar-section">
                 <h4>เกี่ยวกับ</h4>
                 <ul className="sidebar-links">
-                  <li><Link to="/">หน้าแรก</Link></li>
+                  <li><NavLink to="/" end className={({ isActive }) => isActive ? 'active' : ''}>หน้าแรก</NavLink></li>
                   <li><Link to="/create-post">สมัครเป็นผู้ขาย</Link></li>
                   {currentUser && (
                     <>
@@ -512,6 +509,7 @@ const Home: React.FC = () => {
               ลองเปลี่ยนคำค้นหาหรือหมวดหมู่ หรือดูการ์ดใหม่ๆ ที่เพิ่งเข้ามา
             </p>
             <button 
+              type="button"
               className="btn-refresh"
               onClick={() => {
                 setSearchTerm('');
@@ -520,7 +518,7 @@ const Home: React.FC = () => {
                 fetchPosts();
               }}
             >
-              🔄 รีเฟรช
+              โหลดใหม่
             </button>
           </div>
         </div>
@@ -548,12 +546,16 @@ const Home: React.FC = () => {
                           <span>ไม่มีรูปภาพ</span>
                     </div>
                   )}
-                      {/* Post Type Badge */}
+                      {/* Post Type Badge - แยกเด็ค/แยกใบให้เห็นตั้งแต่แรก */}
                       <div className="post-type-badge">
                         {post.status === 'sold' ? (
                           <span className="badge sold-badge">✅ ขายแล้ว</span>
                         ) : post.postType === 'auction' ? (
                           <span className="badge auction-badge">🔨 ประมูล</span>
+                        ) : post.saleType === 'deck' ? (
+                          <span className="badge sale-badge sale-type-deck">📦 เด็ค</span>
+                        ) : post.saleType === 'individual' ? (
+                          <span className="badge sale-badge sale-type-individual">🃏 แยกใบ</span>
                         ) : (
                           <span className="badge sale-badge">💰 ขาย</span>
                         )}
@@ -747,10 +749,12 @@ const Home: React.FC = () => {
         <div className="modal-overlay" onClick={handleCloseImageSearchModal}>
           <div className="image-search-modal" onClick={(e) => e.stopPropagation()}>
             <div className="image-search-header">
-              <h4>Search for similar products by image</h4>
+              <h4>ค้นหาด้วยรูปภาพ</h4>
               <button 
+                type="button"
                 className="close-btn"
                 onClick={handleCloseImageSearchModal}
+                aria-label="ปิด"
               >
                 ✕
               </button>
@@ -764,8 +768,8 @@ const Home: React.FC = () => {
               >
                 {selectedSearchImages.length === 0 ? (
                   <>
-                    <p className="drop-zone-text">Drag photos to add</p>
-                    <p className="drop-zone-or">-Or-</p>
+                    <p className="drop-zone-text">ลากรูปมาวางที่นี่</p>
+                    <p className="drop-zone-or">หรือ</p>
                     <input
                       type="file"
                       multiple
@@ -775,11 +779,11 @@ const Home: React.FC = () => {
                       id="image-search-upload"
                     />
                     <label htmlFor="image-search-upload" className="image-search-upload-btn">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                         <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
                         <circle cx="12" cy="13" r="4"></circle>
                       </svg>
-                      Select image(s)
+                      เลือกรูป
                     </label>
                   </>
                 ) : (
@@ -821,17 +825,19 @@ const Home: React.FC = () => {
             </div>
             <div className="image-search-footer">
               <button 
+                type="button"
                 className="btn btn-secondary"
                 onClick={handleCloseImageSearchModal}
               >
-                Cancel
+                ยกเลิก
               </button>
               <button 
-                className="btn btn-primary"
+                type="button"
+                className="btn btn-primary btn-tcg-primary"
                 onClick={handleImageSearch}
                 disabled={selectedSearchImages.length === 0}
               >
-                Search
+                ค้นหา
               </button>
             </div>
           </div>

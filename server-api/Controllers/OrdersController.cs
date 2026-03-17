@@ -150,6 +150,31 @@ namespace ServerApi.Controllers
                     }
                 }
 
+                // ลดจำนวนสต็อกในโพสต์ (ขายแยกใบ: ลด individualCards[].quantity, ไม่ใช่ mark โพสต์เป็น sold ทั้งหมด)
+                var reductionsByPost = new Dictionary<string, List<(string? cardId, int qty)>>(StringComparer.OrdinalIgnoreCase);
+                foreach (var kv in bySeller)
+                {
+                    foreach (var ci in kv.Value)
+                    {
+                        var postId = ci.ContainsKey("post_id") ? ci["post_id"]?.ToString() : null;
+                        if (string.IsNullOrEmpty(postId)) continue;
+                        var cardId = ci.ContainsKey("card_id") ? ci["card_id"]?.ToString() : null;
+                        var qty = ci.ContainsKey("quantity") ? Convert.ToInt32(ci["quantity"]) : 1;
+                        if (!reductionsByPost.ContainsKey(postId))
+                            reductionsByPost[postId] = new List<(string?, int)>();
+                        reductionsByPost[postId].Add((cardId, qty));
+                    }
+                }
+                foreach (var kv in reductionsByPost)
+                {
+                    var postId = kv.Key;
+                    var post = await _supabaseService.GetAsync("posts", postId, useServiceRole: true);
+                    if (post == null) continue;
+                    var postUpdate = ReducePostStock(post, kv.Value);
+                    if (postUpdate != null && postUpdate.Count > 0)
+                        await _supabaseService.UpdateAsync("posts", postId, postUpdate, null, true);
+                }
+
                 foreach (var cartId in cartIdsToDelete)
                 {
                     try
@@ -344,7 +369,8 @@ namespace ServerApi.Controllers
         }
 
         /// <summary>
-        /// ผู้ซื้อยืนยันได้รับของแล้ว → สถานะเป็น sold และอัปเดตโพสเป็นขายแล้ว
+        /// ผู้ซื้อยืนยันได้รับของแล้ว → เปลี่ยนแค่สถานะคำสั่งซื้อเป็น "sold"
+        /// ไม่ไป mark โพสต์เป็นขายแล้ว — สต็อกลดที่ checkout แล้ว โพสต์จะเป็น sold เฉพาะเมื่อสต็อกหมด (จำนวนใบเหลือ 0)
         /// </summary>
         [HttpPost("{id}/confirm-received")]
         public async Task<IActionResult> ConfirmReceived(string id)
@@ -362,23 +388,13 @@ namespace ServerApi.Controllers
                 if (status != "shipped")
                     return BadRequest(new { success = false, error = "สามารถกดได้รับของแล้วได้เมื่อสถานะเป็นจัดส่งแล้วเท่านั้น" });
 
+                // เปลี่ยนแค่สถานะคำสั่งซื้อเป็น "ขายแล้ว" — ไม่แตะโพสต์ (สต็อกลดตอนชำระแล้ว โพสต์เป็น sold เมื่อสต็อกหมดเท่านั้น)
                 var updateData = new Dictionary<string, object>
                 {
                     ["status"] = "sold",
                     ["updated_at"] = DateTime.UtcNow
                 };
                 await _supabaseService.UpdateAsync("orders", id, updateData, null, true);
-
-                var items = await _supabaseService.QueryAsync("order_items", "order_id", id, useServiceRole: true);
-                foreach (var it in items ?? new List<Dictionary<string, object>>())
-                {
-                    var postId = it.ContainsKey("post_id") ? it["post_id"]?.ToString() : null;
-                    if (!string.IsNullOrEmpty(postId))
-                    {
-                        var postUpdate = new Dictionary<string, object> { ["status"] = "sold", ["updatedAt"] = DateTime.UtcNow };
-                        await _supabaseService.UpdateAsync("posts", postId, postUpdate, null, true);
-                    }
-                }
 
                 return Ok(new { success = true, message = "ยืนยันได้รับของแล้ว เสร็จสิ้นกระบวนการ" });
             }
@@ -431,6 +447,68 @@ namespace ServerApi.Controllers
             var fromPost = GetNumeric(p, "individualPrice", "individualprice", "price", "Price");
             if (fromPost > 0) return fromPost;
             return 0;
+        }
+
+        /// <summary>
+        /// ลดสต็อกโพสต์ตามรายการที่ซื้อ (ขายแยกใบ: ลด individualCards[].quantity; ถ้าเหลือ 0 ถึง mark sold)
+        /// </summary>
+        private static Dictionary<string, object>? ReducePostStock(Dictionary<string, object> post, List<(string? cardId, int qty)> reductions)
+        {
+            if (reductions == null || reductions.Count == 0) return null;
+            var postType = post.TryGetValue("postType", out var pt) ? pt?.ToString() : null;
+            var saleType = post.TryGetValue("saleType", out var st) ? st?.ToString() : null;
+            if (postType == "sale" && saleType == "individual"
+                && post.TryGetValue("individualCards", out var cardsObj) && cardsObj is System.Collections.IEnumerable cardsEnum)
+            {
+                // รวม qty ต่อ cardId (กรณีซื้อการ์ดเดียวกันหลายบรรทัด)
+                var qtyByCard = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                foreach (var (cardId, qty) in reductions)
+                {
+                    var key = cardId ?? "";
+                    if (!qtyByCard.ContainsKey(key)) qtyByCard[key] = 0;
+                    qtyByCard[key] += qty;
+                }
+
+                var cardsList = new List<Dictionary<string, object>>();
+                foreach (var c in cardsEnum)
+                {
+                    var card = c as Dictionary<string, object>;
+                    if (card == null) continue;
+                    var cid = card.TryGetValue("id", out var idVal) ? idVal?.ToString() : null;
+                    var key = cid ?? "";
+                    int toDeduct = qtyByCard.TryGetValue(key, out var d) ? d : 0;
+                    int currentQty = Convert.ToInt32(GetNumeric(card, "quantity", "Quantity"));
+                    int newQty = Math.Max(0, currentQty - toDeduct);
+                    var newCard = new Dictionary<string, object>(card);
+                    newCard["quantity"] = newQty;
+                    cardsList.Add(newCard);
+                }
+
+                int totalQty = cardsList.Sum(c => Convert.ToInt32(GetNumeric(c, "quantity", "Quantity")));
+                var update = new Dictionary<string, object>
+                {
+                    ["individualCards"] = cardsList,
+                    ["availableQuantity"] = totalQty,
+                    ["updatedAt"] = DateTime.UtcNow
+                };
+                if (totalQty <= 0)
+                    update["status"] = "sold";
+                return update;
+            }
+
+            // โพสต์แบบเด็ค/ทั้งชุด: ลด availableQuantity (เฉพาะรายการที่ไม่มี cardId)
+            int deckQtyToDeduct = reductions.Where(r => string.IsNullOrEmpty(r.cardId)).Sum(r => r.qty);
+            if (deckQtyToDeduct <= 0) return null;
+            int currentAvail = Convert.ToInt32(GetNumeric(post, "availableQuantity", "availablequantity"));
+            int newAvail = Math.Max(0, currentAvail - deckQtyToDeduct);
+            var deckUpdate = new Dictionary<string, object>
+            {
+                ["availableQuantity"] = newAvail,
+                ["updatedAt"] = DateTime.UtcNow
+            };
+            if (newAvail <= 0)
+                deckUpdate["status"] = "sold";
+            return deckUpdate;
         }
     }
 

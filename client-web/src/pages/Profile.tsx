@@ -81,6 +81,9 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
     photoURL: ''
   });
   const [showPasswordModal, setShowPasswordModal] = useState<boolean>(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState<boolean>(false);
+  const [showNewPassword, setShowNewPassword] = useState<boolean>(false);
+  const [showConfirmNewPassword, setShowConfirmNewPassword] = useState<boolean>(false);
   const [showReceiptModal, setShowReceiptModal] = useState<boolean>(false);
   const [confirmShipmentOrderId, setConfirmShipmentOrderId] = useState<string | null>(null);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
@@ -754,9 +757,14 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
   };
 
   const renderSecurityInfo = (): JSX.Element => (
-    <Card>
-      <Card.Header>
-        <h5 className="mb-0">🔒 ข้อมูลความปลอดภัย</h5>
+    <Card className="profile-info-card mb-4">
+      <Card.Header className="profile-card-header">
+        <div className="d-flex align-items-center gap-2">
+          <div className="profile-section-icon">
+            <i className="fas fa-shield-alt" aria-hidden />
+          </div>
+          <h5 className="mb-0 profile-section-title">ข้อมูลความปลอดภัย</h5>
+        </div>
       </Card.Header>
       <Card.Body>
         <div className="profile-field">
@@ -786,9 +794,14 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
   );
 
   const renderLikedItems = (): JSX.Element => (
-      <Card>
-        <Card.Header>
-          <h5 className="mb-0">❤️ รายการที่ถูกใจ</h5>
+      <Card className="profile-info-card mb-4">
+        <Card.Header className="profile-card-header">
+          <div className="d-flex align-items-center gap-2">
+            <div className="profile-section-icon">
+              <i className="fas fa-heart" aria-hidden />
+            </div>
+            <h5 className="mb-0 profile-section-title">รายการที่ถูกใจ</h5>
+          </div>
         </Card.Header>
       <Card.Body>
         {likedItems.length === 0 ? (
@@ -846,9 +859,14 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
   );
 
   const renderAuctions = (): JSX.Element => (
-      <Card>
-        <Card.Header>
-          <h5 className="mb-0">🔨 การประมูลของฉัน</h5>
+      <Card className="profile-info-card mb-4">
+        <Card.Header className="profile-card-header">
+          <div className="d-flex align-items-center gap-2">
+            <div className="profile-section-icon">
+              <i className="fas fa-gavel" aria-hidden />
+            </div>
+            <h5 className="mb-0 profile-section-title">การประมูลของฉัน</h5>
+          </div>
         </Card.Header>
       <Card.Body>
         {auctions.length === 0 ? (
@@ -869,9 +887,14 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
   );
 
   const renderWatchlist = (): JSX.Element => (
-      <Card>
-        <Card.Header>
-          <h5 className="mb-0">👀 รายการตั้งรับ</h5>
+      <Card className="profile-info-card mb-4">
+        <Card.Header className="profile-card-header">
+          <div className="d-flex align-items-center gap-2">
+            <div className="profile-section-icon">
+              <i className="fas fa-eye" aria-hidden />
+            </div>
+            <h5 className="mb-0 profile-section-title">รายการตั้งรับ</h5>
+          </div>
         </Card.Header>
       <Card.Body>
         {watchlist.length === 0 ? (
@@ -934,9 +957,14 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
 
     return (
       <>
-        <Card className="mb-4">
-          <Card.Header>
-            <h5 className="mb-0">📋 รายการที่ซื้อ</h5>
+        <Card className="profile-info-card mb-4">
+          <Card.Header className="profile-card-header">
+            <div className="d-flex align-items-center gap-2">
+              <div className="profile-section-icon">
+                <i className="fas fa-shopping-bag" aria-hidden />
+              </div>
+              <h5 className="mb-0 profile-section-title">รายการที่ซื้อ</h5>
+            </div>
           </Card.Header>
           <Card.Body>
             {ordersLoading ? (
@@ -1006,9 +1034,14 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
           </Card.Body>
         </Card>
 
-        <Card>
-          <Card.Header>
-            <h5 className="mb-0">📤 รายการที่ต้องจัดส่ง (ผู้ขาย)</h5>
+        <Card className="profile-info-card">
+          <Card.Header className="profile-card-header">
+            <div className="d-flex align-items-center gap-2">
+              <div className="profile-section-icon">
+                <i className="fas fa-truck" aria-hidden />
+              </div>
+              <h5 className="mb-0 profile-section-title">รายการที่ต้องจัดส่ง (ผู้ขาย)</h5>
+            </div>
           </Card.Header>
           <Card.Body>
             {sellerOrdersLoading ? (
@@ -1148,9 +1181,14 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
   };
 
   const renderMyPosts = (): JSX.Element => (
-      <Card>
-        <Card.Header className="d-flex justify-content-between align-items-center flex-wrap gap-2">
-          <h5 className="mb-0">📝 รายการของฉัน</h5>
+      <Card className="profile-info-card">
+        <Card.Header className="profile-card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <div className="d-flex align-items-center gap-2">
+            <div className="profile-section-icon">
+              <i className="fas fa-clipboard-list" aria-hidden />
+            </div>
+            <h5 className="mb-0 profile-section-title">รายการของฉัน</h5>
+          </div>
           <Button
             variant="primary"
             size="sm"
@@ -1253,36 +1291,99 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
           <Form onSubmit={handlePasswordUpdate}>
             <Form.Group className="mb-3">
               <Form.Label>รหัสผ่านปัจจุบัน</Form.Label>
-              <Form.Control
-                type="password"
-                name="currentPassword"
-                value={passwordData.currentPassword}
-                onChange={handlePasswordChange}
-                required
-                className="form-control-sakura"
-              />
+              <div className="password-input-with-toggle">
+                <Form.Control
+                  type={showCurrentPassword ? 'text' : 'password'}
+                  name="currentPassword"
+                  value={passwordData.currentPassword}
+                  onChange={handlePasswordChange}
+                  required
+                  className="form-control-sakura"
+                />
+                <button
+                  type="button"
+                  className="password-toggle-btn password-toggle-btn--modal"
+                  onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                  title={showCurrentPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                  aria-label={showCurrentPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                >
+                  {showCurrentPassword ? (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                      <line x1="1" y1="1" x2="23" y2="23" />
+                    </svg>
+                  ) : (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  )}
+                </button>
+              </div>
             </Form.Group>
             <Form.Group className="mb-3">
               <Form.Label>รหัสผ่านใหม่</Form.Label>
-              <Form.Control
-                type="password"
-                name="newPassword"
-                value={passwordData.newPassword}
-                onChange={handlePasswordChange}
-                required
-                className="form-control-sakura"
-              />
+              <div className="password-input-with-toggle">
+                <Form.Control
+                  type={showNewPassword ? 'text' : 'password'}
+                  name="newPassword"
+                  value={passwordData.newPassword}
+                  onChange={handlePasswordChange}
+                  required
+                  className="form-control-sakura"
+                />
+                <button
+                  type="button"
+                  className="password-toggle-btn password-toggle-btn--modal"
+                  onClick={() => setShowNewPassword(!showNewPassword)}
+                  title={showNewPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                  aria-label={showNewPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                >
+                  {showNewPassword ? (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                      <line x1="1" y1="1" x2="23" y2="23" />
+                    </svg>
+                  ) : (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  )}
+                </button>
+              </div>
             </Form.Group>
             <Form.Group className="mb-3">
               <Form.Label>ยืนยันรหัสผ่านใหม่</Form.Label>
-              <Form.Control
-                type="password"
-                name="confirmPassword"
-                value={passwordData.confirmPassword}
-                onChange={handlePasswordChange}
-                required
-                className="form-control-sakura"
-              />
+              <div className="password-input-with-toggle">
+                <Form.Control
+                  type={showConfirmNewPassword ? 'text' : 'password'}
+                  name="confirmPassword"
+                  value={passwordData.confirmPassword}
+                  onChange={handlePasswordChange}
+                  required
+                  className="form-control-sakura"
+                />
+                <button
+                  type="button"
+                  className="password-toggle-btn password-toggle-btn--modal"
+                  onClick={() => setShowConfirmNewPassword(!showConfirmNewPassword)}
+                  title={showConfirmNewPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                  aria-label={showConfirmNewPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                >
+                  {showConfirmNewPassword ? (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                      <line x1="1" y1="1" x2="23" y2="23" />
+                    </svg>
+                  ) : (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  )}
+                </button>
+              </div>
             </Form.Group>
             <div className="d-flex gap-2">
               <Button type="submit" className="btn-tcg-primary" disabled={loading}>

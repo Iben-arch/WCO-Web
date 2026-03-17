@@ -148,97 +148,79 @@ const IndividualCardsGrid: React.FC<IndividualCardsGridProps> = ({ post, onCardP
 
   return (
     <Container className="individual-cards-section">
-      <div className="section-header">
-        <h5 className="section-title">
-          <i className="fas fa-layer-group me-2"></i>
+      <header className="individual-cards-section-header">
+        <h2 className="individual-cards-section-title">
           การ์ดแต่ละใบ
-        </h5>
-        <p className="section-description">
+        </h2>
+        <p className="individual-cards-section-desc">
           {isAuctionIndividual ? 'ประมูลแต่ละใบ เมื่อชนะใบนั้นจะเข้าตะกร้า' : readOnly ? 'การ์ดที่รวมอยู่ในรายการประมูล' : 'เลือกการ์ดที่ต้องการซื้อได้จากรายการด้านล่าง'}
         </p>
-      </div>
+      </header>
 
       {cards.length === 0 && !processing && !loading && !readOnly && (
-        <div className="no-cards-container">
-          <Alert variant="info" className="no-cards-alert">
-            <div className="no-cards-content">
-              <i className="fas fa-images no-cards-icon"></i>
-              <h6>ยังไม่มีการ์ดแต่ละใบ</h6>
-              <p>กดปุ่มด้านล่างเพื่อประมวลผลภาพและแยกการ์ดแต่ละใบ</p>
-              <Button
-                variant="primary"
-                onClick={processPostImages}
-                disabled={processing}
-                className="process-button"
-              >
-                {processing ? (
-                  <>
-                    <Spinner size="sm" className="me-2" />
-                    กำลังประมวลผล...
-                  </>
-                ) : (
-                  <>
-                    <i className="fas fa-magic me-2"></i>
-                    ประมวลผลการ์ดอัตโนมัติ
-                  </>
-                )}
-              </Button>
+        <div className="individual-cards-empty">
+          <div className="individual-cards-empty-card">
+            <div className="individual-cards-empty-icon-wrap">
+              <i className="fas fa-images individual-cards-empty-icon" aria-hidden />
             </div>
-          </Alert>
+            <h3 className="individual-cards-empty-title">ยังไม่มีการ์ดแต่ละใบ</h3>
+            <p className="individual-cards-empty-desc">กดปุ่มด้านล่างเพื่อประมวลผลภาพและแยกการ์ดแต่ละใบ</p>
+            <Button
+              variant="primary"
+              onClick={processPostImages}
+              disabled={processing}
+              className="individual-cards-empty-btn"
+            >
+              {processing ? (
+                <>
+                  <Spinner as="span" animation="border" size="sm" className="me-2" />
+                  กำลังประมวลผล...
+                </>
+              ) : (
+                <>
+                  <i className="fas fa-magic me-2" aria-hidden />
+                  ประมวลผลการ์ดอัตโนมัติ
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       )}
 
       {processing && (
-        <div className="processing-container">
-          <div className="processing-content">
-            <Spinner animation="border" variant="primary" />
-            <h6 className="mt-3">กำลังประมวลผลภาพ...</h6>
-            <p className="text-muted">
-              ระบบกำลังใช้ AI ในการแยกการ์ดแต่ละใบจากภาพ
-            </p>
+        <div className="individual-cards-processing">
+          <div className="individual-cards-processing-card">
+            <div className="individual-cards-processing-spinner-wrap">
+              <Spinner animation="border" variant="primary" className="individual-cards-processing-spinner" />
+            </div>
+            <h3 className="individual-cards-processing-title">กำลังประมวลผลภาพ...</h3>
+            <p className="individual-cards-processing-desc">ระบบกำลังใช้ AI ในการแยกการ์ดแต่ละใบจากภาพ</p>
           </div>
         </div>
       )}
 
       {error && (
-        <Alert variant="danger" className="error-alert">
-          <i className="fas fa-exclamation-triangle me-2"></i>
-          {error}
-          <div className="mt-2">
+        <div className="individual-cards-error">
+          <div className="individual-cards-error-card">
+            <span className="individual-cards-error-icon" aria-hidden>
+              <i className="fas fa-exclamation-triangle" />
+            </span>
+            <p className="individual-cards-error-text">{error}</p>
             <Button
               variant="outline-danger"
               size="sm"
               onClick={processPostImages}
               disabled={processing}
+              className="individual-cards-error-retry"
             >
               ลองใหม่
             </Button>
           </div>
-        </Alert>
+        </div>
       )}
 
       {cards.length > 0 && (
-        <>
-          <div className="cards-info">
-            <div className="cards-count">
-              <i className="fas fa-layer-group me-1"></i>
-              พบการ์ด {cards.length} ใบ
-            </div>
-            {!readOnly && !isAuctionIndividual && (
-            <div className="cards-actions">
-              <Button
-                variant="outline-primary"
-                size="sm"
-                onClick={processPostImages}
-                disabled={processing}
-              >
-                <i className="fas fa-sync-alt me-1"></i>
-                ประมวลผลใหม่
-              </Button>
-            </div>
-            )}
-          </div>
-
+        <div className="individual-cards-grid-wrap">
           <div className="individual-cards-grid">
             {cards.map((card) => (
               <IndividualCard
@@ -261,7 +243,7 @@ const IndividualCardsGrid: React.FC<IndividualCardsGridProps> = ({ post, onCardP
               />
             ))}
           </div>
-        </>
+        </div>
       )}
     </Container>
   );

@@ -13,18 +13,74 @@
   justify-content: center;
   align-items: center;
   min-height: 50vh;
-  background: var(--gray-50);
+  background: linear-gradient(180deg, var(--light-cyan) 0%, var(--frosted-blue-light) 30%, var(--bg-primary) 100%);
+  padding: 2rem;
 }
 
-.seller-profile-loading .spinner-border {
+.seller-profile-loading-spinner {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-width: 0.2em;
   color: var(--bright-teal-blue);
+}
+
+.seller-profile-loading-text {
+  margin-top: var(--spacing-md);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
 }
 
 .seller-profile-error {
   min-height: 50vh;
   display: flex;
   align-items: center;
-  background: var(--gray-50);
+  background: linear-gradient(180deg, var(--light-cyan) 0%, var(--frosted-blue-light) 30%, var(--bg-primary) 100%);
+  padding: 2rem 0;
+}
+
+.seller-profile-error-card {
+  text-align: center;
+  max-width: 28rem;
+  margin: 0 auto;
+  padding: var(--spacing-2xl);
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+}
+
+.seller-profile-error-icon {
+  width: 4rem;
+  height: 4rem;
+  margin: 0 auto var(--spacing-lg);
+  border-radius: var(--radius-full);
+  background: var(--danger-alpha-10);
+  color: var(--danger);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.75rem;
+}
+
+.seller-profile-error-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 var(--spacing-sm);
+}
+
+.seller-profile-error-desc {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin: 0 0 var(--spacing-lg);
+  line-height: var(--leading-relaxed);
+}
+
+.seller-profile-error-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  justify-content: center;
+  flex-wrap: wrap;
 }
 
 /* Header - White card with subtle shadow */
@@ -138,41 +194,61 @@
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset;
 }
 
-.seller-mercari-title h1 {
-  font-size: 1.3125rem;
+.seller-mercari-title h1,
+.seller-mercari-title-text {
+  font-size: var(--text-lg);
   font-weight: 600;
-  color: var(--gray-800);
+  color: var(--text-primary);
   margin: 0;
   letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+}
+
+.seller-mercari-title-text .fa-store {
+  color: var(--primary);
 }
 
 /* Filter tabs */
 .seller-mercari-tabs {
-  padding: 0.875rem 0;
+  padding: var(--spacing-md) 0;
   background: var(--bg-primary);
-  border-bottom: 1px solid var(--gray-200);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.seller-mercari-tabs-inner {
+  display: flex;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
 }
 
 .seller-mercari-tab {
-  padding: 0.5rem 1.125rem;
-  font-size: 0.875rem;
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: var(--text-sm);
   font-weight: 500;
-  color: var(--gray-600);
+  color: var(--text-muted);
   background: none;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: color var(--transition-fast), background var(--transition-fast);
+  display: inline-flex;
+  align-items: center;
 }
 
 .seller-mercari-tab:hover {
   color: var(--bright-teal-blue);
-  background: rgba(0, 119, 182, 0.06);
+  background: var(--primary-alpha-08);
 }
 
 .seller-mercari-tab.active {
   color: var(--bright-teal-blue);
-  background: rgba(0, 119, 182, 0.1);
+  background: var(--primary-alpha-15);
+}
+
+.seller-mercari-tab:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 /* Main content */
@@ -226,6 +302,10 @@
   color: var(--bright-teal-blue);
   font-size: 2.5rem;
   opacity: 0.7;
+}
+
+.seller-mercari-card-image-placeholder .fa-image {
+  font-size: 1em;
 }
 
 .seller-mercari-card-body {
@@ -297,6 +377,11 @@
   font-size: 3.5rem;
   margin-bottom: 1.25rem;
   opacity: 0.6;
+  color: var(--primary);
+}
+
+.seller-mercari-empty-icon .fa-shopping-bag {
+  font-size: 1em;
 }
 
 .seller-mercari-empty h3 {
@@ -353,12 +438,18 @@
 
 /* Status badge */
 .seller-mercari-status {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   padding: 0.2rem 0.5rem;
   font-size: 0.6875rem;
   font-weight: 600;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   margin-left: 0.35rem;
+}
+
+.seller-mercari-status .fa-gavel,
+.seller-mercari-status .fa-check {
+  font-size: 0.65em;
 }
 
 .seller-mercari-status.active {

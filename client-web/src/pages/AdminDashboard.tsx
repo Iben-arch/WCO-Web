@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Container, Row, Col, Card, Table, Button, Badge, Modal, Form, Alert } from 'react-bootstrap';
+import { Container, Row, Col, Card, Table, Button, Badge, Modal, Form } from 'react-bootstrap';
 import { useAuth } from '../contexts/AuthContext';
 import axios from '../utils/axiosInterceptor';
 import { toast } from 'react-toastify';
+import { PrimaryActionButton, SecondaryActionButton } from '../components/common/ButtonComponents';
 import { AdminStats, Post, PostStatus, UserProfile } from '../types';
+import '../styles/admin-dashboard.css';
 
 interface AdminUser extends UserProfile {
   id: string;
@@ -124,228 +126,117 @@ const AdminDashboard: React.FC = () => {
 
   if (!userProfile?.isAdmin) {
     return (
-      <Container className="py-5">
-        <Alert variant="danger">
-          <Alert.Heading>ไม่มีสิทธิ์เข้าถึง</Alert.Heading>
-          <p>คุณไม่มีสิทธิ์เข้าถึงหน้านี้</p>
-        </Alert>
-      </Container>
+      <div className="admin-dashboard-page">
+        <Container className="py-5">
+          <div className="admin-denied-card">
+            <div className="admin-denied-icon" aria-hidden><i className="fas fa-lock" /></div>
+            <h5 className="mb-2">ไม่มีสิทธิ์เข้าถึง</h5>
+            <p className="text-muted mb-0">คุณไม่มีสิทธิ์เข้าถึงหน้านี้</p>
+          </div>
+        </Container>
+      </div>
     );
   }
 
   if (loading) {
     return (
-      <Container className="py-5">
-        <div className="d-flex justify-content-center">
-          <div className="spinner-border" role="status">
-            <span className="visually-hidden">Loading...</span>
+      <div className="admin-dashboard-page">
+        <div className="admin-loading-wrap" aria-live="polite" aria-busy="true">
+          <div className="spinner-border admin-loading-spinner" role="status">
+            <span className="visually-hidden">กำลังโหลด...</span>
           </div>
+          <p className="admin-loading-text">กำลังโหลดแดชบอร์ด...</p>
         </div>
-      </Container>
+      </div>
     );
   }
 
   return (
-    <Container className="py-4">
-      <Row className="mb-5">
-        <Col>
-          <div style={{
-            background: 'linear-gradient(135deg, var(--deep-twilight) 0%, var(--french-blue) 25%, var(--bright-teal-blue) 50%, var(--turquoise-surf) 75%, var(--sky-aqua) 100%)',
-            borderRadius: 'var(--radius-xl)',
-            padding: '2rem',
-            color: 'var(--text-light)',
-            boxShadow: 'var(--shadow-lg)',
-            marginBottom: '2rem'
-          }}>
-            <h2 style={{
-              fontSize: '2.5rem',
-              fontWeight: '700',
-              margin: 0,
-              textShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
-            }}>🛠️ แดชบอร์ดแอดมิน</h2>
-            <p style={{
-              fontSize: '1.1rem',
-              opacity: 0.95,
-              margin: '0.5rem 0 0 0'
-            }}>จัดการระบบและผู้ใช้งาน</p>
+    <div className="admin-dashboard-page">
+      <Container>
+        <header className="admin-dashboard-header">
+          <div className="admin-dashboard-header-inner">
+            <h2>
+              แดชบอร์ดแอดมิน
+            </h2>
+            <p className="admin-dashboard-header-desc">จัดการระบบและผู้ใช้งาน</p>
           </div>
-        </Col>
-      </Row>
+        </header>
 
-      {/* Navigation Tabs */}
-      <Row className="mb-4">
-        <Col>
-          <div className="btn-group" role="group">
-            <Button
-              className={activeTab === 'dashboard' ? 'btn-tcg-primary' : 'btn-tcg-outline'}
-              onClick={() => setActiveTab('dashboard')}
-            >
-              สถิติ
-            </Button>
-            <Button
-              className={activeTab === 'posts' ? 'btn-tcg-primary' : 'btn-tcg-outline'}
-              onClick={() => setActiveTab('posts')}
-            >
-              จัดการโพสต์
-            </Button>
-            <Button
-              className={activeTab === 'users' ? 'btn-tcg-primary' : 'btn-tcg-outline'}
-              onClick={() => setActiveTab('users')}
-            >
-              จัดการผู้ใช้
-            </Button>
-          </div>
-        </Col>
-      </Row>
+        <nav className="admin-dashboard-tabs" role="tablist" aria-label="เมนูแดชบอร์ด">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'dashboard'}
+            className={`admin-dashboard-tab ${activeTab === 'dashboard' ? 'active' : ''}`}
+            onClick={() => setActiveTab('dashboard')}
+          >
+            <i className="fas fa-chart-pie" aria-hidden />สถิติ
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'posts'}
+            className={`admin-dashboard-tab ${activeTab === 'posts' ? 'active' : ''}`}
+            onClick={() => setActiveTab('posts')}
+          >
+            <i className="fas fa-newspaper" aria-hidden />จัดการโพสต์
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'users'}
+            className={`admin-dashboard-tab ${activeTab === 'users' ? 'active' : ''}`}
+            onClick={() => setActiveTab('users')}
+          >
+            <i className="fas fa-users" aria-hidden />จัดการผู้ใช้
+          </button>
+        </nav>
 
-      {/* Dashboard Stats */}
-      {activeTab === 'dashboard' && stats && (
-        <Row className="mb-4">
-          <Col md={3} className="mb-4">
-            <Card className="text-center" style={{
-              border: '1px solid var(--border-light)',
-              borderRadius: 'var(--radius-lg)',
-              boxShadow: 'var(--shadow-md)',
-              transition: 'all var(--transition-base)',
-              height: '100%'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = 'translateY(-4px)';
-              e.currentTarget.style.boxShadow = 'var(--shadow-hover)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = 'var(--shadow-md)';
-            }}>
-              <Card.Body style={{ padding: '2rem 1rem' }}>
-                <h3 style={{
-                  fontSize: '2.5rem',
-                  fontWeight: '700',
-                  color: 'var(--bright-teal-blue)',
-                  marginBottom: '0.5rem'
-                }}>{stats.totalPosts}</h3>
-                <p className="mb-0" style={{
-                  color: 'var(--text-secondary)',
-                  fontSize: '1rem',
-                  fontWeight: '500'
-                }}>โพสต์ทั้งหมด</p>
-              </Card.Body>
-            </Card>
-          </Col>
-          <Col md={3} className="mb-4">
-            <Card className="text-center" style={{
-              border: '1px solid var(--border-light)',
-              borderRadius: 'var(--radius-lg)',
-              boxShadow: 'var(--shadow-md)',
-              transition: 'all var(--transition-base)',
-              height: '100%'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = 'translateY(-4px)';
-              e.currentTarget.style.boxShadow = 'var(--shadow-hover)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = 'var(--shadow-md)';
-            }}>
-              <Card.Body style={{ padding: '2rem 1rem' }}>
-                <h3 style={{
-                  fontSize: '2.5rem',
-                  fontWeight: '700',
-                  color: 'var(--success)',
-                  marginBottom: '0.5rem'
-                }}>{stats.activePosts}</h3>
-                <p className="mb-0" style={{
-                  color: 'var(--text-secondary)',
-                  fontSize: '1rem',
-                  fontWeight: '500'
-                }}>โพสต์ที่เผยแพร่</p>
-              </Card.Body>
-            </Card>
-          </Col>
-          <Col md={3} className="mb-4">
-            <Card className="text-center" style={{
-              border: '1px solid var(--border-light)',
-              borderRadius: 'var(--radius-lg)',
-              boxShadow: 'var(--shadow-md)',
-              transition: 'all var(--transition-base)',
-              height: '100%'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = 'translateY(-4px)';
-              e.currentTarget.style.boxShadow = 'var(--shadow-hover)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = 'var(--shadow-md)';
-            }}>
-              <Card.Body style={{ padding: '2rem 1rem' }}>
-                <h3 style={{
-                  fontSize: '2.5rem',
-                  fontWeight: '700',
-                  color: 'var(--info)',
-                  marginBottom: '0.5rem'
-                }}>{stats.totalUsers}</h3>
-                <p className="mb-0" style={{
-                  color: 'var(--text-secondary)',
-                  fontSize: '1rem',
-                  fontWeight: '500'
-                }}>ผู้ใช้ทั้งหมด</p>
-              </Card.Body>
-            </Card>
-          </Col>
-          <Col md={3} className="mb-4">
-            <Card className="text-center" style={{
-              border: '1px solid var(--border-light)',
-              borderRadius: 'var(--radius-lg)',
-              boxShadow: 'var(--shadow-md)',
-              transition: 'all var(--transition-base)',
-              height: '100%'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = 'translateY(-4px)';
-              e.currentTarget.style.boxShadow = 'var(--shadow-hover)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = 'var(--shadow-md)';
-            }}>
-              <Card.Body style={{ padding: '2rem 1rem' }}>
-                <h3 style={{
-                  fontSize: '2.5rem',
-                  fontWeight: '700',
-                  color: 'var(--warning)',
-                  marginBottom: '0.5rem'
-                }}>{stats.recentPosts}</h3>
-                <p className="mb-0" style={{
-                  color: 'var(--text-secondary)',
-                  fontSize: '1rem',
-                  fontWeight: '500'
-                }}>โพสต์ใหม่ (7 วัน)</p>
-              </Card.Body>
-            </Card>
-          </Col>
-        </Row>
-      )}
+        {activeTab === 'dashboard' && stats && (
+          <Row className="mb-4">
+            <Col md={6} lg={3} className="mb-4">
+              <Card className="admin-stat-card text-center">
+                <Card.Body>
+                  <h3 className="admin-stat-value admin-stat-value--posts">{stats.totalPosts}</h3>
+                  <p className="admin-stat-label">โพสต์ทั้งหมด</p>
+                </Card.Body>
+              </Card>
+            </Col>
+            <Col md={6} lg={3} className="mb-4">
+              <Card className="admin-stat-card text-center">
+                <Card.Body>
+                  <h3 className="admin-stat-value admin-stat-value--active">{stats.activePosts}</h3>
+                  <p className="admin-stat-label">โพสต์ที่เผยแพร่</p>
+                </Card.Body>
+              </Card>
+            </Col>
+            <Col md={6} lg={3} className="mb-4">
+              <Card className="admin-stat-card text-center">
+                <Card.Body>
+                  <h3 className="admin-stat-value admin-stat-value--users">{stats.totalUsers}</h3>
+                  <p className="admin-stat-label">ผู้ใช้ทั้งหมด</p>
+                </Card.Body>
+              </Card>
+            </Col>
+            <Col md={6} lg={3} className="mb-4">
+              <Card className="admin-stat-card text-center">
+                <Card.Body>
+                  <h3 className="admin-stat-value admin-stat-value--recent">{stats.recentPosts}</h3>
+                  <p className="admin-stat-label">โพสต์ใหม่ (7 วัน)</p>
+                </Card.Body>
+              </Card>
+            </Col>
+          </Row>
+        )}
 
-      {/* Posts Management */}
-      {activeTab === 'posts' && (
-        <Card style={{
-          border: '1px solid var(--border-light)',
-          borderRadius: 'var(--radius-lg)',
-          boxShadow: 'var(--shadow-md)'
-        }}>
-          <Card.Header style={{
-            background: 'linear-gradient(135deg, var(--deep-twilight) 0%, var(--french-blue) 25%, var(--bright-teal-blue) 50%, var(--turquoise-surf) 75%, var(--sky-aqua) 100%)',
-            color: 'var(--text-light)',
-            border: 'none',
-            borderRadius: 'var(--radius-lg) var(--radius-lg) 0 0',
-            padding: '1.25rem 1.5rem'
-          }}>
-            <h5 className="mb-0" style={{ fontWeight: '600', fontSize: '1.25rem' }}>จัดการโพสต์</h5>
-          </Card.Header>
-          <Card.Body style={{ padding: '1.5rem' }}>
-            <Table responsive>
+        {activeTab === 'posts' && (
+          <Card className="admin-section-card mb-4">
+            <Card.Header className="admin-section-header">
+              <i className="fas fa-newspaper" aria-hidden />จัดการโพสต์
+            </Card.Header>
+            <Card.Body className="admin-section-body">
+              <Table responsive>
               <thead>
                 <tr>
                   <th>การ์ด</th>
@@ -380,9 +271,9 @@ const AdminDashboard: React.FC = () => {
                       <div className="d-flex flex-wrap gap-1 align-items-center">
                         <Link
                           to={`/post/${post.id}`}
-                          className="btn btn-sm btn-outline-primary btn-tcg-sm"
+                          className="btn btn-sm btn-outline-primary btn-tcg-outline btn-tcg-sm"
                         >
-                          ดูรายละเอียด
+                          <i className="fas fa-external-link-alt me-1" aria-hidden />ดู
                         </Link>
                         <Button
                           size="sm"
@@ -390,7 +281,7 @@ const AdminDashboard: React.FC = () => {
                           className="btn-tcg-sm"
                           onClick={() => handlePostAction(post, 'active')}
                         >
-                          อนุมัติ
+                          <i className="fas fa-check me-1" aria-hidden />อนุมัติ
                         </Button>
                         <Button
                           size="sm"
@@ -398,14 +289,15 @@ const AdminDashboard: React.FC = () => {
                           className="btn-tcg-sm"
                           onClick={() => handlePostAction(post, 'rejected')}
                         >
-                          ปฏิเสธ
+                          <i className="fas fa-times me-1" aria-hidden />ปฏิเสธ
                         </Button>
                         <Button
                           size="sm"
-                          className="btn-tcg-outline btn-tcg-sm"
+                          variant="outline-danger"
+                          className="btn-tcg-sm"
                           onClick={() => handlePostAction(post, 'delete')}
                         >
-                          ลบ
+                          <i className="fas fa-trash-alt me-1" aria-hidden />ลบ
                         </Button>
                       </div>
                     </td>
@@ -417,24 +309,13 @@ const AdminDashboard: React.FC = () => {
         </Card>
       )}
 
-      {/* Users Management */}
-      {activeTab === 'users' && (
-        <Card style={{
-          border: '1px solid var(--border-light)',
-          borderRadius: 'var(--radius-lg)',
-          boxShadow: 'var(--shadow-md)'
-        }}>
-          <Card.Header style={{
-            background: 'linear-gradient(135deg, var(--deep-twilight) 0%, var(--french-blue) 25%, var(--bright-teal-blue) 50%, var(--turquoise-surf) 75%, var(--sky-aqua) 100%)',
-            color: 'var(--text-light)',
-            border: 'none',
-            borderRadius: 'var(--radius-lg) var(--radius-lg) 0 0',
-            padding: '1.25rem 1.5rem'
-          }}>
-            <h5 className="mb-0" style={{ fontWeight: '600', fontSize: '1.25rem' }}>จัดการผู้ใช้</h5>
-          </Card.Header>
-          <Card.Body style={{ padding: '1.5rem' }}>
-            <Table responsive>
+        {activeTab === 'users' && (
+          <Card className="admin-section-card mb-4">
+            <Card.Header className="admin-section-header">
+              <i className="fas fa-users" aria-hidden />จัดการผู้ใช้
+            </Card.Header>
+            <Card.Body className="admin-section-body">
+              <Table responsive>
               <thead>
                 <tr>
                   <th>ชื่อ</th>
@@ -513,53 +394,58 @@ const AdminDashboard: React.FC = () => {
         </Card>
       )}
 
-      {/* Action Modal */}
-      <Modal show={showModal} onHide={() => setShowModal(false)}>
-        <Modal.Header closeButton>
-          <Modal.Title>
-            {modalAction === 'delete' ? 'ยืนยันการลบ' : 
-             modalAction === 'active' ? 'ยืนยันการอนุมัติ' : 'ยืนยันการปฏิเสธ'}
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <p>
-            {modalAction === 'delete' ? 'คุณแน่ใจหรือไม่ที่จะลบโพสต์นี้?' :
-             modalAction === 'active' ? 'คุณแน่ใจหรือไม่ที่จะอนุมัติโพสต์นี้?' :
-             'คุณแน่ใจหรือไม่ที่จะปฏิเสธโพสต์นี้?'}
-          </p>
-          {selectedPost && (
-            <div className="mb-3">
-              <strong>การ์ด:</strong> {selectedPost.title}
-              <br />
-              <strong>ผู้ขาย:</strong> {selectedPost.sellerName}
-            </div>
-          )}
-          <Form.Group>
-            <Form.Label>เหตุผล (ไม่บังคับ)</Form.Label>
-            <Form.Control
-              as="textarea"
-              rows={3}
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="ระบุเหตุผล..."
-            />
-          </Form.Group>
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowModal(false)}>
-            ยกเลิก
-          </Button>
-          <Button
-            className={modalAction === 'delete' ? 'btn-tcg-outline' : 
-                    modalAction === 'active' ? 'btn-tcg-primary' : 'btn-tcg-outline'}
-            onClick={handleActionConfirm}
-          >
-            {modalAction === 'delete' ? 'ลบ' :
-             modalAction === 'active' ? 'อนุมัติ' : 'ปฏิเสธ'}
-          </Button>
-        </Modal.Footer>
-      </Modal>
-    </Container>
+        <Modal show={showModal} onHide={() => setShowModal(false)} centered className="admin-modal">
+          <Modal.Header closeButton>
+            <Modal.Title>
+              {modalAction === 'delete' && <i className="fas fa-trash-alt me-2" aria-hidden />}
+              {modalAction === 'active' && <i className="fas fa-check-circle me-2" aria-hidden />}
+              {modalAction === 'rejected' && <i className="fas fa-times-circle me-2" aria-hidden />}
+              {modalAction === 'delete' ? 'ยืนยันการลบ' : modalAction === 'active' ? 'ยืนยันการอนุมัติ' : 'ยืนยันการปฏิเสธ'}
+            </Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            <p>
+              {modalAction === 'delete' ? 'คุณแน่ใจหรือไม่ที่จะลบโพสต์นี้?' :
+               modalAction === 'active' ? 'คุณแน่ใจหรือไม่ที่จะอนุมัติโพสต์นี้?' :
+               'คุณแน่ใจหรือไม่ที่จะปฏิเสธโพสต์นี้?'}
+            </p>
+            {selectedPost && (
+              <div className="mb-3 p-3 rounded" style={{ background: 'var(--gray-100)' }}>
+                <strong>การ์ด:</strong> {selectedPost.title}
+                <br />
+                <strong>ผู้ขาย:</strong> {selectedPost.sellerName}
+              </div>
+            )}
+            <Form.Group>
+              <Form.Label>เหตุผล (ไม่บังคับ)</Form.Label>
+              <Form.Control
+                as="textarea"
+                rows={3}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="ระบุเหตุผล..."
+                className="form-control-sakura"
+              />
+            </Form.Group>
+          </Modal.Body>
+          <Modal.Footer>
+            <SecondaryActionButton onClick={() => setShowModal(false)} icon={<i className="fas fa-times" />}>
+              ยกเลิก
+            </SecondaryActionButton>
+            <Button
+              className={modalAction === 'active' ? 'btn-tcg-primary' : 'btn-tcg-outline'}
+              variant={modalAction === 'delete' ? 'danger' : undefined}
+              onClick={handleActionConfirm}
+            >
+              {modalAction === 'delete' && <i className="fas fa-trash-alt me-1" aria-hidden />}
+              {modalAction === 'active' && <i className="fas fa-check me-1" aria-hidden />}
+              {modalAction === 'rejected' && <i className="fas fa-times me-1" aria-hidden />}
+              {modalAction === 'delete' ? 'ลบ' : modalAction === 'active' ? 'อนุมัติ' : 'ปฏิเสธ'}
+            </Button>
+          </Modal.Footer>
+        </Modal>
+      </Container>
+    </div>
   );
 };
 

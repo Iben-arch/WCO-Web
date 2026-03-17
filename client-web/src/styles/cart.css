@@ -1,8 +1,69 @@
 /* Cart Page Styles - Modern Design */
 .cart-container {
   min-height: 100vh;
-  background: linear-gradient(135deg, var(--light-cyan) 0%, var(--bg-secondary) 50%, var(--light-cyan) 100%);
+  background: linear-gradient(180deg, var(--light-cyan) 0%, var(--frosted-blue-light) 30%, var(--bg-primary) 100%);
   padding: 2rem 0;
+}
+
+.cart-container-inner {
+  animation: fadeInUp var(--transition-slow) ease-out;
+}
+
+/* Page header */
+.cart-page-header {
+  background: linear-gradient(135deg, var(--deep-twilight) 0%, var(--french-blue) 25%, var(--bright-teal-blue) 50%, var(--turquoise-surf) 75%, var(--sky-aqua) 100%);
+  color: var(--text-light);
+  border-radius: var(--radius-xl);
+  padding: var(--spacing-xl) var(--spacing-2xl);
+  margin-bottom: var(--spacing-xl);
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+}
+
+.cart-page-header::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 20% 50%, rgba(255, 255, 255, 0.12) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.cart-page-header-inner {
+  position: relative;
+  z-index: 1;
+}
+
+.cart-page-title {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  margin: 0 0 var(--spacing-sm);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.cart-page-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.2);
+  margin-right: var(--spacing-sm);
+}
+
+.cart-page-badge {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.cart-page-subtitle {
+  font-size: var(--text-base);
+  opacity: 0.95;
+  margin: 0;
 }
 
 .cart-header {
@@ -76,8 +137,13 @@
   justify-content: center;
   align-items: center;
   margin-bottom: 1.5rem;
-  color: var(--text-muted);
-  opacity: 0.6;
+  color: var(--primary);
+  font-size: 4rem;
+  opacity: 0.7;
+}
+
+.cart-empty-icon .fa-shopping-cart {
+  font-size: 1em;
 }
 
 .cart-empty-title {
@@ -581,7 +647,53 @@
   transform: none;
 }
 
-/* Modal Styles */
+/* Cart modals */
+.cart-modal .modal-content {
+  border: none;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  overflow: hidden;
+}
+
+.cart-modal-header {
+  background: linear-gradient(135deg, var(--deep-twilight) 0%, var(--french-blue) 25%, var(--bright-teal-blue) 50%, var(--turquoise-surf) 75%, var(--sky-aqua) 100%);
+  color: var(--text-light);
+  border: none;
+  padding: var(--spacing-md) var(--spacing-lg);
+}
+
+.cart-modal-header.cart-modal-header--danger {
+  background: linear-gradient(135deg, var(--gray-800) 0%, var(--danger) 100%);
+}
+
+.cart-modal .modal-title {
+  font-weight: 600;
+  font-size: var(--text-lg);
+}
+
+.cart-modal .modal-body {
+  padding: var(--spacing-xl);
+}
+
+.cart-modal .modal-footer {
+  border-top: 1px solid var(--border-light);
+  padding: var(--spacing-md) var(--spacing-xl);
+  gap: var(--spacing-sm);
+}
+
+.cart-modal-warning {
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(217, 119, 6, 0.3);
+  background: rgba(217, 119, 6, 0.08);
+}
+
+.cart-summary-info {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--primary-alpha-20);
+  background: var(--primary-alpha-08);
+}
+
+/* Legacy modal (global) */
 .modal-content {
   border: none;
   border-radius: var(--radius-xl);

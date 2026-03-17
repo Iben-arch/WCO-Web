@@ -120,9 +120,19 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     return cartItems.length;
   };
 
+  /** ราคาต่อหน่วย: ถ้ามี cardId ใช้ราคาจาก individualCards[].price ก่อน (ให้ตรงกับที่กดในโพสต์) */
+  const getItemUnitPrice = (item: CartItem): number => {
+    if (item.unitPrice != null && item.unitPrice > 0) return item.unitPrice;
+    if (item.cardId && item.post.individualCards?.length) {
+      const card = item.post.individualCards.find((c: { id?: string }) => c.id === item.cardId);
+      if (card && typeof (card as { price?: number }).price === 'number') return (card as { price: number }).price;
+    }
+    return item.post.individualPrice ?? item.post.price ?? item.post.currentBid ?? item.post.startingBid ?? item.post.maxPrice ?? 0;
+  };
+
   const getTotalPrice = (): number => {
     return cartItems.reduce((total, item) => {
-      const price = item.unitPrice ?? item.post.individualPrice ?? item.post.price ?? item.post.currentBid ?? item.post.startingBid ?? item.post.maxPrice ?? 0;
+      const price = getItemUnitPrice(item);
       const qty = item.quantity ?? 1;
       return total + price * qty;
     }, 0);

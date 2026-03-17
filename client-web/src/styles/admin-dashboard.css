@@ -1,0 +1,259 @@
+/* Admin Dashboard — uses design tokens from index.css */
+
+.admin-dashboard-page {
+  min-height: 100vh;
+  background: linear-gradient(180deg, var(--light-cyan) 0%, var(--frosted-blue-light) 30%, var(--bg-primary) 100%);
+  padding: var(--spacing-xl) 0 var(--spacing-2xl);
+}
+
+.admin-dashboard-header {
+  background: linear-gradient(135deg, var(--deep-twilight) 0%, var(--french-blue) 25%, var(--bright-teal-blue) 50%, var(--turquoise-surf) 75%, var(--sky-aqua) 100%);
+  color: var(--text-light);
+  border-radius: var(--radius-xl);
+  padding: var(--spacing-xl) var(--spacing-2xl);
+  margin-bottom: var(--spacing-xl);
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+}
+
+.admin-dashboard-header::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 20% 50%, rgba(255, 255, 255, 0.12) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.admin-dashboard-header-inner {
+  position: relative;
+  z-index: 1;
+}
+
+.admin-dashboard-header h2 {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  margin: 0 0 var(--spacing-sm);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+}
+
+.admin-dashboard-header .admin-dashboard-header-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.2);
+  margin-right: var(--spacing-sm);
+}
+
+.admin-dashboard-header-desc {
+  font-size: var(--text-base);
+  opacity: 0.95;
+  margin: 0;
+}
+
+/* Tabs */
+.admin-dashboard-tabs {
+  display: flex;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+  margin-bottom: var(--spacing-xl);
+}
+
+.admin-dashboard-tab {
+  padding: var(--spacing-sm) var(--spacing-lg);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.admin-dashboard-tab.active {
+  background: var(--primary);
+  color: var(--text-on-dark);
+  border-color: var(--primary);
+}
+
+.admin-dashboard-tab:not(.active) {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border-color: var(--border-light);
+}
+
+.admin-dashboard-tab:not(.active):hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-alpha-08);
+}
+
+/* Stats cards */
+.admin-stat-card {
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  height: 100%;
+  transition: transform var(--transition-base), box-shadow var(--transition-base);
+  background: var(--bg-card);
+}
+
+.admin-stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-hover);
+}
+
+.admin-stat-card .card-body {
+  padding: var(--spacing-xl) var(--spacing-md);
+  text-align: center;
+}
+
+.admin-stat-value {
+  font-size: var(--text-3xl);
+  font-weight: 700;
+  margin-bottom: var(--spacing-xs);
+  line-height: 1.2;
+}
+
+.admin-stat-value--posts { color: var(--bright-teal-blue); }
+.admin-stat-value--active { color: var(--success); }
+.admin-stat-value--users { color: var(--info); }
+.admin-stat-value--recent { color: var(--warning); }
+
+.admin-stat-label {
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+  font-weight: 500;
+  margin: 0;
+}
+
+/* Section cards (posts / users) */
+.admin-section-card {
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  background: var(--bg-card);
+}
+
+.admin-section-header {
+  background: linear-gradient(135deg, var(--deep-twilight) 0%, var(--french-blue) 25%, var(--bright-teal-blue) 50%, var(--turquoise-surf) 75%, var(--sky-aqua) 100%);
+  color: var(--text-light);
+  border: none;
+  padding: var(--spacing-md) var(--spacing-lg);
+  font-weight: 600;
+  font-size: var(--text-lg);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.admin-section-body {
+  padding: var(--spacing-lg);
+}
+
+.admin-section-card .table {
+  margin-bottom: 0;
+}
+
+.admin-section-card .table thead th {
+  border-bottom: 2px solid var(--border-light);
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+
+.admin-section-card .table tbody td {
+  vertical-align: middle;
+}
+
+.admin-section-card .table tbody tr:hover {
+  background: var(--primary-alpha-04);
+}
+
+/* Access denied & loading */
+.admin-denied-card {
+  max-width: 28rem;
+  margin: 0 auto;
+  padding: var(--spacing-2xl);
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  text-align: center;
+}
+
+.admin-denied-icon {
+  width: 4rem;
+  height: 4rem;
+  margin: 0 auto var(--spacing-lg);
+  border-radius: var(--radius-full);
+  background: var(--danger-alpha-10);
+  color: var(--danger);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.75rem;
+}
+
+.admin-loading-wrap {
+  min-height: 50vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-2xl);
+}
+
+.admin-loading-spinner {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-width: 0.2em;
+  color: var(--primary);
+}
+
+.admin-loading-text {
+  margin-top: var(--spacing-md);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+/* Modal */
+.admin-modal .modal-content {
+  border: none;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+}
+
+.admin-modal .modal-header {
+  background: linear-gradient(135deg, var(--deep-twilight) 0%, var(--french-blue) 25%, var(--bright-teal-blue) 50%, var(--turquoise-surf) 75%, var(--sky-aqua) 100%);
+  color: var(--text-light);
+  border: none;
+  padding: var(--spacing-md) var(--spacing-lg);
+}
+
+.admin-modal .modal-title {
+  font-weight: 600;
+  font-size: var(--text-lg);
+}
+
+.admin-modal .modal-body {
+  padding: var(--spacing-xl);
+}
+
+.admin-modal .modal-footer {
+  border-top: 1px solid var(--border-light);
+  padding: var(--spacing-md) var(--spacing-xl);
+  gap: var(--spacing-sm);
+}
+
+.admin-modal .form-control {
+  border-radius: var(--radius-md);
+}

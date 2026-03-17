@@ -496,6 +496,10 @@ const PostDetail: React.FC = () => {
                   <Badge bg="secondary">ขายแล้ว</Badge>
                 ) : post.postType === 'auction' ? (
                   <Badge bg="info">ประมูล</Badge>
+                ) : post.saleType === 'deck' ? (
+                  <Badge bg="primary">📦 ขายเด็ค</Badge>
+                ) : post.saleType === 'individual' ? (
+                  <Badge bg="success">🃏 ขายแยกใบ</Badge>
                 ) : (
                   <Badge bg="success">ขาย</Badge>
                 )}
