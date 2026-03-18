@@ -60,6 +60,7 @@ try
 {
     builder.Services.AddScoped<SupabaseService>();
     builder.Services.AddScoped<AuctionService>();
+    builder.Services.AddScoped<CardDetectionService>();
     Console.WriteLine("✅ SupabaseService registered");
 }
 catch (Exception ex)

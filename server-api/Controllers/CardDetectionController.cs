@@ -1,32 +1,42 @@
 using Microsoft.AspNetCore.Mvc;
+using ServerApi.Services;
 
 namespace ServerApi.Controllers
 {
     /// <summary>
-    /// Stub API for card detection. Frontend calls POST /api/card-detection/detect.
-    /// When AI detection is not configured, returns empty cards so user can use manual crop in Step 3.
+    /// API for card detection. Uses contour detection (Emgu.CV) to find rectangular cards in the image
+    /// and returns cropped images as base64. If no cards are detected, returns empty list so user can use manual crop.
     /// </summary>
     [ApiController]
     [Route("api/card-detection")]
     public class CardDetectionController : BaseController
     {
+        private readonly CardDetectionService _cardDetection;
+
+        public CardDetectionController(CardDetectionService cardDetection)
+        {
+            _cardDetection = cardDetection;
+        }
+
         /// <summary>
-        /// Detect and crop cards from image. Currently a stub - returns empty list.
-        /// Wire this to an AI/Vision service (e.g. object detection + crop) to return cards with imageUrl per card.
+        /// Detect and crop cards from image. Returns cards with imageUrl (data URL base64) per card.
         /// </summary>
         [HttpPost("detect")]
-        public IActionResult Detect([FromForm] IFormFile? image, [FromForm] string? cardType)
+        public async Task<IActionResult> Detect([FromForm] IFormFile? image, [FromForm] string? cardType, CancellationToken cancellationToken)
         {
             if (image == null || image.Length == 0)
                 return BadRequest(new { success = false, error = "กรุณาส่งรูปภาพ" });
 
-            // Stub: no AI service wired. Return success with empty cards so UI does not error;
-            // user can add cards via manual crop in Step 3.
-            return Ok(new
+            try
             {
-                success = true,
-                cards = Array.Empty<object>()
-            });
+                await using var stream = image.OpenReadStream();
+                var cards = await _cardDetection.DetectAndCropAsync(stream, cancellationToken).ConfigureAwait(false);
+                return Ok(new { success = true, cards });
+            }
+            catch
+            {
+                return Ok(new { success = true, cards = Array.Empty<object>() });
+            }
         }
 
         /// <summary>

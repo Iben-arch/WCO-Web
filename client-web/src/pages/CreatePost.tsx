@@ -164,9 +164,13 @@ const CreatePost: React.FC = () => {
     if (formData.images.length > 0 && cropImageIndex >= 0 && cropImageIndex < formData.images.length) {
       const url = URL.createObjectURL(formData.images[cropImageIndex]);
       setCropImageObjectUrl(url);
+      setCropPosition({ x: 0, y: 0 });
+      setCropZoom(1);
+      setCropAreaPixels(null);
       return () => URL.revokeObjectURL(url);
     }
     setCropImageObjectUrl(null);
+    setCropAreaPixels(null);
   }, [cropImageIndex, formData.images]);
 
   const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>): void => {
@@ -328,13 +332,23 @@ const CreatePost: React.FC = () => {
         });
 
         if (resp.data?.success && Array.isArray(resp.data.cards)) {
-          resp.data.cards.forEach((c: any) => allCards.push({ ...c, quantity: 1, price: '' }));
+          resp.data.cards.forEach((c: any, cardIdx: number) => {
+            // Backend may return only { imageUrl } without an id; ensure each card has a unique id
+            if (!c?.imageUrl) return;
+            const fallbackId = `ai-${i}-${cardIdx}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            allCards.push({
+              ...c,
+              id: String(c?.id || fallbackId),
+              imageUrl: String(c.imageUrl),
+              quantity: 1,
+              price: ''
+            });
+          });
         }
       }
 
       if (allCards.length === 0) {
-        setError('ไม่พบการ์ดจากภาพที่อัปโหลด');
-        toast.error('ไม่พบการ์ดจากภาพที่อัปโหลด');
+        toast.info('AI ยังไม่พบการ์ดในภาพ — สามารถใช้การครอปกำหนดพื้นที่การ์ดเองได้ด้านล่าง');
       } else {
         setDetectedCards(allCards);
         toast.success(`พบการ์ด ${allCards.length} ใบ`);
