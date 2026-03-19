@@ -62,6 +62,8 @@ dotnet run
 
 API จะรันที่ `https://localhost:5001` หรือ `http://localhost:5000`
 
+**ค้นหาด้วยรูป (image search):** ต้องรัน clip-worker แยกอีกเทอร์มินัล (ที่ `clip-worker/` รัน `uvicorn main:app --host 0.0.0.0 --port 5000`). อย่าตั้ง `ClipWorker:BaseUrl` เป็นพอร์ตเดียวกับ API (เช่น 5001) เพราะจะทำให้เรียกผิดเซิร์ฟเวอร์และได้ 404.
+
 ## API Endpoints
 
 ### Posts API
@@ -114,6 +116,22 @@ Authorization: Bearer {token}
 ```http
 GET /api/posts/my-posts
 Authorization: Bearer {token}
+```
+
+### Image search (CLIP + pgvector)
+
+ค้นหาด้วยรูปภาพ (lens-like) ใช้ CLIP embedding และ pgvector ใน Supabase (ไม่เสียค่าใช้จ่าย)
+
+1. **Supabase**: รัน SQL ใน `client-web/supabase-image-embeddings-setup.sql` (เปิด extension vector, สร้างตาราง `post_image_embeddings` และ RPC `match_posts_by_embedding`)
+2. **CLIP worker**: รัน Python worker ในโฟลเดอร์ `clip-worker/` (ดู `clip-worker/README.md`) แล้วตั้งค่า `ClipWorker:BaseUrl` ใน appsettings
+3. **Backfill**: หลัง deploy เรียก `POST /api/admin/backfill-embeddings?limit=50` (แอดมินเท่านั้น) เพื่อสร้าง embeddings ให้โพสต์เก่า
+
+```http
+POST /api/card-detection/search
+Content-Type: multipart/form-data
+
+images: [file1, file2, ...]
+maxResults: (optional) จำนวนผลลัพธ์สูงสุด
 ```
 
 ### Auth API

@@ -12,11 +12,16 @@ namespace ServerApi.Controllers
     public class AdminController : BaseController
     {
         private readonly SupabaseService _supabaseService;
+        private readonly PostEmbeddingIndexingService _embeddingIndexing;
         private readonly ILogger<AdminController> _logger;
 
-        public AdminController(SupabaseService supabaseService, ILogger<AdminController> logger)
+        public AdminController(
+            SupabaseService supabaseService,
+            PostEmbeddingIndexingService embeddingIndexing,
+            ILogger<AdminController> logger)
         {
             _supabaseService = supabaseService;
+            _embeddingIndexing = embeddingIndexing;
             _logger = logger;
         }
 
@@ -91,6 +96,110 @@ namespace ServerApi.Controllers
                 _logger.LogError(ex, "Admin GetStats error");
                 return StatusCode(500, new { success = false, error = "เกิดข้อผิดพลาดในการโหลดสถิติ" });
             }
+        }
+
+        /// <summary>
+        /// POST /api/admin/backfill-embeddings - คำนวณ CLIP embeddings ให้โพสต์ที่ยังไม่มี (batch)
+        /// </summary>
+        [HttpPost("backfill-embeddings")]
+        public async Task<IActionResult> BackfillEmbeddings([FromQuery] int limit = 50)
+        {
+            if (await EnsureAdminAsync() == null)
+            {
+                if (string.IsNullOrEmpty(GetUserId()))
+                    return Unauthorized(new { success = false, error = "ไม่พบผู้ใช้" });
+                return StatusCode(403, new { success = false, error = "ไม่มีสิทธิ์แอดมิน" });
+            }
+
+            var batchSize = Math.Clamp(limit, 1, 100);
+            try
+            {
+                var (posts, _) = await _supabaseService.GetPostsFilteredAsync(
+                    category: null, search: null, sortBy: "newest", page: 1, limit: batchSize, postType: "sale", status: "active", useServiceRole: true);
+
+                var indexed = 0;
+                var failed = 0;
+                foreach (var post in posts)
+                {
+                    if (!post.TryGetValue("id", out var idObj) || idObj == null) continue;
+                    var postId = idObj.ToString();
+                    if (string.IsNullOrEmpty(postId)) continue;
+
+                    var imageUrls = GetImagesFromPost(post);
+                    if (imageUrls.Count == 0) continue;
+
+                    try
+                    {
+                        await _supabaseService.DeleteByFieldAsync("post_image_embeddings", "postId", postId, useServiceRole: true);
+                        await _embeddingIndexing.IndexPostImagesAsync(postId, imageUrls);
+                        indexed++;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Backfill embedding failed for post {PostId}", postId);
+                        failed++;
+                    }
+                }
+
+                return Ok(new { success = true, indexed, failed, totalProcessed = indexed + failed });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Admin BackfillEmbeddings error");
+                return StatusCode(500, new { success = false, error = "เกิดข้อผิดพลาดในการ backfill embeddings" });
+            }
+        }
+
+        /// <summary>
+        /// Collect image URLs for embedding index: post.images + post.individualCards[].imageUrl (for ขายแยกใบ).
+        /// </summary>
+        private static List<string> GetImagesFromPost(Dictionary<string, object> post)
+        {
+            var urls = new List<string>();
+
+            // 1) Main images
+            if (post.TryGetValue("images", out var imagesObj) && imagesObj != null)
+            {
+                if (imagesObj is List<string> ls) urls.AddRange(ls.Where(s => !string.IsNullOrWhiteSpace(s)));
+                else if (imagesObj is List<object> lo) urls.AddRange(lo.Select(x => x?.ToString() ?? "").Where(s => !string.IsNullOrWhiteSpace(s)));
+                else if (imagesObj is System.Text.Json.JsonElement je && je.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    foreach (var item in je.EnumerateArray())
+                    {
+                        var s = item.GetString();
+                        if (!string.IsNullOrWhiteSpace(s)) urls.Add(s);
+                    }
+                }
+            }
+
+            // 2) Individual card image URLs (โพสขายแยกใบ/ประมูลแยกใบ)
+            if (post.TryGetValue("individualCards", out var cardsObj) && cardsObj != null)
+            {
+                if (cardsObj is List<object> cardsList)
+                {
+                    foreach (var c in cardsList)
+                    {
+                        if (c is Dictionary<string, object> dict && dict.TryGetValue("imageUrl", out var urlObj) && urlObj != null)
+                        {
+                            var u = urlObj.ToString();
+                            if (!string.IsNullOrWhiteSpace(u)) urls.Add(u);
+                        }
+                    }
+                }
+                else if (cardsObj is System.Text.Json.JsonElement je && je.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    foreach (var item in je.EnumerateArray())
+                    {
+                        if (item.TryGetProperty("imageUrl", out var urlProp))
+                        {
+                            var u = urlProp.GetString();
+                            if (!string.IsNullOrWhiteSpace(u)) urls.Add(u);
+                        }
+                    }
+                }
+            }
+
+            return urls;
         }
 
         /// <summary>

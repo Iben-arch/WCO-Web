@@ -61,6 +61,8 @@ try
     builder.Services.AddScoped<SupabaseService>();
     builder.Services.AddScoped<AuctionService>();
     builder.Services.AddScoped<CardDetectionService>();
+    builder.Services.AddScoped<ClipEmbeddingService>();
+    builder.Services.AddScoped<PostEmbeddingIndexingService>();
     Console.WriteLine("✅ SupabaseService registered");
 }
 catch (Exception ex)
@@ -73,6 +75,12 @@ catch (Exception ex)
 builder.Services.AddHttpClient("Supabase", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(10); // Timeout 10 วินาที
+});
+
+// CLIP embedding worker (self-hosted, no API cost)
+builder.Services.AddHttpClient("ClipWorker", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(60);
 });
 
 // Add CORS support

@@ -55,6 +55,7 @@ const Home: React.FC = () => {
   const [selectedSearchImages, setSelectedSearchImages] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
+  const [imageSearchMode, setImageSearchMode] = useState<boolean>(false);
   const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
   const [now, setNow] = useState(() => new Date());
 
@@ -81,9 +82,10 @@ const Home: React.FC = () => {
   };
 
   useEffect(() => {
+    if (imageSearchMode) return;
     fetchPosts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, category, searchTerm, sortBy]);
+  }, [currentPage, category, searchTerm, sortBy, imageSearchMode]);
 
   // Check liked status for posts
   useEffect(() => {
@@ -151,6 +153,7 @@ const Home: React.FC = () => {
 
   const handleSearch = (e: FormEvent<HTMLFormElement>): void => {
     e.preventDefault();
+    setImageSearchMode(false);
     setCurrentPage(1);
     fetchPosts();
   };
@@ -158,17 +161,20 @@ const Home: React.FC = () => {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
     if (e.key === 'Enter') {
       e.preventDefault();
+      setImageSearchMode(false);
       setCurrentPage(1);
       fetchPosts();
     }
   };
 
   const handleCategoryChange = (e: ChangeEvent<HTMLSelectElement>): void => {
+    setImageSearchMode(false);
     setCategory(e.target.value);
     setCurrentPage(1);
   };
 
   const handleCategoryToggle = (cat: string): void => {
+    setImageSearchMode(false);
     const newSelected = new Set(selectedCategories);
     if (newSelected.has(cat)) {
       newSelected.delete(cat);
@@ -265,13 +271,45 @@ const Home: React.FC = () => {
       toast.error('กรุณาเลือกรูปภาพ');
       return;
     }
-    // TODO: Implement image search functionality
+
+    // Enter image-search mode so the normal fetchPosts useEffect won't overwrite results.
+    setImageSearchMode(true);
+    setLoading(true);
+    setError(null);
+    setPosts([]);
+
+    const files = [...selectedSearchImages];
+
+    // Reset normal search filters
+    setSearchTerm('');
+    setCategory('');
+    setSelectedCategories(new Set());
+    setCurrentPage(1);
+
     toast.info('กำลังค้นหาด้วยรูปภาพ...');
-    // Clean up URLs
+
+    // Close modal + cleanup object URLs
     imagePreviewUrls.forEach(url => URL.revokeObjectURL(url));
     setShowImageSearchModal(false);
     setSelectedSearchImages([]);
     setImagePreviewUrls([]);
+    setIsDragging(false);
+
+    postsAPI.searchPostsByImage(files)
+      .then((results) => {
+        setPosts(results);
+        if (results.length === 0) {
+          toast.info('ไม่พบโพสต์ที่คล้ายกัน');
+        }
+      })
+      .catch((err) => {
+        console.error('Image search failed:', err);
+        toast.error('ค้นหาด้วยรูปภาพไม่สำเร็จ');
+        setImageSearchMode(false);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   };
 
   // Cleanup URLs when modal closes
@@ -406,6 +444,7 @@ const Home: React.FC = () => {
                     className={`sidebar-category-item ${category === cat ? 'active' : ''}`}
                     onClick={() => {
                       recordCategoryInterest(cat, currentUser?.id);
+                      setImageSearchMode(false);
                       setCategory(cat === category ? '' : cat);
                       setCurrentPage(1);
                     }}
@@ -480,7 +519,10 @@ const Home: React.FC = () => {
                   <Col md={3}>
                     <Form.Select 
                       value={sortBy} 
-                      onChange={(e: ChangeEvent<HTMLSelectElement>) => setSortBy(e.target.value as SortBy)}
+                      onChange={(e: ChangeEvent<HTMLSelectElement>) => {
+                        setImageSearchMode(false);
+                        setSortBy(e.target.value as SortBy);
+                      }}
                       className="main-sort-select"
                     >
                       <option value="newest">ใหม่ล่าสุด</option>
@@ -500,6 +542,7 @@ const Home: React.FC = () => {
                       className={`mobile-category-pill ${category === cat ? 'active' : ''}`}
                       onClick={() => {
                         recordCategoryInterest(cat, currentUser?.id);
+                        setImageSearchMode(false);
                         setCategory(cat === category ? '' : cat);
                         setCurrentPage(1);
                       }}
@@ -529,6 +572,7 @@ const Home: React.FC = () => {
               type="button"
               className="btn-refresh"
               onClick={() => {
+                setImageSearchMode(false);
                 setSearchTerm('');
                 setCategory('');
                 setSelectedCategories(new Set());

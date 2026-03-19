@@ -212,6 +212,32 @@ namespace ServerApi.Services
         }
 
         /// <summary>
+        /// Bulk insert หลายแถวในตาราง (POST body เป็น JSON array)
+        /// </summary>
+        public async Task InsertManyAsync(string table, List<Dictionary<string, object>> rows, bool useServiceRole = true)
+        {
+            if (rows == null || rows.Count == 0) return;
+
+            var keyToUse = (useServiceRole && !string.IsNullOrEmpty(_serviceRoleKey)) ? _serviceRoleKey : _supabaseKey;
+            var url = $"/rest/v1/{table}";
+            var jsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = null, DictionaryKeyPolicy = null };
+            var json = JsonSerializer.Serialize(rows, jsonOptions);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
+            request.Headers.Add("apikey", keyToUse);
+            request.Headers.Add("Authorization", $"Bearer {keyToUse}");
+            request.Headers.Add("Prefer", "return=minimal");
+
+            var response = await _httpClient.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                var err = await response.Content.ReadAsStringAsync();
+                throw new HttpRequestException($"InsertMany {table} failed: {response.StatusCode} - {err}");
+            }
+        }
+
+        /// <summary>
         /// อัปเดตข้อมูลใน Supabase
         /// </summary>
         public async Task UpdateAsync(string table, string id, Dictionary<string, object> data, string? idField = null, bool useServiceRole = false)
@@ -429,6 +455,24 @@ namespace ServerApi.Services
         }
 
         /// <summary>
+        /// ลบแถวที่ field มีค่าเท่ากับ value (ใช้สำหรับลบ embeddings ตาม postId ก่อน backfill)
+        /// </summary>
+        public async Task DeleteByFieldAsync(string table, string fieldName, string value, bool useServiceRole = true)
+        {
+            var url = $"/rest/v1/{table}?{Uri.EscapeDataString(fieldName)}=eq.{Uri.EscapeDataString(value)}";
+            var keyToUse = (useServiceRole && !string.IsNullOrEmpty(_serviceRoleKey)) ? _serviceRoleKey : _supabaseKey;
+            var request = new HttpRequestMessage(HttpMethod.Delete, url);
+            request.Headers.Add("apikey", keyToUse);
+            request.Headers.Add("Authorization", $"Bearer {keyToUse}");
+            var response = await _httpClient.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                var err = await response.Content.ReadAsStringAsync();
+                throw new HttpRequestException($"DeleteByField {table} failed: {response.StatusCode} - {err}");
+            }
+        }
+
+        /// <summary>
         /// ค้นหา likes ของ user สำหรับหลาย postIds (batch query - แก้ N+1)
         /// </summary>
         public async Task<List<string>> QueryLikedPostIdsAsync(string userId, List<string> postIds, bool useServiceRole = false)
@@ -624,6 +668,53 @@ namespace ServerApi.Services
         public Supabase.Client GetClient()
         {
             return _client;
+        }
+
+        /// <summary>
+        /// เรียก Supabase RPC function (e.g. match_posts_by_embedding)
+        /// POST /rest/v1/rpc/{functionName} with JSON body = parameters
+        /// </summary>
+        public async Task<List<Dictionary<string, object>>> RpcAsync(
+            string functionName,
+            Dictionary<string, object> parameters,
+            bool useServiceRole = true)
+        {
+            var keyToUse = (useServiceRole && !string.IsNullOrEmpty(_serviceRoleKey)) ? _serviceRoleKey : _supabaseKey;
+            var url = $"/rest/v1/rpc/{Uri.EscapeDataString(functionName)}";
+
+            var jsonOptions = new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = null,
+                DictionaryKeyPolicy = null
+            };
+            var json = JsonSerializer.Serialize(parameters, jsonOptions);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
+            request.Headers.Add("apikey", keyToUse);
+            request.Headers.Add("Authorization", $"Bearer {keyToUse}");
+
+            var response = await _httpClient.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                var err = await response.Content.ReadAsStringAsync();
+                throw new HttpRequestException($"RPC {functionName} failed: {response.StatusCode} - {err}");
+            }
+
+            var responseContent = await response.Content.ReadAsStringAsync();
+            var doc = JsonSerializer.Deserialize<JsonElement>(responseContent);
+            var results = new List<Dictionary<string, object>>();
+            if (doc.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in doc.EnumerateArray())
+                {
+                    var dict = new Dictionary<string, object>();
+                    foreach (var prop in item.EnumerateObject())
+                        dict[prop.Name] = ConvertJsonElement(prop.Value);
+                    results.Add(dict);
+                }
+            }
+            return results;
         }
     }
 }

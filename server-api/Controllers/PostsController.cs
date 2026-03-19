@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using ServerApi.Services;
 
 namespace ServerApi.Controllers
@@ -15,14 +16,18 @@ namespace ServerApi.Controllers
         private readonly AuctionService _auctionService;
         private readonly ILogger<PostsController> _logger;
 
+        private readonly IServiceScopeFactory _scopeFactory;
+
         public PostsController(
             SupabaseService supabaseService,
             AuctionService auctionService,
-            ILogger<PostsController> logger)
+            ILogger<PostsController> logger,
+            IServiceScopeFactory scopeFactory)
         {
             _supabaseService = supabaseService;
             _auctionService = auctionService;
             _logger = logger;
+            _scopeFactory = scopeFactory;
         }
 
         /// <summary>
@@ -148,6 +153,34 @@ namespace ServerApi.Controllers
                 _logger.LogInformation($"Post created with ID: {postId}");
 
                 var createdPost = await _supabaseService.GetAsync("posts", postId);
+
+                // URLs to index: main images + individual card image URLs (โพสขายแยกใบ/ประมูลแยกใบ)
+                var urlsToIndex = new List<string>(imageUrls);
+                if (request.IndividualCards != null)
+                {
+                    foreach (var c in request.IndividualCards)
+                    {
+                        if (!string.IsNullOrWhiteSpace(c?.ImageUrl) && !urlsToIndex.Contains(c.ImageUrl))
+                            urlsToIndex.Add(c.ImageUrl);
+                    }
+                }
+
+                // Background: index images for CLIP/pgvector search (fire-and-forget)
+                var postIdCapture = postId;
+                var urlsCapture = new List<string>(urlsToIndex);
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        using var scope = _scopeFactory.CreateScope();
+                        var indexing = scope.ServiceProvider.GetRequiredService<PostEmbeddingIndexingService>();
+                        await indexing.IndexPostImagesAsync(postIdCapture, urlsCapture);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error indexing post images for {PostId}", postIdCapture);
+                    }
+                });
 
                 return Ok(new
                 {

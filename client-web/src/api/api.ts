@@ -233,6 +233,33 @@ export const postsAPI = {
       throw error;
     }
   },
+
+  // "Lens-like" search: upload one or more images, server will return similar posts.
+  searchPostsByImage: async (
+    images: File[],
+    params?: { maxResults?: number; maxCandidates?: number }
+  ): Promise<Post[]> => {
+    try {
+      const formData = new FormData();
+      images.forEach((file) => formData.append('images', file));
+
+      if (params?.maxResults != null) {
+        formData.append('maxResults', String(params.maxResults));
+      }
+      if (params?.maxCandidates != null) {
+        formData.append('maxCandidates', String(params.maxCandidates));
+      }
+
+      const response = await axios.post('/api/card-detection/search', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      return response.data?.posts ?? [];
+    } catch (error: any) {
+      console.error('Error searching posts by image:', error);
+      return [];
+    }
+  },
 };
 
 // ==================== AUCTION API ====================
