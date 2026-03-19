@@ -8,6 +8,7 @@ import { postsAPI, authAPI, auctionAPI, chatAPI } from '../api/api';
 import { toast } from 'react-toastify';
 import '../styles/auction-bids.css';
 import { Post, Message, AuctionBid, DetectedCard, FirestoreTimestamp, IndividualCardItem } from '../types';
+import { recordCategoryInterest } from '../utils/categoryInterest';
 
 const PostDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -74,6 +75,11 @@ const PostDetail: React.FC = () => {
       setLoading(true);
       const postData = await postsAPI.getPost(id!);
       setPost(postData);
+
+      // เก็บความสนใจหมวดหมู่ เมื่อผู้ใช้เข้าดูรายละเอียด
+      if (postData?.category) {
+        recordCategoryInterest(postData.category, currentUser?.id);
+      }
       
       // Load individual cards if available
       if (postData.individualCards && Array.isArray(postData.individualCards)) {

@@ -5,6 +5,7 @@ import { postsAPI, authAPI } from '../api/api';
 import { toast } from 'react-toastify';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
+import { getCategoryInterestScores, rankPostsByCategoryInterest, recordCategoryInterest } from '../utils/categoryInterest';
 import { 
   TCGButton, 
   SearchButton, 
@@ -103,17 +104,31 @@ const Home: React.FC = () => {
         setTimeout(() => reject(new Error('Request timeout')), FETCH_TIMEOUT_MS)
       );
       
+      const isPersonalizedHome =
+        !category &&
+        !searchTerm &&
+        currentPage === 1;
+
+      // ถ้าเป็นหน้าแรกแบบไม่กรอง: ดึงมามากขึ้นแล้วจัดอันดับตามความสนใจ
+      const fetchLimit = isPersonalizedHome ? 36 : 12;
+
       const fetchPromise = postsAPI.getPosts({
         category: category || undefined,
         search: searchTerm || undefined,
         sortBy: sortBy || 'newest',
         page: currentPage,
-        limit: 12
+        limit: fetchLimit
       });
 
       const fetched = await Promise.race([fetchPromise, timeoutPromise]);
 
-      setPosts(fetched);
+      if (isPersonalizedHome && Array.isArray(fetched)) {
+        const scores = getCategoryInterestScores(currentUser?.id);
+        const ranked = rankPostsByCategoryInterest(fetched, scores);
+        setPosts(ranked.slice(0, 12));
+      } else {
+        setPosts(fetched);
+      }
     } catch (error) {
       console.error('Error fetching posts:', error);
       setError('เกิดข้อผิดพลาดในการโหลดข้อมูล กรุณาลองรีเฟรชอีกครั้ง');
@@ -390,6 +405,7 @@ const Home: React.FC = () => {
                     key={cat}
                     className={`sidebar-category-item ${category === cat ? 'active' : ''}`}
                     onClick={() => {
+                      recordCategoryInterest(cat, currentUser?.id);
                       setCategory(cat === category ? '' : cat);
                       setCurrentPage(1);
                     }}
@@ -483,6 +499,7 @@ const Home: React.FC = () => {
                       key={cat}
                       className={`mobile-category-pill ${category === cat ? 'active' : ''}`}
                       onClick={() => {
+                        recordCategoryInterest(cat, currentUser?.id);
                         setCategory(cat === category ? '' : cat);
                         setCurrentPage(1);
                       }}
@@ -671,7 +688,10 @@ const Home: React.FC = () => {
                         <div className="card-actions">
                           <button 
                             className="btn-view-details"
-                            onClick={() => navigate(`/post/${post.id}`)}
+                            onClick={() => {
+                              recordCategoryInterest(post.category, currentUser?.id);
+                              navigate(`/post/${post.id}`);
+                            }}
                           >
                             ดูรายละเอียด
                           </button>
