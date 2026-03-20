@@ -79,6 +79,11 @@ const IndividualCard: React.FC<IndividualCardProps> = ({
       return;
     }
 
+    if (post.status !== 'active') {
+      toast.error('โพสต์นี้ไม่พร้อมใช้งาน');
+      return;
+    }
+
     if (isOutOfStock) {
       toast.error('การ์ดใบนี้หมดแล้ว');
       return;
@@ -188,7 +193,7 @@ const IndividualCard: React.FC<IndividualCardProps> = ({
             </div>
           </div>
 
-          {!readOnly && !isAuctionCard && !isOutOfStock && remaining > 0 && (
+          {!readOnly && !isAuctionCard && post.status === 'active' && !isOutOfStock && remaining > 0 && (
           <div className="card-quantity-selector mb-2">
             <div className="d-flex align-items-center justify-content-between small text-muted mb-1">
               <span>จำนวนใบ</span>
@@ -247,17 +252,33 @@ const IndividualCard: React.FC<IndividualCardProps> = ({
             </Button>
           </div>
           )}
-          {!readOnly && !isAuctionCard && (
+          {!isAuctionCard && (
           <div className="card-actions">
             {isInCart ? (
               <Button variant="outline-danger" size="sm" className="w-100" onClick={handleRemoveFromCart}>
                 <i className="fas fa-trash-alt me-1" aria-hidden></i> ลบออกจากตะกร้า
               </Button>
             ) : (
-              <Button variant="primary" size="sm" className="btn-tcg-primary w-100" onClick={handleAddToCart}
-                disabled={isAddingToCart || post.status === 'sold' || isOutOfStock}>
-                {isAddingToCart ? <><Spinner size="sm" className="me-2" />กำลังเพิ่ม...</> : <><i className="fas fa-cart-plus me-1" aria-hidden></i>เพิ่มในตะกร้า</>}
-              </Button>
+                !readOnly ? (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="btn-tcg-primary w-100"
+                    onClick={handleAddToCart}
+                    disabled={isAddingToCart || post.status !== 'active' || isOutOfStock}
+                  >
+                    {isAddingToCart ? (
+                      <>
+                        <Spinner size="sm" className="me-2" />
+                        กำลังเพิ่ม...
+                      </>
+                    ) : (
+                      <>
+                        <i className="fas fa-cart-plus me-1" aria-hidden></i>เพิ่มในตะกร้า
+                      </>
+                    )}
+                  </Button>
+                ) : null
             )}
           </div>
           )}
@@ -269,7 +290,20 @@ const IndividualCard: React.FC<IndividualCardProps> = ({
               </Badge>
             </div>
           )}
-          {post.status !== 'sold' && isOutOfStock && (
+          {!isAuctionCard && post.status !== 'active' && post.status !== 'sold' && (
+            <div className="sold-overlay">
+              <Badge bg="secondary" className="sold-badge">
+                {post.status === 'pending'
+                  ? 'รอตรวจสอบ'
+                  : post.status === 'inactive'
+                    ? 'ปิดการขาย'
+                    : post.status === 'rejected'
+                      ? 'ถูกปฏิเสธ'
+                      : 'ไม่พร้อมใช้งาน'}
+              </Badge>
+            </div>
+          )}
+          {post.status === 'active' && isOutOfStock && (
             <div className="sold-overlay">
               <Badge bg="secondary" className="sold-badge">
                 หมดแล้ว

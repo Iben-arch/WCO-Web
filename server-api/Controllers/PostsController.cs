@@ -451,12 +451,154 @@ namespace ServerApi.Controllers
                     updateData["description"] = request.Description;
                 if (!string.IsNullOrEmpty(request.Category))
                     updateData["category"] = request.Category;
+                if (request.ImageUrls != null && request.ImageUrls.Count > 0)
+                {
+                    // อัปเดตรูปโพสต์ (แทนของเดิม) และลบไฟล์เดิมใน Storage เพื่อไม่ให้ค้าง
+                    var newImageUrls = request.ImageUrls.Where(u => !string.IsNullOrWhiteSpace(u)).ToList();
+                    var newImagePaths = request.ImageStoragePaths ?? new List<string>();
+
+                    if (newImageUrls.Count == 0)
+                        return BadRequest(new { success = false, error = "กรุณาระบุ imageUrls อย่างน้อย 1 รูป" });
+
+                    if (newImagePaths.Count != newImageUrls.Count)
+                        return BadRequest(new { success = false, error = "จำนวน imageUrls ไม่เท่ากับ imageStoragePaths" });
+
+                    // Delete old storage objects
+                    if (existingPost.TryGetValue("imageStoragePaths", out var oldPathsObj) && oldPathsObj != null)
+                    {
+                        var oldPaths = new List<string>();
+                        if (oldPathsObj is List<object> listObj)
+                        {
+                            oldPaths = listObj.Select(p => p?.ToString() ?? "").Where(s => !string.IsNullOrEmpty(s)).ToList();
+                        }
+                        else if (oldPathsObj is System.Text.Json.JsonElement je && je.ValueKind == System.Text.Json.JsonValueKind.Array)
+                        {
+                            foreach (var item in je.EnumerateArray())
+                                oldPaths.Add(item.GetString() ?? "");
+                        }
+
+                        oldPaths = oldPaths.Where(s => !string.IsNullOrWhiteSpace(s)).Distinct().ToList();
+                        if (oldPaths.Count > 0)
+                            await _supabaseService.DeleteStorageObjectsAsync("posts", oldPaths);
+                    }
+
+                    updateData["images"] = newImageUrls;
+                    updateData["imageStoragePaths"] = newImagePaths;
+                }
                 if (request.Price.HasValue)
-                    updateData["price"] = request.Price.Value;
+                {
+                    var newPrice = request.Price.Value;
+                    var postType = existingPost.TryGetValue("postType", out var ptObj) ? ptObj?.ToString() : null;
+                    var saleType = existingPost.TryGetValue("saleType", out var stObj) ? stObj?.ToString() : null;
+
+                    // Map field name ให้ตรงกับชนิดโพสต์
+                    // - sale(deck) => price
+                    // - sale(individual) => individualPrice (และเก็บ fallback ที่ price ด้วย)
+                    // - auction => startingBid (ใช้เป็นค่าตั้งต้น/อ้างอิง)
+                    if (string.Equals(postType, "sale", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (string.Equals(saleType, "deck", StringComparison.OrdinalIgnoreCase))
+                        {
+                            updateData["price"] = newPrice;
+                        }
+                        else if (string.Equals(saleType, "individual", StringComparison.OrdinalIgnoreCase))
+                        {
+                            updateData["individualPrice"] = newPrice;
+                            // เก็บ fallback เพื่อให้ client แสดงผลได้ไม่สับสน (บางส่วนใช้ post.price)
+                            updateData["price"] = newPrice;
+                        }
+                        else
+                        {
+                            // fallback
+                            updateData["price"] = newPrice;
+                        }
+                    }
+                    else if (string.Equals(postType, "auction", StringComparison.OrdinalIgnoreCase))
+                    {
+                        updateData["startingBid"] = newPrice;
+                        // fallback
+                        updateData["price"] = newPrice;
+                    }
+                    else
+                    {
+                        updateData["price"] = newPrice;
+                    }
+                }
+
+                // Update individual cards (saleType=individual) - เหมาะสำหรับ "ขายแยกใบ"
+                if (existingPost.TryGetValue("postType", out var ptObj2)
+                    && string.Equals(ptObj2?.ToString(), "sale", StringComparison.OrdinalIgnoreCase)
+                    && existingPost.TryGetValue("saleType", out var stObj2)
+                    && string.Equals(stObj2?.ToString(), "individual", StringComparison.OrdinalIgnoreCase)
+                    && request.IndividualCards != null
+                    && request.IndividualCards.Count > 0)
+                {
+                    var cards = request.IndividualCards;
+                    var totalQty = cards.Sum(c => c?.Quantity ?? 0);
+                    var minPrice = cards
+                        .Where(c => c != null && c.Price > 0)
+                        .Select(c => c!.Price)
+                        .DefaultIfEmpty(0d)
+                        .Min();
+
+                    updateData["individualCards"] = cards;
+                    updateData["availableQuantity"] = totalQty;
+                    updateData["individualPrice"] = minPrice;
+                    // fallback เพื่อให้ client แสดงราคาได้ในหลายจุด
+                    updateData["price"] = minPrice;
+                }
 
                 await _supabaseService.UpdateAsync("posts", id, updateData);
 
                 var updatedPost = await _supabaseService.GetAsync("posts", id);
+
+                // Background re-index embeddings (อย่า block request)
+                if (request.ImageUrls != null && request.ImageUrls.Count > 0)
+                {
+                    var postIdCapture = id;
+                    var urlsCapture = new List<string>(request.ImageUrls.Where(u => !string.IsNullOrWhiteSpace(u)));
+                    if (updatedPost != null && updatedPost.TryGetValue("individualCards", out var icObj) && icObj != null)
+                    {
+                        try
+                        {
+                            // ถ้ามี individualCards ใน post ให้รวม imageUrl เพื่อ embed
+                            if (icObj is List<object> cardsList)
+                            {
+                                foreach (var c in cardsList)
+                                {
+                                    if (c is Dictionary<string, object> dict &&
+                                        dict.TryGetValue("imageUrl", out var urlObj) &&
+                                        urlObj != null)
+                                    {
+                                        var u = urlObj.ToString();
+                                        if (!string.IsNullOrWhiteSpace(u)) urlsCapture.Add(u);
+                                    }
+                                }
+                            }
+                        }
+                        catch
+                        {
+                            // ไม่กระทบการอัปเดตโพสต์
+                        }
+                    }
+
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            // Clear old embeddings for this post
+                            await _supabaseService.DeleteByFieldAsync("post_image_embeddings", "postId", postIdCapture, useServiceRole: true);
+
+                            using var scope = _scopeFactory.CreateScope();
+                            var indexing = scope.ServiceProvider.GetRequiredService<PostEmbeddingIndexingService>();
+                            await indexing.IndexPostImagesAsync(postIdCapture, urlsCapture);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Error re-index embeddings after post image update {PostId}", postIdCapture);
+                        }
+                    });
+                }
 
                 return Ok(new
                 {
@@ -472,6 +614,72 @@ namespace ServerApi.Controllers
                 {
                     success = false,
                     error = "เกิดข้อผิดพลาดในการอัปเดตโพสต์",
+                    message = ex.Message
+                });
+            }
+        }
+
+        /// <summary>
+        /// ยื่นขออนุมัติใหม่สำหรับโพสต์ที่ถูกปฏิเสธแล้ว (status=rejected -> pending)
+        /// </summary>
+        [HttpPut("{id}/resubmit")]
+        public async Task<IActionResult> ResubmitPost(string id)
+        {
+            try
+            {
+                var userId = GetUserId();
+                var existingPost = await _supabaseService.GetAsync("posts", id);
+
+                if (existingPost == null)
+                    return NotFound(new { success = false, error = "ไม่พบโพสต์ที่ระบุ" });
+
+                // ตรวจสอบว่าเป็นเจ้าของโพสต์
+                if (string.IsNullOrEmpty(userId) || (existingPost.ContainsKey("sellerId") && existingPost["sellerId"]?.ToString() != userId))
+                {
+                    return Forbid("คุณไม่มีสิทธิ์ยื่นขออนุมัติโพสต์นี้");
+                }
+
+                var postStatus = existingPost.TryGetValue("status", out var stObj) ? stObj?.ToString() : null;
+                if (!string.Equals(postStatus, "rejected", StringComparison.OrdinalIgnoreCase))
+                {
+                    return BadRequest(new { success = false, error = "โพสต์นี้ไม่ได้อยู่ในสถานะถูกปฏิเสธ" });
+                }
+
+                var updateData = new Dictionary<string, object>
+                {
+                    ["status"] = "pending",
+                    ["updatedAt"] = DateTime.UtcNow
+                };
+
+                // ถ้าเป็น auction ให้รีเซ็ตสถานะย่อยเพื่อเริ่มพิจารณาใหม่อย่างปลอดภัย
+                if (existingPost.TryGetValue("postType", out var ptObj) && string.Equals(ptObj?.ToString(), "auction", StringComparison.OrdinalIgnoreCase))
+                {
+                    updateData["auctionStatus"] = "active";
+                    updateData["winnerId"] = null!;
+                    updateData["paymentDeadline"] = null!;
+                    updateData["currentBid"] = null!;
+                    updateData["highestBidder"] = null!;
+                    updateData["bidCount"] = 0;
+                }
+
+                await _supabaseService.UpdateAsync("posts", id, updateData);
+
+                var updatedPost = await _supabaseService.GetAsync("posts", id);
+
+                return Ok(new
+                {
+                    success = true,
+                    message = "ยื่นขออนุมัติใหม่สำเร็จ",
+                    data = updatedPost
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error resubmitting post");
+                return StatusCode(500, new
+                {
+                    success = false,
+                    error = "เกิดข้อผิดพลาดในการยื่นขออนุมัติใหม่",
                     message = ex.Message
                 });
             }
@@ -606,6 +814,9 @@ namespace ServerApi.Controllers
         public string? Description { get; set; }
         public string? Category { get; set; }
         public double? Price { get; set; }
+        public List<string>? ImageUrls { get; set; }
+        public List<string>? ImageStoragePaths { get; set; }
+      public List<IndividualCardDto>? IndividualCards { get; set; }
     }
 }
 

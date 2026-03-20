@@ -1240,18 +1240,35 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
                     </div>
                     <div className="d-flex justify-content-between align-items-center">
                       <small className="text-muted">
-                        สถานะ: <span className={`badge ${
-                          post.status === 'active' ? 'bg-success' :
-                          post.status === 'pending' ? 'bg-warning' :
-                          post.status === 'sold' ? 'bg-info' : 'bg-secondary'
-                        }`}>
-                          {post.status === 'active' ? 'เปิดขาย' :
-                           post.status === 'pending'
-                             ? post.postType === 'auction' && post.auctionStatus === 'won_pending_payment'
-                               ? 'รอการชำระเงิน'
-                               : 'รออนุมัติ'
-                             :
-                           post.status === 'sold' ? 'ขายแล้ว' : 'ปิดขาย'}
+                        สถานะ:{' '}
+                        <span
+                          className={`badge ${
+                            post.status === 'active'
+                              ? 'bg-success'
+                              : post.status === 'pending'
+                                ? 'bg-warning'
+                                : post.status === 'sold'
+                                  ? 'bg-info'
+                                  : post.status === 'rejected'
+                                    ? 'bg-danger'
+                                    : post.status === 'inactive'
+                                      ? 'bg-secondary'
+                                      : 'bg-secondary'
+                          }`}
+                        >
+                          {post.status === 'active'
+                            ? 'เปิดขาย'
+                            : post.status === 'pending'
+                              ? post.postType === 'auction' && post.auctionStatus === 'won_pending_payment'
+                                ? 'รอการชำระเงิน'
+                                : 'รออนุมัติ'
+                              : post.status === 'sold'
+                                ? 'ขายแล้ว'
+                                : post.status === 'rejected'
+                                  ? 'ถูกปฏิเสธ'
+                                  : post.status === 'inactive'
+                                    ? 'ปิดการขาย'
+                                    : 'ไม่ทราบสถานะ'}
                         </span>
                       </small>
                       <small className="text-muted">

@@ -5,10 +5,12 @@ import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
 import IndividualCardsGrid from '../components/common/IndividualCardsGrid';
 import { postsAPI, authAPI, auctionAPI, chatAPI } from '../api/api';
+import axios from '../utils/axiosInterceptor';
 import { toast } from 'react-toastify';
 import '../styles/auction-bids.css';
 import { Post, Message, AuctionBid, DetectedCard, FirestoreTimestamp, IndividualCardItem } from '../types';
 import { recordCategoryInterest } from '../utils/categoryInterest';
+import { supabase } from '../config/supabase';
 
 const PostDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -39,6 +41,21 @@ const PostDetail: React.FC = () => {
   const [reAuctioning, setReAuctioning] = useState<boolean>(false);
   const [bidCardId, setBidCardId] = useState<string | undefined>(undefined);
   const [bidMinAmount, setBidMinAmount] = useState<number>(0);
+
+  const [showResubmitModal, setShowResubmitModal] = useState<boolean>(false);
+  const [resubmitLoading, setResubmitLoading] = useState<boolean>(false);
+  const [resubmitForm, setResubmitForm] = useState<{
+    title: string;
+    description: string;
+    category: string;
+    price: string;
+  }>({ title: '', description: '', category: '', price: '' });
+
+  const [resubmitImages, setResubmitImages] = useState<File[]>([]);
+  const [resubmitImagePreviews, setResubmitImagePreviews] = useState<string[]>([]);
+
+  const [resubmitIndividualCards, setResubmitIndividualCards] = useState<DetectedCard[]>([]);
+  const [resubmitCardsLoading, setResubmitCardsLoading] = useState<boolean>(false);
 
   useEffect(() => {
     fetchPost();
@@ -217,6 +234,11 @@ const PostDetail: React.FC = () => {
       return;
     }
 
+    if (post.status !== 'active') {
+      toast.error('โพสต์นี้ไม่พร้อมใช้งาน');
+      return;
+    }
+
     setAddingToCart(true);
     try {
       const result = await addToCart(post);
@@ -248,6 +270,147 @@ const PostDetail: React.FC = () => {
     }
   };
 
+  const openResubmitModal = (): void => {
+    if (!post) return;
+    // reset resubmit image state
+    resubmitImagePreviews.forEach((u) => URL.revokeObjectURL(u));
+    setResubmitImages([]);
+    setResubmitImagePreviews([]);
+    setResubmitIndividualCards([]);
+    setResubmitCardsLoading(false);
+    const initialPrice =
+      post.postType === 'sale'
+        ? post.saleType === 'individual'
+          ? post.individualPrice ?? post.price ?? 0
+          : post.price ?? 0
+        : '';
+
+    setResubmitForm({
+      title: post.title ?? '',
+      description: post.description ?? '',
+      category: post.category ?? '',
+      price: typeof initialPrice === 'number' ? String(initialPrice) : ''
+    });
+
+    // For saleType=individual: allow editing price/quantity per card
+    if (post.postType === 'sale' && post.saleType === 'individual' && post.individualCards?.length) {
+      setResubmitIndividualCards(
+        post.individualCards.map((c, idx) => ({
+          id: c.id ?? `card-${idx}`,
+          imageUrl: c.imageUrl,
+          quantity: typeof c.quantity === 'number' ? c.quantity : Number(c.quantity) || 1,
+          price: typeof c.price === 'number' ? c.price : Number(c.price) || ''
+        }))
+      );
+    }
+    setShowResubmitModal(true);
+  };
+
+  const handleResubmitForApproval = async (): Promise<void> => {
+    if (!post) return;
+    setResubmitLoading(true);
+    try {
+      const payload: any = {
+        title: resubmitForm.title,
+        description: resubmitForm.description,
+        category: resubmitForm.category
+      };
+
+      if (resubmitImages.length > 0) {
+        if (!currentUser) {
+          toast.error('กรุณาเข้าสู่ระบบก่อน');
+          return;
+        }
+
+        const uploadedStoragePaths: string[] = [];
+        const uploadedImageUrls: string[] = [];
+        try {
+          for (let i = 0; i < resubmitImages.length; i++) {
+            const file = resubmitImages[i];
+            if (!file.type.startsWith('image/')) {
+              toast.error('กรุณาเลือกไฟล์รูปภาพเท่านั้น');
+              return;
+            }
+
+            const fileExt = file.name.split('.').pop() || 'jpg';
+            const fileName = `${currentUser.id}/${Date.now()}-${Math.random().toString(36).substring(7)}-${i}.${fileExt}`;
+
+            const { error: uploadError } = await supabase.storage
+              .from('posts')
+              .upload(fileName, file, { cacheControl: '3600', upsert: false });
+
+            if (uploadError) throw uploadError;
+
+            const { data: { publicUrl } } = supabase.storage.from('posts').getPublicUrl(fileName);
+            uploadedStoragePaths.push(fileName);
+            uploadedImageUrls.push(publicUrl);
+          }
+
+          payload.imageUrls = uploadedImageUrls;
+          payload.imageStoragePaths = uploadedStoragePaths;
+        } catch (uploadErr: any) {
+          // rollback uploads if we failed mid-way
+          if (uploadedStoragePaths.length > 0) {
+            try {
+              await supabase.storage.from('posts').remove(uploadedStoragePaths);
+            } catch {
+              // ignore rollback error
+            }
+          }
+          throw uploadErr;
+        }
+      }
+
+      if (post.postType === 'sale') {
+        if (post.saleType === 'individual') {
+          if (resubmitIndividualCards.length === 0) {
+            toast.error('กรุณามีรายการการ์ดแยกใบเพื่อยื่นขออนุมัติใหม่');
+            return;
+          }
+
+          const cardsPayload = resubmitIndividualCards.map((c) => {
+            const priceNum = parseFloat(String(c.price));
+            const qtyNum = parseInt(String(c.quantity), 10);
+            return { id: c.id ?? '', imageUrl: c.imageUrl, price: priceNum, quantity: qtyNum };
+          });
+
+          const invalid = cardsPayload.some((c) => !Number.isFinite(c.price) || c.price <= 0 || !Number.isFinite(c.quantity) || c.quantity <= 0 || !c.imageUrl);
+          if (invalid) {
+            toast.error('กรุณากรอกราคา/จำนวนต่อใบให้ถูกต้อง (ราคา > 0, จำนวน >= 1)');
+            return;
+          }
+
+          const minPrice = Math.min(...cardsPayload.map((c) => c.price));
+          payload.individualCards = cardsPayload;
+          // fallback: ใช้ min เพื่อให้ระบบแสดงราคาอ้างอิงได้
+          payload.price = minPrice;
+        } else {
+          const priceNum = parseFloat(resubmitForm.price);
+          if (!Number.isFinite(priceNum) || priceNum < 0) {
+            toast.error('กรุณากรอกราคาที่ถูกต้อง');
+            return;
+          }
+          payload.price = priceNum;
+        }
+      }
+
+      await postsAPI.updatePost(post.id, payload);
+      const updated = await postsAPI.resubmitPost(post.id);
+      setPost(updated);
+      // clear selected images after success
+      resubmitImagePreviews.forEach((u) => URL.revokeObjectURL(u));
+      setResubmitImages([]);
+      setResubmitImagePreviews([]);
+      setShowResubmitModal(false);
+      toast.success('ยื่นขออนุมัติใหม่สำเร็จแล้ว');
+    } catch (error) {
+      console.error('Error resubmitting post:', error);
+      toast.error('เกิดข้อผิดพลาดในการยื่นขออนุมัติใหม่');
+    } finally {
+      setResubmitLoading(false);
+    }
+  };
+
   const nextImage = (): void => {
     if (post.images && post.images.length > 0) {
       setCurrentImageIndex((prev) => (prev + 1) % post.images.length);
@@ -268,6 +431,11 @@ const PostDetail: React.FC = () => {
 
     if (!post || currentUser.id === post.sellerId) {
       toast.error('ไม่สามารถประมูลโพสต์ของตัวเองได้');
+      return;
+    }
+
+    if (post.status !== 'active') {
+      toast.error('โพสต์นี้ไม่พร้อมสำหรับการประมูล');
       return;
     }
 
@@ -328,6 +496,11 @@ const PostDetail: React.FC = () => {
 
     if (!post || currentUser.id === post.sellerId) {
       toast.error('ไม่สามารถซื้อโพสต์ของตัวเองได้');
+      return;
+    }
+
+    if (post.status !== 'active') {
+      toast.error('โพสต์นี้ไม่พร้อมใช้งาน');
       return;
     }
 
@@ -428,15 +601,23 @@ const PostDetail: React.FC = () => {
 
   const isOwner = currentUser && currentUser.id === post.sellerId;
   const isSold = post.status === 'sold';
-  const isAuctionReleased = post.postType === 'auction' && post.auctionStatus === 'auction_released';
-  const isWonPendingPayment = post.postType === 'auction' && post.auctionStatus === 'won_pending_payment';
+  const isPostActive = post.status === 'active';
+  const isRejected = post.status === 'rejected';
+  const isAuction = post.postType === 'auction';
+  const isAuctionReleased = isAuction && post.auctionStatus === 'auction_released';
+  const isWonPendingPayment = isAuction && post.auctionStatus === 'won_pending_payment';
+  const isAuctionActive = isAuction && post.auctionStatus === 'active';
+  const auctionEndDate = convertToDate(post.auctionEndDate);
+  const isAuctionEnded = isAuction && auctionEndDate <= new Date();
   const isAuctionWinner = currentUser && post.winnerId === currentUser.id;
   const canBidAuction =
-    post.postType === 'auction' &&
-    post.auctionStatus !== 'won_pending_payment' &&
-    post.auctionStatus !== 'sold' &&
-    post.auctionStatus !== 'auction_released' &&
-    convertToDate(post.auctionEndDate) > new Date();
+    isAuction &&
+    isPostActive &&
+    isAuctionActive &&
+    auctionEndDate > new Date();
+
+  const canOwnerMarkSoldSale = post.postType === 'sale' && isPostActive && !isSold;
+  const canOwnerCloseAuction = post.postType === 'auction' && isAuctionActive && isAuctionEnded && isPostActive && !isSold;
 
   return (
     <div className="post-detail-container mercari-style">
@@ -500,7 +681,19 @@ const PostDetail: React.FC = () => {
               <div className="mercari-meta">
                 {isSold ? (
                   <Badge bg="secondary">ขายแล้ว</Badge>
-                ) : post.postType === 'auction' ? (
+                ) : isWonPendingPayment ? (
+                  <Badge bg="warning">รอการชำระเงิน</Badge>
+                ) : post.status === 'pending' ? (
+                  <Badge bg="warning">รอตรวจสอบ</Badge>
+                ) : post.status === 'inactive' ? (
+                  <Badge bg="secondary">ปิดการขาย</Badge>
+                ) : post.status === 'rejected' ? (
+                  <Badge bg="danger">ถูกปฏิเสธ</Badge>
+                ) : (
+                  <Badge bg="success">กำลังขาย</Badge>
+                )}
+
+                {post.postType === 'auction' ? (
                   <Badge bg="info">ประมูล</Badge>
                 ) : post.saleType === 'deck' ? (
                   <Badge bg="primary">📦 ขายเด็ค</Badge>
@@ -575,9 +768,13 @@ const PostDetail: React.FC = () => {
                 <IndividualCardsGrid 
                   post={post} 
                   onCardProcessed={handleCardProcessed}
-                  readOnly={false}
+                  readOnly={!isPostActive}
                   isAuctionIndividual={post.postType === 'auction'}
-                  onOpenBidModal={(cardId, minBid) => { setBidCardId(cardId); setBidMinAmount(minBid); setShowBidModal(true); }}
+                  onOpenBidModal={post.postType === 'auction' && canBidAuction ? (cardId, minBid) => {
+                    setBidCardId(cardId);
+                    setBidMinAmount(minBid);
+                    setShowBidModal(true);
+                  } : undefined}
                   placingBid={placingBid}
                 />
               )}
@@ -667,13 +864,39 @@ const PostDetail: React.FC = () => {
                           {reAuctioning ? 'กำลังเปิด...' : 'ประมูลใหม่'}
                         </button>
                       )}
-                      {!isSold && !isAuctionReleased && (
+                      {isRejected && (
+                        <button
+                          type="button"
+                          className="btn-mercari-primary"
+                          onClick={openResubmitModal}
+                          disabled={resubmitLoading}
+                        >
+                          {resubmitLoading ? (
+                            <>
+                              <Spinner size="sm" className="me-2" />
+                              กำลังยื่น...
+                            </>
+                          ) : (
+                            'ยื่นขออนุมัติใหม่'
+                          )}
+                        </button>
+                      )}
+                      {canOwnerCloseAuction && (
                         <button
                           type="button"
                           className="btn-mercari-primary"
                           onClick={() => setShowSoldModal(true)}
                         >
-                          {post.postType === 'auction' ? 'จบการประมูล' : 'ขายแล้ว'}
+                          จบการประมูล
+                        </button>
+                      )}
+                      {canOwnerMarkSoldSale && (
+                        <button
+                          type="button"
+                          className="btn-mercari-primary"
+                          onClick={() => setShowSoldModal(true)}
+                        >
+                          ขายแล้ว
                         </button>
                       )}
                       <Link to="/my-posts" className="btn-mercari-outline" style={{ textAlign: 'center', textDecoration: 'none' }}>
@@ -694,16 +917,19 @@ const PostDetail: React.FC = () => {
                           >
                             ติดต่อผู้ขาย
                           </button>
-                          <button
-                            type="button"
-                            className="btn-mercari-outline"
-                            onClick={handleLikePost}
-                            disabled={likingPost}
-                          >
-                            {likingPost ? <Spinner size="sm" className="me-2" /> : null}
-                            {liked ? '❤️ อยู่ในรายการโปรด' : 'เพิ่มรายการโปรด'}
-                          </button>
-                          {post.postType !== 'auction' && (
+                          {isPostActive && (
+                            <button
+                              type="button"
+                              className="btn-mercari-outline"
+                              onClick={handleLikePost}
+                              disabled={likingPost}
+                            >
+                              {likingPost ? <Spinner size="sm" className="me-2" /> : null}
+                              {liked ? '❤️ อยู่ในรายการโปรด' : 'เพิ่มรายการโปรด'}
+                            </button>
+                          )}
+
+                          {post.postType === 'sale' && post.saleType !== 'individual' && isPostActive && (
                           <button
                             type="button"
                             className="btn-mercari-outline"
@@ -714,6 +940,11 @@ const PostDetail: React.FC = () => {
                             {isInCart(post.id) ? 'อยู่ในตะกร้าแล้ว' : 'เพิ่มในตะกร้า'}
                           </button>
                           )}
+
+                          {post.postType === 'sale' && post.saleType === 'individual' && isPostActive && (
+                            <span className="text-muted small">เลือกการ์ดจากรายการด้านล่างเพื่อเพิ่มในตะกร้า</span>
+                          )}
+
                           {post.postType === 'auction' && (
                             <>
                               {isWonPendingPayment && isAuctionWinner && (
@@ -725,6 +956,15 @@ const PostDetail: React.FC = () => {
                                   ไปตะกร้าเพื่อชำระเงิน
                                 </Link>
                               )}
+                              {isAuctionReleased && (
+                                <span className="text-muted small">
+                                  รายการหลุด — เจ้าของสามารถเปิดประมูลใหม่ได้
+                                </span>
+                              )}
+                              {isAuctionActive && isAuctionEnded && !isWonPendingPayment && (
+                                <span className="text-muted small">การประมูลสิ้นสุดแล้ว</span>
+                              )}
+
                               {canBidAuction && post.saleType !== 'individual' && (
                                 <>
                                   <button
@@ -744,6 +984,9 @@ const PostDetail: React.FC = () => {
                                     </button>
                                   )}
                                 </>
+                              )}
+                              {canBidAuction && post.saleType === 'individual' && (
+                                <span className="text-muted small">ประมูลแต่ละใบจากรายการการ์ดด้านล่าง</span>
                               )}
                               {isWonPendingPayment && !isAuctionWinner && (
                                 <span className="text-muted small">มีผู้ชนะแล้ว รอการชำระเงิน</span>
@@ -898,13 +1141,341 @@ const PostDetail: React.FC = () => {
           </div>
         )}
 
+        {/* Resubmit Approval Modal */}
+        <Modal
+          show={showResubmitModal}
+          onHide={() => {
+            // revoke object urls to avoid memory leak
+            resubmitImagePreviews.forEach((u) => URL.revokeObjectURL(u));
+            setResubmitImages([]);
+            setResubmitImagePreviews([]);
+            setShowResubmitModal(false);
+          }}
+          centered
+        >
+          <Modal.Header closeButton>
+            <Modal.Title>📝 แก้ไข & ยื่นขออนุมัติใหม่</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            <Alert variant="warning">
+              โพสต์นี้ถูกปฏิเสธแล้ว คุณสามารถแก้ไขรายละเอียดและยื่นขออนุมัติใหม่ได้
+            </Alert>
+
+            <Form.Group className="mb-3">
+              <Form.Label>ชื่อโพสต์</Form.Label>
+              <Form.Control
+                type="text"
+                value={resubmitForm.title}
+                onChange={(e) => setResubmitForm((prev) => ({ ...prev, title: e.target.value }))}
+              />
+            </Form.Group>
+
+            <Form.Group className="mb-3">
+              <Form.Label>คำอธิบาย</Form.Label>
+              <Form.Control
+                as="textarea"
+                rows={4}
+                value={resubmitForm.description}
+                onChange={(e) => setResubmitForm((prev) => ({ ...prev, description: e.target.value }))}
+              />
+            </Form.Group>
+
+            <Form.Group className="mb-3">
+              <Form.Label>หมวดหมู่</Form.Label>
+              <Form.Control
+                type="text"
+                value={resubmitForm.category}
+                onChange={(e) => setResubmitForm((prev) => ({ ...prev, category: e.target.value }))}
+              />
+            </Form.Group>
+
+            <Form.Group className="mb-3">
+              <Form.Label>รูปภาพใหม่ (ไม่เลือก = ใช้รูปเดิม)</Form.Label>
+              <Form.Control
+                type="file"
+                multiple
+                accept="image/*"
+                disabled={resubmitLoading}
+                onChange={(e) => {
+                  const target = e.target as HTMLInputElement;
+                  const files = Array.from(target.files ?? []);
+                  // clean previous previews
+                  resubmitImagePreviews.forEach((u) => URL.revokeObjectURL(u));
+                  const sliced = files.slice(0, 5);
+                  setResubmitImages(sliced);
+                  setResubmitImagePreviews(sliced.map((f) => URL.createObjectURL(f)));
+                }}
+              />
+              <Form.Text className="text-muted">
+                เลือกได้สูงสุด 5 รูป
+              </Form.Text>
+
+              {resubmitImagePreviews.length > 0 ? (
+                <div className="d-flex flex-wrap gap-2 mt-2">
+                  {resubmitImagePreviews.map((url, idx) => (
+                    <img
+                      key={`${url}-${idx}`}
+                      src={url}
+                      alt={`รูปใหม่ ${idx + 1}`}
+                      style={{
+                        width: 72,
+                        height: 96,
+                        objectFit: 'cover',
+                        borderRadius: 8,
+                        border: '1px solid var(--gray-300)'
+                      }}
+                    />
+                  ))}
+                </div>
+              ) : (
+                post?.images?.length > 0 && (
+                  <div className="d-flex flex-wrap gap-2 mt-2">
+                    {post.images.slice(0, 5).map((url, idx) => (
+                      <img
+                        key={`${url}-${idx}`}
+                        src={url}
+                        alt={`รูปเดิม ${idx + 1}`}
+                        style={{
+                          width: 72,
+                          height: 96,
+                          objectFit: 'cover',
+                          borderRadius: 8,
+                          border: '1px solid var(--gray-300)',
+                          opacity: 0.75
+                        }}
+                      />
+                    ))}
+                  </div>
+                )
+              )}
+            </Form.Group>
+
+            {post?.postType === 'sale' && post.saleType === 'deck' && (
+              <Form.Group className="mb-1">
+                <Form.Label>ราคา</Form.Label>
+                <Form.Control
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={resubmitForm.price}
+                  onChange={(e) => setResubmitForm((prev) => ({ ...prev, price: e.target.value }))}
+                  placeholder="กรอกตัวเลข"
+                />
+              </Form.Group>
+            )}
+
+            {post?.postType === 'sale' && post.saleType === 'individual' && (
+              <div className="mt-3">
+                <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                  <div>
+                    <strong>ราคา/จำนวนต่อใบ</strong>
+                    <div className="small text-muted">แก้ได้ตามการขายแยกใบ</div>
+                  </div>
+                  {resubmitImages.length > 0 && (
+                    <Button
+                      variant="outline-primary"
+                      size="sm"
+                      disabled={resubmitCardsLoading}
+                      onClick={async () => {
+                        if (resubmitImages.length === 0) return;
+                        // detect cards from selected images
+                        setResubmitCardsLoading(true);
+                        try {
+                          const allCards: DetectedCard[] = [];
+                          // Optional type hint based on category to improve detection accuracy
+                          const categories: Record<string, string> = {
+                            'Yu-Gi-Oh!': 'yugioh',
+                            'Pokemon Card Game': 'pokemon',
+                            'Cardfight!! Vanguard': 'vanguard',
+                            'Battle Spirits': 'battlespirits',
+                            'Digimon Card Game': 'digimon',
+                            'One Piece Card Game': 'onepiece',
+                            'Shadowverse Evolve': 'shadowverse',
+                            'Weiß Schwarz': 'weiss schwarz',
+                            'Rebirth for you': 'rebirthforyou',
+                            'hololive card game': 'hololive',
+                            'union arena': 'unionarena',
+                            'wixross': 'wixross',
+                            'gundam card game': 'gundam',
+                          };
+                          const typeHint = categories[post.category] || '';
+
+                          for (let i = 0; i < resubmitImages.length; i++) {
+                            const fd = new FormData();
+                            fd.append('image', resubmitImages[i]);
+                            if (typeHint) fd.append('cardType', typeHint);
+                            const resp = await axios.post('/api/card-detection/detect', fd, {
+                              headers: { 'Content-Type': 'multipart/form-data' }
+                            });
+
+                            if (resp.data?.success && Array.isArray(resp.data.cards)) {
+                              resp.data.cards.forEach((c: any, cardIdx: number) => {
+                                if (!c?.imageUrl) return;
+                                const fallbackId = `ai-${i}-${cardIdx}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+                                allCards.push({
+                                  id: String(c?.id || fallbackId),
+                                  imageUrl: String(c.imageUrl),
+                                  quantity: 1,
+                                  price: ''
+                                });
+                              });
+                            }
+                          }
+
+                          if (allCards.length === 0) {
+                            toast.info('ไม่พบการ์ดจากรูปที่เลือก คุณสามารถแก้ราคา/จำนวนจากการ์ดเดิมได้');
+                          } else {
+                            setResubmitIndividualCards(allCards);
+                            toast.success(`แยกการ์ดใหม่สำเร็จ พบ ${allCards.length} ใบ`);
+                          }
+                        } catch (err: any) {
+                          console.error('Detect cards error:', err);
+                          toast.error(err?.response?.data?.error || 'เกิดข้อผิดพลาดในการแยกการ์ด');
+                        } finally {
+                          setResubmitCardsLoading(false);
+                        }
+                      }}
+                    >
+                      {resubmitCardsLoading ? (
+                        <>
+                          <Spinner size="sm" className="me-2" />
+                          กำลังแยก...
+                        </>
+                      ) : (
+                        <>
+                          <i className="fas fa-magic me-2" aria-hidden />
+                          แยกการ์ดใหม่
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </div>
+
+                {resubmitImages.length > 0 && (
+                  <div className="small text-muted mb-2">
+                    หากเลือก “รูปใหม่” แล้วต้องการให้รายการการ์ดตรงกับรูป ให้กด “แยกการ์ดใหม่”
+                  </div>
+                )}
+
+                {resubmitIndividualCards.length === 0 ? (
+                  <Alert variant="warning" className="py-2">
+                    ยังไม่มีข้อมูลการ์ดแยกใบสำหรับแก้ไข
+                  </Alert>
+                ) : (
+                  <div className="resubmit-cards-editor">
+                    {resubmitIndividualCards.map((c, idx) => (
+                      <div key={`${c.id}-${idx}`} className="d-flex align-items-start gap-2 mb-3">
+                        <img
+                          src={c.imageUrl}
+                          alt={`card-${idx + 1}`}
+                          style={{ width: 64, height: 88, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--gray-300)' }}
+                        />
+                        <div className="flex-grow-1">
+                          <div className="small text-muted mb-1">#{idx + 1}</div>
+                          <div className="d-flex gap-2 flex-wrap">
+                            <div style={{ minWidth: 120 }}>
+                              <div className="small text-muted">จำนวน</div>
+                              <Form.Control
+                                type="number"
+                                min={1}
+                                step={1}
+                                value={String(c.quantity)}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setResubmitIndividualCards((prev) =>
+                                    prev.map((x, xIdx) =>
+                                      xIdx === idx ? { ...x, quantity: val } : x
+                                    )
+                                  );
+                                }}
+                              />
+                            </div>
+                            <div style={{ minWidth: 160 }}>
+                              <div className="small text-muted">ราคา/ใบ (บาท)</div>
+                              <Form.Control
+                                type="number"
+                                min={0}
+                                step={0.01}
+                                value={String(c.price)}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setResubmitIndividualCards((prev) =>
+                                    prev.map((x, xIdx) =>
+                                      xIdx === idx ? { ...x, price: val } : x
+                                    )
+                                  );
+                                }}
+                              />
+                            </div>
+                            <Button
+                              variant="outline-danger"
+                              size="sm"
+                              onClick={() => {
+                                setResubmitIndividualCards((prev) =>
+                                  prev.filter((_, xIdx) => xIdx !== idx)
+                                );
+                              }}
+                            >
+                              ลบ
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {post?.postType !== 'sale' && (
+              <Alert variant="info" className="mt-3 mb-0">
+                ตอนนี้หน้าฟอร์มนี้รองรับการแก้ไขเฉพาะชื่อ/คำอธิบาย/หมวดหมู่ (การแก้ราคาการประมูลยังไม่รวมในรอบนี้)
+              </Alert>
+            )}
+          </Modal.Body>
+          <Modal.Footer>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                resubmitImagePreviews.forEach((u) => URL.revokeObjectURL(u));
+                setResubmitImages([]);
+                setResubmitImagePreviews([]);
+                setShowResubmitModal(false);
+              }}
+              disabled={resubmitLoading}
+            >
+              ยกเลิก
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleResubmitForApproval}
+              disabled={resubmitLoading}
+            >
+              {resubmitLoading ? (
+                <>
+                  <Spinner size="sm" className="me-2" />
+                  กำลังยื่น...
+                </>
+              ) : (
+                'ยื่นขออนุมัติใหม่'
+              )}
+            </Button>
+          </Modal.Footer>
+        </Modal>
+
         {/* Sold Confirmation Modal */}
         <Modal show={showSoldModal} onHide={() => setShowSoldModal(false)} centered>
           <Modal.Header closeButton>
-            <Modal.Title>✅ ยืนยันการขาย</Modal.Title>
+            <Modal.Title>
+              {post.postType === 'auction' ? '✅ ยืนยันการจบการประมูล' : '✅ ยืนยันการขาย'}
+            </Modal.Title>
           </Modal.Header>
           <Modal.Body>
-            <p>คุณต้องการทำเครื่องหมายโพสต์ "<strong>{post.title}</strong>" เป็นขายแล้วหรือไม่?</p>
+            <p>
+              {post.postType === 'auction'
+                ? `คุณต้องการจบการประมูลของโพสต์ "${post.title}" หรือไม่?`
+                : `คุณต้องการทำเครื่องหมายโพสต์ "${post.title}" เป็นขายแล้วหรือไม่?`}
+            </p>
             <Alert variant="warning">
               ⚠️ การดำเนินการนี้ไม่สามารถย้อนกลับได้
             </Alert>

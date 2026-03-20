@@ -141,10 +141,9 @@ const IndividualCardsGrid: React.FC<IndividualCardsGridProps> = ({ post, onCardP
     return null;
   }
 
-  // ตรวจสอบว่าเป็น individual sale หรือไม่
-  if (post.postType !== 'sale' || post.saleType !== 'individual') {
-    return null;
-  }
+  // แสดงได้ทั้ง sale+individual และ auction+individual
+  if (post.saleType !== 'individual') return null;
+  if (post.postType !== 'sale' && post.postType !== 'auction') return null;
 
   return (
     <Container className="individual-cards-section">

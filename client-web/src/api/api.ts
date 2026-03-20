@@ -234,6 +234,17 @@ export const postsAPI = {
     }
   },
 
+  // Resubmit a rejected post back to pending
+  resubmitPost: async (postId: string): Promise<Post> => {
+    try {
+      const response = await axios.put(`/api/posts/${postId}/resubmit`);
+      return response.data?.data ?? response.data;
+    } catch (error: any) {
+      console.error('Error resubmitting post:', error);
+      throw error;
+    }
+  },
+
   // "Lens-like" search: upload one or more images, server will return similar posts.
   searchPostsByImage: async (
     images: File[],
