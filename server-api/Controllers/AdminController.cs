@@ -346,6 +346,36 @@ namespace ServerApi.Controllers
 
                 await _supabaseService.UpdateAsync("posts", id, updateData, idField: "id", useServiceRole: true);
 
+                // เมื่อปฏิเสธโพสต์: สร้างการแจ้งเตือนให้ผู้โพส (sellerId)
+                if (status == "rejected")
+                {
+                    var sellerId = existing.TryGetValue("sellerId", out var sid) ? sid?.ToString() : null;
+                    var postTitle = existing.TryGetValue("title", out var tit) ? tit?.ToString() : "โพสต์";
+                    if (!string.IsNullOrEmpty(sellerId))
+                    {
+                        var reasonText = !string.IsNullOrWhiteSpace(body.Reason) ? body.Reason.Trim() : null;
+                        var notifMessage = string.IsNullOrEmpty(reasonText)
+                            ? $"โพสต์ \"{postTitle}\" ของคุณไม่ผ่านการอนุมัติ"
+                            : $"โพสต์ \"{postTitle}\" ของคุณไม่ผ่านการอนุมัติ: {reasonText}";
+                        var notifData = new Dictionary<string, object>
+                        {
+                            ["user_id"] = sellerId,
+                            ["type"] = "post_rejected",
+                            ["title"] = "โพสต์ไม่ผ่านการอนุมัติ",
+                            ["message"] = notifMessage,
+                            ["post_id"] = id
+                        };
+                        try
+                        {
+                            await _supabaseService.CreateAsync("notifications", notifData, useServiceRole: true);
+                        }
+                        catch (Exception notifEx)
+                        {
+                            _logger.LogWarning(notifEx, "Failed to create rejection notification for user {SellerId}", sellerId);
+                        }
+                    }
+                }
+
                 return Ok(new { success = true, message = status == "active" ? "อนุมัติโพสต์สำเร็จ" : "ปฏิเสธโพสต์สำเร็จ" });
             }
             catch (Exception ex)

@@ -502,6 +502,51 @@ export const adminAPI = {
   },
 };
 
+// ==================== NOTIFICATIONS API ====================
+export interface NotificationItem {
+  id: string;
+  userId: string;
+  type: string;
+  title: string;
+  message: string | null;
+  postId: string | null;
+  readAt: string | null;
+  createdAt: string;
+}
+
+/** แจ้งให้ Navbar (และส่วนอื่น) รีเฟรชจำนวนยังไม่อ่าน */
+export const WCO_NOTIFICATIONS_CHANGED = 'wco-notifications-changed';
+
+export function emitNotificationsChanged(): void {
+  window.dispatchEvent(new Event(WCO_NOTIFICATIONS_CHANGED));
+}
+
+export const notificationsAPI = {
+  getMyNotifications: async (): Promise<NotificationItem[]> => {
+    try {
+      const response = await axios.get<{ success: boolean; notifications: NotificationItem[] }>('/api/notifications');
+      if (response.data?.success && Array.isArray(response.data.notifications)) {
+        return response.data.notifications;
+      }
+      return [];
+    } catch (error: any) {
+      if (error.response?.status === 401) return [];
+      console.error('Error fetching notifications:', error);
+      return [];
+    }
+  },
+
+  markAsRead: async (id: string): Promise<boolean> => {
+    try {
+      await axios.patch(`/api/notifications/${id}/read`);
+      return true;
+    } catch (error: any) {
+      console.error('Error marking notification as read:', error);
+      return false;
+    }
+  },
+};
+
 // ==================== CHAT API ====================
 export const chatAPI = {
   // Get messages for a post
@@ -539,6 +584,7 @@ export default {
   orders: ordersAPI,
   seller: sellerAPI,
   admin: adminAPI,
+  notifications: notificationsAPI,
   chat: chatAPI,
 };
 

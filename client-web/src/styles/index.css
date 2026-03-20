@@ -3085,16 +3085,23 @@ textarea {
   align-items: center;
   justify-content: center;
   padding: var(--spacing-sm) var(--spacing-md) !important;
-  color: var(--text-primary) !important;
+  color: var(--gray-800) !important;
   text-decoration: none !important;
   border-radius: var(--radius-md);
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
   min-width: 40px;
   height: 40px;
   overflow: visible;
-  background: var(--gray-100);
-  border: 1px solid var(--border-light);
+  /* ตัดกับพื้น navbar (--bg-card ~ขาว) ให้เห็นชัดโดยไม่ต้อง hover */
+  background: var(--gray-200);
+  border: 1px solid var(--gray-300);
+  box-shadow: 0 1px 2px var(--deep-twilight-alpha-06);
   margin: 0;
+}
+
+/* ปิดเส้นใต้สี primary ของ .nav-link — เหลือเฉพาะปุ่มที่อ่านง่าย */
+.navbar-sakura .navbar-cart-icon::after {
+  display: none;
 }
 
 .navbar-cart-icon::before {
@@ -3102,8 +3109,19 @@ textarea {
 }
 
 .navbar-cart-icon:hover {
-  background: var(--gray-200);
+  background: var(--gray-300);
+  border-color: var(--gray-400);
   color: var(--primary) !important;
+  box-shadow: 0 2px 4px var(--deep-twilight-alpha-08);
+}
+
+.navbar-cart-icon i {
+  color: inherit;
+}
+
+/* การ์ดแจ้งเตือนยังไม่อ่าน — คลิกที่การ์ด = อ่านแล้ว */
+.notification-card-unread {
+  cursor: pointer;
 }
 
 .navbar-cart-icon:focus-visible {

@@ -18,6 +18,7 @@ import CardBuying from './pages/MyPosts';
 import AdminDashboard from './pages/AdminDashboard';
 import SellerProfile from './pages/SellerProfile';
 import Cart from './pages/Cart';
+import Notifications from './pages/Notifications';
 import ProtectedRoute from './components/layout/ProtectedRoute';
 
 // Error Boundary Component
@@ -110,6 +111,11 @@ const App: React.FC = () => {
                       <Route path="/cart" element={
                         <ProtectedRoute>
                           <Cart />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="/notifications" element={
+                        <ProtectedRoute>
+                          <Notifications />
                         </ProtectedRoute>
                       } />
                   </Routes>

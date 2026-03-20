@@ -1246,7 +1246,11 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
                           post.status === 'sold' ? 'bg-info' : 'bg-secondary'
                         }`}>
                           {post.status === 'active' ? 'เปิดขาย' :
-                           post.status === 'pending' ? 'รอการชำระเงิน' :
+                           post.status === 'pending'
+                             ? post.postType === 'auction' && post.auctionStatus === 'won_pending_payment'
+                               ? 'รอการชำระเงิน'
+                               : 'รออนุมัติ'
+                             :
                            post.status === 'sold' ? 'ขายแล้ว' : 'ปิดขาย'}
                         </span>
                       </small>
