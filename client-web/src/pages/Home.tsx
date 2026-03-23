@@ -38,7 +38,7 @@ const categories: Category[] = [
 const Home: React.FC = () => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
-  const { addToCart, isInCart } = useCart();
+  const { addToCart, isInCart, cartItems } = useCart();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -192,6 +192,12 @@ const Home: React.FC = () => {
   };
 
   const handleAddToCart = async (post: Post): Promise<void> => {
+    // ขายแยกใบ ต้องเลือก “การ์ดแต่ละใบ” ก่อน จึงไม่ควรเพิ่มโพสต์ทั้งก้อนเข้าตะกร้า
+    if (post.postType === 'sale' && post.saleType === 'individual') {
+      navigate(`/post/${post.id}`);
+      return;
+    }
+
     if (!currentUser) {
       setShowLoginModal(true);
       return;
@@ -220,6 +226,11 @@ const Home: React.FC = () => {
     } finally {
       setAddingToCart(null);
     }
+  };
+
+  // เช็คว่า “โพสต์นี้” มีรายการอยู่ในตะกร้าแล้วหรือยัง (ไม่ว่าจะเป็นเด็คหรือแยกใบ)
+  const isAnyCartItemForPost = (postId: string): boolean => {
+    return cartItems.some((item) => item.postId === postId);
   };
 
 
@@ -757,12 +768,22 @@ const Home: React.FC = () => {
                           ) : (
                             // Show action buttons for other posts
                             <div className="buyer-actions">
-                              <button 
-                                className={`btn-add-cart ${isInCart(post.id) ? 'in-cart' : ''}`}
+                              <button
+                                className={`btn-add-cart ${
+                                  post.postType === 'sale' && post.saleType === 'individual'
+                                    ? isAnyCartItemForPost(post.id) ? 'in-cart' : ''
+                                    : isInCart(post.id) ? 'in-cart' : ''
+                                }`}
                                 onClick={() => handleAddToCart(post)}
-                                disabled={addingToCart === post.id || post.status === 'sold'}
+                                disabled={
+                                  post.postType === 'sale' && post.saleType === 'individual'
+                                    ? post.status === 'sold'
+                                    : addingToCart === post.id || post.status === 'sold'
+                                }
                               >
-                                {addingToCart === post.id ? (
+                                {post.postType === 'sale' && post.saleType === 'individual' ? (
+                                  isAnyCartItemForPost(post.id) ? '🃏 เลือกการ์ดเพิ่ม' : '🃏 เลือกการ์ด'
+                                ) : addingToCart === post.id ? (
                                   <span className="loading-cart">⏳</span>
                                 ) : isInCart(post.id) ? (
                                   '🛒 อยู่ในตะกร้า'

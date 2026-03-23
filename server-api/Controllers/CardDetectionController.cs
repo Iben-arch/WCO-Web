@@ -17,6 +17,8 @@ namespace ServerApi.Controllers
         private const int MaxQueryCards = 12;
         private const int DefaultMaxResults = 12;
         private const int RpcMatchLimitPerEmbedding = 30;
+        private const int SimilarByPostDefaultLimit = 8;
+        private const int SimilarByPostMaxEmbeddings = 3; // use first N embeddings to limit RPC calls
 
         public CardDetectionController(
             CardDetectionService cardDetection,
@@ -63,6 +65,108 @@ namespace ServerApi.Controllers
                 success = true,
                 cards = Array.Empty<object>()
             });
+        }
+
+        /// <summary>
+        /// Get similar posts by post ID using existing embeddings (AI Similar Cards Recommendation).
+        /// Returns 6-8 posts that are visually similar or same category based on CLIP embeddings.
+        /// </summary>
+        [HttpGet("similar/{postId}")]
+        public async Task<IActionResult> GetSimilarByPostId(string postId, [FromQuery] int limit = SimilarByPostDefaultLimit, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(postId))
+                return BadRequest(new { success = false, error = "กรุณาระบุ postId" });
+
+            try
+            {
+                var effectiveLimit = Math.Clamp(limit, 1, 12);
+
+                // 1) ดึง embeddings ของโพสต์นี้จาก post_image_embeddings
+                var embeddingRows = await _supabaseService.QueryAsync(
+                    "post_image_embeddings",
+                    "postId",
+                    postId.Trim(),
+                    useServiceRole: true
+                ).ConfigureAwait(false);
+
+                if (embeddingRows == null || embeddingRows.Count == 0)
+                    return Ok(new { success = true, posts = Array.Empty<object>() });
+
+                // 2) ใช้ embedding แรก (หรือหลายตัว) เพื่อค้นหาโพสต์คล้ายกัน
+                var postIdToScore = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+                var embeddingsUsed = 0;
+
+                foreach (var row in embeddingRows)
+                {
+                    if (embeddingsUsed >= SimilarByPostMaxEmbeddings) break;
+                    if (!row.TryGetValue("embedding", out var embObj) || embObj == null) continue;
+
+                    // pgvector returns as string "[0.1,-0.2,...]" or as array
+                    var vectorStr = EmbObjToVectorString(embObj);
+                    if (string.IsNullOrEmpty(vectorStr)) continue;
+
+                    var rpcParams = new Dictionary<string, object>
+                    {
+                        ["query_embedding"] = vectorStr,
+                        ["match_limit"] = effectiveLimit + 5, // fetch extra to exclude self
+                        ["match_status"] = "active"
+                    };
+                    var rows = await _supabaseService.RpcAsync("match_posts_by_embedding", rpcParams, useServiceRole: true).ConfigureAwait(false);
+
+                    foreach (var r in rows)
+                    {
+                        if (!r.TryGetValue("postId", out var idObj) || idObj == null) continue;
+                        var matchedId = idObj.ToString();
+                        if (string.IsNullOrEmpty(matchedId) || string.Equals(matchedId, postId, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        var score = r.TryGetValue("score", out var sObj) && sObj != null ? Convert.ToDouble(sObj) : 0d;
+                        if (!postIdToScore.TryGetValue(matchedId, out var existing) || score > existing)
+                            postIdToScore[matchedId] = score;
+                    }
+                    embeddingsUsed++;
+                }
+
+                var ordered = postIdToScore.OrderByDescending(x => x.Value).Take(effectiveLimit).ToList();
+                var posts = new List<object>();
+                foreach (var (matchedPostId, score) in ordered)
+                {
+                    var post = await _supabaseService.GetAsync("posts", matchedPostId, useServiceRole: true).ConfigureAwait(false);
+                    if (post == null) continue;
+                    NormalizePostImages(post);
+                    post["imageSearchScore"] = score;
+                    posts.Add(post);
+                }
+
+                return Ok(new { success = true, posts });
+            }
+            catch (OperationCanceledException)
+            {
+                return StatusCode(499, new { success = false, error = "Request cancelled" });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ [card-detection/similar] {ex.GetType().Name}: {ex.Message}");
+                var msg = ex.Message;
+                if (msg.Contains("404") && (msg.Contains("Not Found") || msg.Contains("NotFound")))
+                    msg = "Image search is not set up. Run supabase-image-embeddings-setup.sql";
+                return StatusCode(500, new { success = false, error = "เกิดข้อผิดพลาดในการดึงการ์ดคล้ายกัน", message = msg });
+            }
+        }
+
+        private static string? EmbObjToVectorString(object embObj)
+        {
+            if (embObj is string s && !string.IsNullOrWhiteSpace(s) && s.StartsWith("["))
+                return s;
+            if (embObj is List<object> list)
+            {
+                var parts = list.Select(x => x?.ToString() ?? "0").ToArray();
+                return "[" + string.Join(",", parts) + "]";
+            }
+            if (embObj is float[] fa)
+                return "[" + string.Join(",", fa.Select(x => x.ToString("G", System.Globalization.CultureInfo.InvariantCulture))) + "]";
+            if (embObj is double[] da)
+                return "[" + string.Join(",", da.Select(x => x.ToString("G", System.Globalization.CultureInfo.InvariantCulture))) + "]";
+            return null;
         }
 
         /// <summary>

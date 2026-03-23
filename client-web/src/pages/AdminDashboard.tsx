@@ -26,39 +26,127 @@ const AdminDashboard: React.FC = () => {
   const { userProfile } = useAuth();
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [posts, setPosts] = useState<AdminPost[]>([]);
+  const [pendingPosts, setPendingPosts] = useState<AdminPost[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'posts' | 'users'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'posts' | 'pending' | 'users'>('dashboard');
+
+  // Posts filters (จัดการโพสต์)
+  const [postsStatusFilter, setPostsStatusFilter] = useState<'all' | 'pending' | 'active' | 'rejected'>('all');
+  const [postsSearchInput, setPostsSearchInput] = useState<string>('');
+  const [postsSearch, setPostsSearch] = useState<string>('');
+  const [postsPagination, setPostsPagination] = useState<{ page: number; limit: number; total: number; totalPages: number }>({
+    page: 1,
+    limit: 20,
+    total: 0,
+    totalPages: 0
+  });
+
+  // Pending queue filters (รออนุมัติ)
+  const [pendingSearchInput, setPendingSearchInput] = useState<string>('');
+  const [pendingSearch, setPendingSearch] = useState<string>('');
+  const [pendingPagination, setPendingPagination] = useState<{ page: number; limit: number; total: number; totalPages: number }>({
+    page: 1,
+    limit: 20,
+    total: 0,
+    totalPages: 0
+  });
+  const [selectedPendingIds, setSelectedPendingIds] = useState<string[]>([]);
+
+  // Users filters (จัดการผู้ใช้)
+  const [usersSearchInput, setUsersSearchInput] = useState<string>('');
+  const [usersSearch, setUsersSearch] = useState<string>('');
+  const [usersPagination, setUsersPagination] = useState<{ page: number; limit: number; total: number; totalPages: number }>({
+    page: 1,
+    limit: 20,
+    total: 0,
+    totalPages: 0
+  });
+
   const [showModal, setShowModal] = useState<boolean>(false);
   const [selectedPost, setSelectedPost] = useState<AdminPost | null>(null);
-  const [modalAction, setModalAction] = useState<'delete' | 'active' | 'rejected' | ''>('');
+  const [bulkPostIds, setBulkPostIds] = useState<string[]>([]);
+  const [modalAction, setModalAction] = useState<'delete' | 'active' | 'rejected' | 'bulkRejected' | ''>('');
   const [reason, setReason] = useState<string>('');
 
   useEffect(() => {
-    if (userProfile?.isAdmin) {
-      fetchDashboardData();
-    }
-  }, [userProfile]);
+    if (!userProfile?.isAdmin) return;
 
-  const fetchDashboardData = async (): Promise<void> => {
-    try {
-      setLoading(true);
-      const [statsResponse, postsResponse, usersResponse] = await Promise.all([
-        axios.get('/api/admin/stats'),
-        axios.get('/api/admin/posts'),
-        axios.get('/api/admin/users')
-      ]);
+    const fetchForTab = async (): Promise<void> => {
+      try {
+        setLoading(true);
+        if (activeTab === 'dashboard') {
+          const statsResponse = await axios.get('/api/admin/stats');
+          setStats(statsResponse.data);
+          return;
+        }
 
-      setStats(statsResponse.data);
-      setPosts(Array.isArray(postsResponse.data?.posts) ? postsResponse.data.posts : []);
-      setUsers(Array.isArray(usersResponse.data?.users) ? usersResponse.data.users : []);
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-      toast.error('เกิดข้อผิดพลาดในการโหลดข้อมูล');
-    } finally {
-      setLoading(false);
-    }
-  };
+        if (activeTab === 'posts') {
+          const params = {
+            status: postsStatusFilter === 'all' ? undefined : postsStatusFilter,
+            search: postsSearch || undefined,
+            sortBy: 'newest',
+            page: postsPagination.page,
+            limit: postsPagination.limit
+          };
+          const postsResponse = await axios.get('/api/admin/posts', { params });
+          setPosts(Array.isArray(postsResponse.data?.posts) ? postsResponse.data.posts : []);
+          const p = postsResponse.data?.pagination;
+          if (p) setPostsPagination((prev) => ({ ...prev, ...p }));
+          return;
+        }
+
+        if (activeTab === 'pending') {
+          const params = {
+            status: 'pending',
+            search: pendingSearch || undefined,
+            sortBy: 'newest',
+            page: pendingPagination.page,
+            limit: pendingPagination.limit
+          };
+          const pendingResponse = await axios.get('/api/admin/posts', { params });
+          setPendingPosts(Array.isArray(pendingResponse.data?.posts) ? pendingResponse.data.posts : []);
+          const p = pendingResponse.data?.pagination;
+          if (p) setPendingPagination((prev) => ({ ...prev, ...p }));
+          setSelectedPendingIds([]);
+          return;
+        }
+
+        if (activeTab === 'users') {
+          const params = {
+            search: usersSearch || undefined,
+            page: usersPagination.page,
+            limit: usersPagination.limit
+          };
+          const usersResponse = await axios.get('/api/admin/users', { params });
+          setUsers(Array.isArray(usersResponse.data?.users) ? usersResponse.data.users : []);
+          const p = usersResponse.data?.pagination;
+          if (p) setUsersPagination((prev) => ({ ...prev, ...p }));
+          return;
+        }
+      } catch (error) {
+        console.error('Error fetching admin tab data:', error);
+        toast.error('เกิดข้อผิดพลาดในการโหลดข้อมูล');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchForTab();
+  }, [
+    userProfile?.isAdmin,
+    activeTab,
+    postsStatusFilter,
+    postsSearch,
+    postsPagination.page,
+    postsPagination.limit,
+    pendingSearch,
+    pendingPagination.page,
+    pendingPagination.limit,
+    usersSearch,
+    usersPagination.page,
+    usersPagination.limit
+  ]);
 
   const handlePostAction = (post: AdminPost, action: 'delete' | 'active' | 'rejected'): void => {
     setSelectedPost(post);
@@ -67,31 +155,73 @@ const AdminDashboard: React.FC = () => {
   };
 
   const handleActionConfirm = async (): Promise<void> => {
-    if (!selectedPost) return;
+    if (modalAction === 'bulkRejected' && bulkPostIds.length === 0) return;
+    if (modalAction !== 'bulkRejected' && !selectedPost) return;
 
     try {
+      if (modalAction === 'bulkRejected') {
+        await axios.post('/api/admin/posts/bulk-status', {
+          postIds: bulkPostIds,
+          status: 'rejected',
+          reason
+        });
+        toast.success('ปฏิเสธโพสต์ (หลายรายการ) สำเร็จ');
+
+        const removed = new Set(bulkPostIds);
+        setPendingPosts(prev => prev.filter(post => !removed.has(post.id)));
+        setPendingPagination(prev => ({
+          ...prev,
+          total: Math.max(0, prev.total - bulkPostIds.length)
+        }));
+
+        setShowModal(false);
+        setSelectedPost(null);
+        setBulkPostIds([]);
+        setSelectedPendingIds([]);
+        setReason('');
+        setModalAction('');
+        return;
+      }
+
       if (modalAction === 'delete') {
         await axios.delete(`/api/admin/posts/${selectedPost.id}`, {
           data: { reason }
         });
         setPosts(posts.filter(post => post.id !== selectedPost.id));
+        setPostsPagination(prev => ({ ...prev, total: Math.max(0, prev.total - 1) }));
         toast.success('ลบโพสต์สำเร็จ');
       } else if (modalAction === 'active' || modalAction === 'rejected') {
         await axios.put(`/api/admin/posts/${selectedPost.id}/status`, {
           status: modalAction,
           reason
         });
-        setPosts(posts.map(post => 
-          post.id === selectedPost.id 
-            ? { ...post, status: modalAction as PostStatus }
-            : post
-        ));
+
+        if (activeTab === 'pending') {
+          setPendingPosts(pendingPosts.filter(post => post.id !== selectedPost.id));
+          setPendingPagination(prev => ({ ...prev, total: Math.max(0, prev.total - 1) }));
+          setSelectedPendingIds((prev) => prev.filter(id => id !== selectedPost.id));
+        } else {
+          const newStatus = modalAction as PostStatus;
+          const matchesFilter = postsStatusFilter === 'all' ? true : newStatus === postsStatusFilter;
+          if (!matchesFilter) {
+            setPosts(prev => prev.filter(post => post.id !== selectedPost.id));
+            setPostsPagination(prev => ({ ...prev, total: Math.max(0, prev.total - 1) }));
+          } else {
+            setPosts(prev => prev.map(post =>
+              post.id === selectedPost.id
+                ? { ...post, status: newStatus }
+                : post
+            ));
+          }
+        }
         toast.success(`โพสต์${modalAction === 'active' ? 'อนุมัติ' : 'ปฏิเสธ'}สำเร็จ`);
       }
       
       setShowModal(false);
       setSelectedPost(null);
       setReason('');
+      setBulkPostIds([]);
+      setModalAction('');
     } catch (error) {
       console.error('Error performing action:', error);
       toast.error('เกิดข้อผิดพลาดในการดำเนินการ');
@@ -123,6 +253,45 @@ const AdminDashboard: React.FC = () => {
         return <Badge bg="secondary">ไม่ทราบ</Badge>;
     }
   };
+
+  const getDescriptionSnippet = (description?: string | null): string => {
+    const d = (description ?? '').replace(/\s+/g, ' ').trim();
+    if (!d) return '—';
+    return d.length > 120 ? d.slice(0, 120) + '...' : d;
+  };
+
+  const normalizeImages = (images?: unknown): string[] => {
+    if (!Array.isArray(images)) return [];
+    return images.map((x) => (typeof x === 'string' ? x : (x ? String(x) : ''))).filter(Boolean);
+  };
+
+  const getSaleTypeLabel = (saleType?: string | null): string | null => {
+    if (!saleType) return null;
+    const v = saleType.toLowerCase();
+    if (v === 'deck') return 'ขายเด็ค';
+    if (v === 'individual') return 'ขายแยกใบ';
+    return saleType;
+  };
+
+  const getPostTypeBadge = (postType?: string | null, saleType?: string | null): JSX.Element | null => {
+    if (!postType) return null;
+    const t = postType.toLowerCase();
+    if (t === 'sale') {
+      const label = getSaleTypeLabel(saleType) ?? 'sale';
+      return <Badge bg="info" className="ms-1">{label}</Badge>;
+    }
+    if (t === 'auction') {
+      return <Badge bg="dark" className="ms-1">ประมูล</Badge>;
+    }
+    return null;
+  };
+
+  const bulkSamplePost: AdminPost | null = bulkPostIds.length
+    ? pendingPosts.find((p) => p.id === bulkPostIds[0]) ?? null
+    : null;
+
+  const previewPostForModal: AdminPost | null =
+    modalAction === 'bulkRejected' ? bulkSamplePost : selectedPost;
 
   if (!userProfile?.isAdmin) {
     return (
@@ -185,6 +354,15 @@ const AdminDashboard: React.FC = () => {
           <button
             type="button"
             role="tab"
+            aria-selected={activeTab === 'pending'}
+            className={`admin-dashboard-tab ${activeTab === 'pending' ? 'active' : ''}`}
+            onClick={() => setActiveTab('pending')}
+          >
+            <i className="fas fa-clock" aria-hidden />รออนุมัติ
+          </button>
+          <button
+            type="button"
+            role="tab"
             aria-selected={activeTab === 'users'}
             className={`admin-dashboard-tab ${activeTab === 'users' ? 'active' : ''}`}
             onClick={() => setActiveTab('users')}
@@ -214,6 +392,14 @@ const AdminDashboard: React.FC = () => {
             <Col md={6} lg={3} className="mb-4">
               <Card className="admin-stat-card text-center">
                 <Card.Body>
+                  <h3 className="admin-stat-value admin-stat-value--recent">{stats.pendingPosts ?? 0}</h3>
+                  <p className="admin-stat-label">โพสต์ที่รออนุมัติ</p>
+                </Card.Body>
+              </Card>
+            </Col>
+            <Col md={6} lg={3} className="mb-4">
+              <Card className="admin-stat-card text-center">
+                <Card.Body>
                   <h3 className="admin-stat-value admin-stat-value--users">{stats.totalUsers}</h3>
                   <p className="admin-stat-label">ผู้ใช้ทั้งหมด</p>
                 </Card.Body>
@@ -222,8 +408,28 @@ const AdminDashboard: React.FC = () => {
             <Col md={6} lg={3} className="mb-4">
               <Card className="admin-stat-card text-center">
                 <Card.Body>
+                  <h3 className="admin-stat-value admin-stat-value--active">{stats.activeUsers ?? 0}</h3>
+                  <p className="admin-stat-label">ผู้ใช้ที่ไม่ถูกแบน</p>
+                </Card.Body>
+              </Card>
+            </Col>
+            <Col md={6} lg={3} className="mb-4">
+              <Card className="admin-stat-card text-center">
+                <Card.Body>
                   <h3 className="admin-stat-value admin-stat-value--recent">{stats.recentPosts}</h3>
                   <p className="admin-stat-label">โพสต์ใหม่ (7 วัน)</p>
+                </Card.Body>
+              </Card>
+            </Col>
+            <Col md={6} lg={3} className="mb-4">
+              <Card className="admin-stat-card text-center">
+                <Card.Body>
+                  <h3 className="admin-stat-value admin-stat-value--recent">
+                    {stats.embeddingCoverage?.activeEmbeddingCoveragePct?.toFixed(0) ?? '0'}%
+                  </h3>
+                  <p className="admin-stat-label">
+                    embedding active: {stats.embeddingCoverage?.activePostsWithEmbeddings ?? 0}/{stats.activePosts}
+                  </p>
                 </Card.Body>
               </Card>
             </Col>
@@ -236,6 +442,77 @@ const AdminDashboard: React.FC = () => {
               <i className="fas fa-newspaper" aria-hidden />จัดการโพสต์
             </Card.Header>
             <Card.Body className="admin-section-body">
+              <div className="admin-filter-row d-flex flex-wrap gap-2 align-items-center mb-3">
+                <Form.Select
+                  value={postsStatusFilter}
+                  onChange={(e) => {
+                    const v = e.target.value as 'all' | 'pending' | 'active' | 'rejected';
+                    setPostsStatusFilter(v);
+                    setPostsPagination(prev => ({ ...prev, page: 1 }));
+                  }}
+                >
+                  <option value="all">ทั้งหมด</option>
+                  <option value="pending">pending</option>
+                  <option value="active">active</option>
+                  <option value="rejected">rejected</option>
+                </Form.Select>
+
+                <Form.Control
+                  style={{ maxWidth: 340 }}
+                  value={postsSearchInput}
+                  onChange={(e) => setPostsSearchInput(e.target.value)}
+                  placeholder="ค้นหาชื่อโพสต์/ผู้ขาย"
+                />
+
+                <PrimaryActionButton
+                  onClick={() => {
+                    setPostsSearch(postsSearchInput);
+                    setPostsPagination(prev => ({ ...prev, page: 1 }));
+                  }}
+                  icon={<i className="fas fa-search" aria-hidden />}
+                >
+                  ค้นหา
+                </PrimaryActionButton>
+
+                <SecondaryActionButton
+                  onClick={() => {
+                    setPostsStatusFilter('all');
+                    setPostsSearchInput('');
+                    setPostsSearch('');
+                    setPostsPagination(prev => ({ ...prev, page: 1 }));
+                  }}
+                  icon={<i className="fas fa-undo" aria-hidden />}
+                >
+                  รีเซ็ต
+                </SecondaryActionButton>
+
+                <div className="ms-auto">
+                  <Button
+                    size="sm"
+                    variant="outline-secondary"
+                    onClick={async () => {
+                      try {
+                        const resp = await axios.get('/api/admin/export/rejected-posts', { responseType: 'blob' });
+                        const blob = new Blob([resp.data], { type: 'text/csv;charset=utf-8' });
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'rejected-posts.csv';
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        window.URL.revokeObjectURL(url);
+                        toast.success('Export CSV โพสต์ที่ถูกปฏิเสธสำเร็จ');
+                      } catch (e) {
+                        console.error(e);
+                        toast.error('Export CSV โพสต์ที่ถูกปฏิเสธไม่สำเร็จ');
+                      }
+                    }}
+                  >
+                    <i className="fas fa-file-csv me-1" aria-hidden />Export CSV โพสต์ที่ถูกปฏิเสธ
+                  </Button>
+                </div>
+              </div>
               <Table responsive>
               <thead>
                 <tr>
@@ -251,16 +528,28 @@ const AdminDashboard: React.FC = () => {
                 {posts.map((post) => (
                   <tr key={post.id}>
                     <td>
-                      <div>
-                        <Link
-                          to={`/post/${post.id}`}
-                          className="text-decoration-none fw-bold"
-                          style={{ color: 'var(--bright-teal-blue)' }}
-                        >
-                          {post.title}
-                        </Link>
-                        <br />
-                        <small className="text-muted">{post.category}</small>
+                      <div className="admin-post-cell">
+                        <div className="admin-post-thumbs">
+                          {normalizeImages(post.images).slice(0, 2).map((img, idx) => (
+                            <img key={`${post.id}-thumb-${idx}`} src={img} alt="" className="admin-post-thumb" />
+                          ))}
+                        </div>
+                        <div className="admin-post-text">
+                          <Link
+                            to={`/post/${post.id}`}
+                            className="text-decoration-none fw-bold"
+                            style={{ color: 'var(--bright-teal-blue)' }}
+                          >
+                            {post.title}
+                          </Link>
+                          <div className="admin-post-meta">
+                            <small className="text-muted">{post.category}</small>
+                            <span className="admin-post-type-row">
+                              {getPostTypeBadge(post.postType, post.saleType ?? null)}
+                            </span>
+                          </div>
+                          <div className="admin-post-desc-snippet">{getDescriptionSnippet(post.description)}</div>
+                        </div>
                       </div>
                     </td>
                     <td>{post.sellerName}</td>
@@ -305,9 +594,238 @@ const AdminDashboard: React.FC = () => {
                 ))}
               </tbody>
             </Table>
+
+              <div className="admin-pagination-row d-flex justify-content-between align-items-center mt-3">
+                <Button
+                  size="sm"
+                  variant="outline-primary"
+                  disabled={postsPagination.page <= 1}
+                  onClick={() => setPostsPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
+                >
+                  ก่อนหน้า
+                </Button>
+
+                <span>
+                  หน้า {postsPagination.totalPages === 0 ? 0 : postsPagination.page} / {postsPagination.totalPages}
+                </span>
+
+                <Button
+                  size="sm"
+                  variant="outline-primary"
+                  disabled={postsPagination.totalPages === 0 || postsPagination.page >= postsPagination.totalPages}
+                  onClick={() => setPostsPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                >
+                  ถัดไป
+                </Button>
+              </div>
           </Card.Body>
         </Card>
       )}
+
+        {activeTab === 'pending' && (
+          <Card className="admin-section-card mb-4">
+            <Card.Header className="admin-section-header">
+              <i className="fas fa-clock" aria-hidden />รออนุมัติ (pending queue)
+            </Card.Header>
+            <Card.Body className="admin-section-body">
+              <div className="admin-filter-row d-flex flex-wrap gap-2 align-items-center mb-3">
+                <Form.Control
+                  style={{ maxWidth: 340 }}
+                  value={pendingSearchInput}
+                  onChange={(e) => setPendingSearchInput(e.target.value)}
+                  placeholder="ค้นหาชื่อโพสต์/ผู้ขาย"
+                />
+
+                <PrimaryActionButton
+                  onClick={() => {
+                    setPendingSearch(pendingSearchInput);
+                    setPendingPagination(prev => ({ ...prev, page: 1 }));
+                  }}
+                  icon={<i className="fas fa-search" aria-hidden />}
+                >
+                  ค้นหา
+                </PrimaryActionButton>
+
+                <SecondaryActionButton
+                  onClick={() => {
+                    setPendingSearchInput('');
+                    setPendingSearch('');
+                    setPendingPagination(prev => ({ ...prev, page: 1 }));
+                    setSelectedPendingIds([]);
+                  }}
+                  icon={<i className="fas fa-undo" aria-hidden />}
+                >
+                  รีเซ็ต
+                </SecondaryActionButton>
+              </div>
+
+              <div className="admin-bulk-row d-flex flex-wrap gap-2 align-items-center mb-3">
+                <span className="text-muted">
+                  เลือกได้ครั้งละหน้าจอ: {selectedPendingIds.length} โพสต์
+                </span>
+                <div className="ms-auto d-flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="success"
+                    className="btn-admin-big-action"
+                    disabled={selectedPendingIds.length === 0}
+                    onClick={async () => {
+                      try {
+                        await axios.post('/api/admin/posts/bulk-status', {
+                          postIds: selectedPendingIds,
+                          status: 'active'
+                        });
+                        toast.success('อนุมัติหลายรายการสำเร็จ');
+                        const removed = new Set(selectedPendingIds);
+                        setPendingPosts(prev => prev.filter(p => !removed.has(p.id)));
+                        setPendingPagination(prev => ({
+                          ...prev,
+                          total: Math.max(0, prev.total - selectedPendingIds.length)
+                        }));
+                        setSelectedPendingIds([]);
+                      } catch (e) {
+                        console.error(e);
+                        toast.error('เกิดข้อผิดพลาดในการอนุมัติหลายรายการ');
+                      }
+                    }}
+                  >
+                    <i className="fas fa-check me-1" aria-hidden />อนุมัติที่เลือก
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="warning"
+                    className="btn-admin-big-action"
+                    disabled={selectedPendingIds.length === 0}
+                    onClick={() => {
+                      setBulkPostIds(selectedPendingIds);
+                      setSelectedPost(null);
+                      setModalAction('bulkRejected');
+                      setReason('');
+                      setShowModal(true);
+                    }}
+                  >
+                    <i className="fas fa-times me-1" aria-hidden />ปฏิเสธที่เลือก
+                  </Button>
+                </div>
+              </div>
+
+              <Table responsive>
+                <thead>
+                  <tr>
+                    <th>เลือก</th>
+                    <th>การ์ด</th>
+                    <th>ผู้ขาย</th>
+                    <th>ราคา</th>
+                    <th>วันที่</th>
+                    <th>ดำเนินการ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingPosts.map((post) => {
+                    const checked = selectedPendingIds.includes(post.id);
+                    return (
+                      <tr key={post.id}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              setSelectedPendingIds(prev => {
+                                if (prev.includes(post.id)) {
+                                  return prev.filter(id => id !== post.id);
+                                }
+                                return [...prev, post.id];
+                              });
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <div className="admin-post-cell">
+                            <div className="admin-post-thumbs">
+                              {normalizeImages(post.images).slice(0, 2).map((img, idx) => (
+                                <img key={`${post.id}-thumb-${idx}`} src={img} alt="" className="admin-post-thumb" />
+                              ))}
+                            </div>
+                            <div className="admin-post-text">
+                              <Link
+                                to={`/post/${post.id}`}
+                                className="text-decoration-none fw-bold"
+                                style={{ color: 'var(--bright-teal-blue)' }}
+                              >
+                                {post.title}
+                              </Link>
+                              <div className="admin-post-meta">
+                                <small className="text-muted">{post.category}</small>
+                                <span className="admin-post-type-row">
+                                  {getPostTypeBadge(post.postType, post.saleType ?? null)}
+                                </span>
+                              </div>
+                              <div className="admin-post-desc-snippet">{getDescriptionSnippet(post.description)}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td>{post.sellerName}</td>
+                        <td>{formatPrice(post.price)}</td>
+                        <td>{formatDate(post.createdAt as string)}</td>
+                        <td>
+                          <div className="d-flex flex-wrap gap-2">
+                            <Link
+                              to={`/post/${post.id}`}
+                              className="btn btn-sm btn-outline-primary btn-tcg-outline btn-tcg-sm"
+                            >
+                              <i className="fas fa-external-link-alt me-1" aria-hidden />ดู
+                            </Link>
+                            <Button
+                              size="sm"
+                              variant="success"
+                              className="btn-admin-big-action"
+                              onClick={() => handlePostAction(post, 'active')}
+                            >
+                              <i className="fas fa-check me-1" aria-hidden />อนุมัติ
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="warning"
+                              className="btn-admin-big-action"
+                              onClick={() => handlePostAction(post, 'rejected')}
+                            >
+                              <i className="fas fa-times me-1" aria-hidden />ปฏิเสธ
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </Table>
+
+              <div className="admin-pagination-row d-flex justify-content-between align-items-center mt-3">
+                <Button
+                  size="sm"
+                  variant="outline-primary"
+                  disabled={pendingPagination.page <= 1}
+                  onClick={() => setPendingPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
+                >
+                  ก่อนหน้า
+                </Button>
+
+                <span>
+                  หน้า {pendingPagination.totalPages === 0 ? 0 : pendingPagination.page} / {pendingPagination.totalPages}
+                </span>
+
+                <Button
+                  size="sm"
+                  variant="outline-primary"
+                  disabled={pendingPagination.totalPages === 0 || pendingPagination.page >= pendingPagination.totalPages}
+                  onClick={() => setPendingPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                >
+                  ถัดไป
+                </Button>
+              </div>
+            </Card.Body>
+          </Card>
+        )}
 
         {activeTab === 'users' && (
           <Card className="admin-section-card mb-4">
@@ -315,6 +833,62 @@ const AdminDashboard: React.FC = () => {
               <i className="fas fa-users" aria-hidden />จัดการผู้ใช้
             </Card.Header>
             <Card.Body className="admin-section-body">
+              <div className="admin-filter-row d-flex flex-wrap gap-2 align-items-center mb-3">
+                <Form.Control
+                  style={{ maxWidth: 340 }}
+                  value={usersSearchInput}
+                  onChange={(e) => setUsersSearchInput(e.target.value)}
+                  placeholder="ค้นหาชื่อผู้ใช้"
+                />
+
+                <PrimaryActionButton
+                  onClick={() => {
+                    setUsersSearch(usersSearchInput);
+                    setUsersPagination(prev => ({ ...prev, page: 1 }));
+                  }}
+                  icon={<i className="fas fa-search" aria-hidden />}
+                >
+                  ค้นหา
+                </PrimaryActionButton>
+
+                <SecondaryActionButton
+                  onClick={() => {
+                    setUsersSearchInput('');
+                    setUsersSearch('');
+                    setUsersPagination(prev => ({ ...prev, page: 1 }));
+                  }}
+                  icon={<i className="fas fa-undo" aria-hidden />}
+                >
+                  รีเซ็ต
+                </SecondaryActionButton>
+
+                <div className="ms-auto">
+                  <Button
+                    size="sm"
+                    variant="outline-secondary"
+                    onClick={async () => {
+                      try {
+                        const resp = await axios.get('/api/admin/export/banned-users', { responseType: 'blob' });
+                        const blob = new Blob([resp.data], { type: 'text/csv;charset=utf-8' });
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'banned-users.csv';
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        window.URL.revokeObjectURL(url);
+                        toast.success('Export CSV สำเร็จ');
+                      } catch (e) {
+                        console.error(e);
+                        toast.error('Export CSV ไม่สำเร็จ');
+                      }
+                    }}
+                  >
+                    <i className="fas fa-file-csv me-1" aria-hidden />Export CSV ถูกแบน
+                  </Button>
+                </div>
+              </div>
               <Table responsive>
               <thead>
                 <tr>
@@ -390,6 +964,30 @@ const AdminDashboard: React.FC = () => {
                 ))}
               </tbody>
             </Table>
+
+            <div className="admin-pagination-row d-flex justify-content-between align-items-center mt-3">
+              <Button
+                size="sm"
+                variant="outline-primary"
+                disabled={usersPagination.page <= 1}
+                onClick={() => setUsersPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
+              >
+                ก่อนหน้า
+              </Button>
+
+              <span>
+                หน้า {usersPagination.totalPages === 0 ? 0 : usersPagination.page} / {usersPagination.totalPages}
+              </span>
+
+              <Button
+                size="sm"
+                variant="outline-primary"
+                disabled={usersPagination.totalPages === 0 || usersPagination.page >= usersPagination.totalPages}
+                onClick={() => setUsersPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+              >
+                ถัดไป
+              </Button>
+            </div>
           </Card.Body>
         </Card>
       )}
@@ -400,20 +998,105 @@ const AdminDashboard: React.FC = () => {
               {modalAction === 'delete' && <i className="fas fa-trash-alt me-2" aria-hidden />}
               {modalAction === 'active' && <i className="fas fa-check-circle me-2" aria-hidden />}
               {modalAction === 'rejected' && <i className="fas fa-times-circle me-2" aria-hidden />}
-              {modalAction === 'delete' ? 'ยืนยันการลบ' : modalAction === 'active' ? 'ยืนยันการอนุมัติ' : 'ยืนยันการปฏิเสธ'}
+              {modalAction === 'bulkRejected' && <i className="fas fa-layer-group me-2" aria-hidden />}
+              {modalAction === 'delete'
+                ? 'ยืนยันการลบ'
+                : modalAction === 'active'
+                  ? 'ยืนยันการอนุมัติ'
+                  : modalAction === 'bulkRejected'
+                    ? 'ยืนยันการปฏิเสธหลายโพสต์'
+                    : 'ยืนยันการปฏิเสธ'}
             </Modal.Title>
           </Modal.Header>
           <Modal.Body>
             <p>
               {modalAction === 'delete' ? 'คุณแน่ใจหรือไม่ที่จะลบโพสต์นี้?' :
                modalAction === 'active' ? 'คุณแน่ใจหรือไม่ที่จะอนุมัติโพสต์นี้?' :
+               modalAction === 'bulkRejected' ? `คุณแน่ใจหรือไม่ที่จะปฏิเสธโพสต์จำนวน ${bulkPostIds.length} รายการ?` :
                'คุณแน่ใจหรือไม่ที่จะปฏิเสธโพสต์นี้?'}
             </p>
-            {selectedPost && (
-              <div className="mb-3 p-3 rounded" style={{ background: 'var(--gray-100)' }}>
-                <strong>การ์ด:</strong> {selectedPost.title}
-                <br />
-                <strong>ผู้ขาย:</strong> {selectedPost.sellerName}
+            {modalAction === 'bulkRejected' && (
+              <div className="admin-modal-preview">
+                <div className="admin-modal-preview-count">
+                  <strong>จำนวนโพสต์:</strong> {bulkPostIds.length}
+                </div>
+                {previewPostForModal && (
+                  <div className="admin-modal-preview-card">
+                    <div className="admin-modal-preview-images">
+                      {normalizeImages(previewPostForModal.images).slice(0, 3).map((img, idx) => (
+                        <img key={`${previewPostForModal.id}-modal-thumb-${idx}`} src={img} alt="" className="admin-modal-thumb" />
+                      ))}
+                    </div>
+                    <div className="admin-modal-preview-head">
+                      <div className="admin-modal-preview-title">
+                        {previewPostForModal.title}
+                        {getPostTypeBadge(previewPostForModal.postType, previewPostForModal.saleType ?? null)}
+                      </div>
+                      <div className="text-muted small">ผู้ขาย: {previewPostForModal.sellerName}</div>
+                    </div>
+                    <div className="admin-modal-preview-desc">{previewPostForModal.description}</div>
+                    <div className="admin-modal-metrics">
+                      <div><span className="admin-modal-metric-label">ราคา</span><span>{formatPrice(previewPostForModal.price)}</span></div>
+                      {previewPostForModal.cardCount != null && (
+                        <div><span className="admin-modal-metric-label">จำนวนการ์ด</span><span>{previewPostForModal.cardCount}</span></div>
+                      )}
+                      {previewPostForModal.availableQuantity != null && (
+                        <div><span className="admin-modal-metric-label">จำนวนที่มี</span><span>{previewPostForModal.availableQuantity}</span></div>
+                      )}
+                      {previewPostForModal.postType === 'auction' && previewPostForModal.auctionEndDate && (
+                        <div><span className="admin-modal-metric-label">สิ้นสุดประมูล</span><span>{formatDate(previewPostForModal.auctionEndDate as any)}</span></div>
+                      )}
+                      {previewPostForModal.postType === 'auction' && previewPostForModal.auctionStatus && (
+                        <div><span className="admin-modal-metric-label">สถานะประมูล</span><span>{previewPostForModal.auctionStatus}</span></div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {modalAction !== 'bulkRejected' && selectedPost && (
+              <div className="admin-modal-preview">
+                <div className="admin-modal-preview-card">
+                  <div className="admin-modal-preview-images">
+                    {normalizeImages(selectedPost.images).slice(0, 3).map((img, idx) => (
+                      <img key={`${selectedPost.id}-modal-thumb-${idx}`} src={img} alt="" className="admin-modal-thumb" />
+                    ))}
+                  </div>
+                  <div className="admin-modal-preview-head">
+                    <div className="admin-modal-preview-title">
+                      {selectedPost.title}
+                      {getPostTypeBadge(selectedPost.postType, selectedPost.saleType ?? null)}
+                      {getStatusBadge(selectedPost.status)}
+                    </div>
+                    <div className="text-muted small">ผู้ขาย: {selectedPost.sellerName}</div>
+                  </div>
+                  <div className="admin-modal-preview-desc">{selectedPost.description}</div>
+                  <div className="admin-modal-metrics">
+                    <div><span className="admin-modal-metric-label">ราคา</span><span>{formatPrice(selectedPost.price)}</span></div>
+                    {selectedPost.cardCount != null && (
+                      <div><span className="admin-modal-metric-label">จำนวนการ์ด</span><span>{selectedPost.cardCount}</span></div>
+                    )}
+                    {selectedPost.availableQuantity != null && (
+                      <div><span className="admin-modal-metric-label">จำนวนที่มี</span><span>{selectedPost.availableQuantity}</span></div>
+                    )}
+                    {selectedPost.postType === 'auction' && selectedPost.auctionEndDate && (
+                      <div><span className="admin-modal-metric-label">สิ้นสุดประมูล</span><span>{formatDate(selectedPost.auctionEndDate as any)}</span></div>
+                    )}
+                    {selectedPost.postType === 'auction' && selectedPost.auctionStatus && (
+                      <div><span className="admin-modal-metric-label">สถานะประมูล</span><span>{selectedPost.auctionStatus}</span></div>
+                    )}
+                    {selectedPost.postType === 'auction' && selectedPost.startingBid != null && (
+                      <div><span className="admin-modal-metric-label">ตั้งต้น</span><span>{formatPrice(selectedPost.startingBid as any)}</span></div>
+                    )}
+                    {selectedPost.postType === 'auction' && selectedPost.currentBid != null && (
+                      <div><span className="admin-modal-metric-label">ยอดปัจจุบัน</span><span>{formatPrice(selectedPost.currentBid as any)}</span></div>
+                    )}
+                    {selectedPost.postType === 'sale' && selectedPost.saleType && selectedPost.individualPrice != null && (
+                      <div><span className="admin-modal-metric-label">ราคา/ใบ</span><span>{formatPrice(selectedPost.individualPrice as any)}</span></div>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
             <Form.Group>
@@ -434,13 +1117,20 @@ const AdminDashboard: React.FC = () => {
             </SecondaryActionButton>
             <Button
               className={modalAction === 'active' ? 'btn-tcg-primary' : 'btn-tcg-outline'}
-              variant={modalAction === 'delete' ? 'danger' : undefined}
+              variant={modalAction === 'delete' || modalAction === 'bulkRejected' ? 'danger' : undefined}
               onClick={handleActionConfirm}
             >
               {modalAction === 'delete' && <i className="fas fa-trash-alt me-1" aria-hidden />}
               {modalAction === 'active' && <i className="fas fa-check me-1" aria-hidden />}
               {modalAction === 'rejected' && <i className="fas fa-times me-1" aria-hidden />}
-              {modalAction === 'delete' ? 'ลบ' : modalAction === 'active' ? 'อนุมัติ' : 'ปฏิเสธ'}
+              {modalAction === 'bulkRejected' && <i className="fas fa-times me-1" aria-hidden />}
+              {modalAction === 'delete'
+                ? 'ลบ'
+                : modalAction === 'active'
+                  ? 'อนุมัติ'
+                  : modalAction === 'bulkRejected'
+                    ? 'ปฏิเสธทั้งหมด'
+                    : 'ปฏิเสธ'}
             </Button>
           </Modal.Footer>
         </Modal>

@@ -67,28 +67,102 @@ namespace ServerApi.Controllers
 
             try
             {
-                var (allPosts, totalPosts) = await _supabaseService.GetPostsFilteredAsync(
-                    category: null, search: null, sortBy: "newest", page: 1, limit: 10000, postType: null, status: null, useServiceRole: true);
-
-                var activePosts = allPosts.Count(p => (p.TryGetValue("status", out var s) ? s?.ToString() : null) == "active");
                 var sevenDaysAgo = DateTime.UtcNow.AddDays(-7);
-                var recentPosts = allPosts.Count(p =>
-                {
-                    if (!p.TryGetValue("createdAt", out var created))
-                        return false;
-                    var dt = ParseDateTime(created);
-                    return dt >= sevenDaysAgo;
-                });
 
-                var profiles = await _supabaseService.GetAllAsync("profiles", useServiceRole: true);
-                var totalUsers = profiles?.Count ?? 0;
+                var (_, totalPosts) = await _supabaseService.GetPostsFilteredAsync(
+                    category: null,
+                    search: null,
+                    sortBy: "newest",
+                    page: 1,
+                    limit: 1,
+                    postType: null,
+                    status: null,
+                    useServiceRole: true);
+
+                var (_, totalRecentPosts) = await _supabaseService.GetPostsFilteredAsync(
+                    category: null,
+                    search: null,
+                    sortBy: "newest",
+                    page: 1,
+                    limit: 1,
+                    postType: null,
+                    status: null,
+                    useServiceRole: true,
+                    createdAtFromUtc: sevenDaysAgo);
+
+                var (_, totalActivePosts) = await _supabaseService.GetPostsFilteredAsync(
+                    category: null,
+                    search: null,
+                    sortBy: "newest",
+                    page: 1,
+                    limit: 1,
+                    postType: null,
+                    status: "active",
+                    useServiceRole: true);
+
+                var (_, totalPendingPosts) = await _supabaseService.GetPostsFilteredAsync(
+                    category: null,
+                    search: null,
+                    sortBy: "newest",
+                    page: 1,
+                    limit: 1,
+                    postType: null,
+                    status: "pending",
+                    useServiceRole: true);
+
+                var (_, totalRejectedPosts) = await _supabaseService.GetPostsFilteredAsync(
+                    category: null,
+                    search: null,
+                    sortBy: "newest",
+                    page: 1,
+                    limit: 1,
+                    postType: null,
+                    status: "rejected",
+                    useServiceRole: true);
+
+                var (_, totalUsers) = await _supabaseService.GetProfilesFilteredAsync(
+                    search: null,
+                    isBanned: null,
+                    page: 1,
+                    limit: 1,
+                    useServiceRole: true);
+
+                // Active users = users that are NOT banned
+                var (_, totalActiveUsers) = await _supabaseService.GetProfilesFilteredAsync(
+                    search: null,
+                    isBanned: false,
+                    page: 1,
+                    limit: 1,
+                    useServiceRole: true);
+
+                var embeddingBatchSize = 200;
+                var activeCoverage = await ComputeEmbeddingCoverageAsync(
+                    postStatus: "active",
+                    totalCount: totalActivePosts,
+                    batchSize: embeddingBatchSize);
+                var pendingCoverage = await ComputeEmbeddingCoverageAsync(
+                    postStatus: "pending",
+                    totalCount: totalPendingPosts,
+                    batchSize: embeddingBatchSize);
 
                 return Ok(new
                 {
                     totalPosts,
-                    activePosts,
+                    activePosts = totalActivePosts,
+                    pendingPosts = totalPendingPosts,
+                    rejectedPosts = totalRejectedPosts,
                     totalUsers,
-                    recentPosts
+                    activeUsers = totalActiveUsers,
+                    recentPosts = totalRecentPosts,
+                    embeddingCoverage = new
+                    {
+                        activePostsWithEmbeddings = activeCoverage.withEmbeddings,
+                        activePostsWithoutEmbeddings = activeCoverage.withoutEmbeddings,
+                        activeEmbeddingCoveragePct = activeCoverage.coveragePct,
+                        pendingPostsWithEmbeddings = pendingCoverage.withEmbeddings,
+                        pendingPostsWithoutEmbeddings = pendingCoverage.withoutEmbeddings,
+                        pendingEmbeddingCoveragePct = pendingCoverage.coveragePct
+                    }
                 });
             }
             catch (Exception ex)
@@ -96,6 +170,56 @@ namespace ServerApi.Controllers
                 _logger.LogError(ex, "Admin GetStats error");
                 return StatusCode(500, new { success = false, error = "เกิดข้อผิดพลาดในการโหลดสถิติ" });
             }
+        }
+
+        private async Task<(int withEmbeddings, int withoutEmbeddings, double coveragePct)> ComputeEmbeddingCoverageAsync(
+            string postStatus,
+            int totalCount,
+            int batchSize)
+        {
+            if (totalCount <= 0)
+                return (0, 0, 0);
+
+            var withEmbeddingsPostIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            var totalPages = (int)Math.Ceiling(totalCount / (double)batchSize);
+            for (var page = 1; page <= totalPages; page++)
+            {
+                var (postIds, _) = await _supabaseService.GetPostIdsFilteredAsync(
+                    category: null,
+                    search: null,
+                    sortBy: "newest",
+                    page: page,
+                    limit: batchSize,
+                    postType: null,
+                    status: postStatus,
+                    useServiceRole: true);
+
+                if (postIds == null || postIds.Count == 0)
+                    continue;
+
+                var embeddingRows = await _supabaseService.QueryInAsync(
+                    table: "post_image_embeddings",
+                    field: "postId",
+                    values: postIds,
+                    select: "postId",
+                    useServiceRole: true);
+
+                foreach (var row in embeddingRows)
+                {
+                    if (row.TryGetValue("postId", out var pid) && pid != null)
+                    {
+                        var p = pid.ToString();
+                        if (!string.IsNullOrWhiteSpace(p))
+                            withEmbeddingsPostIds.Add(p);
+                    }
+                }
+            }
+
+            var withEmbeddings = withEmbeddingsPostIds.Count;
+            var withoutEmbeddings = Math.Max(0, totalCount - withEmbeddings);
+            var coveragePct = totalCount == 0 ? 0 : (withEmbeddings / (double)totalCount) * 100.0;
+            return (withEmbeddings, withoutEmbeddings, coveragePct);
         }
 
         /// <summary>
@@ -206,7 +330,12 @@ namespace ServerApi.Controllers
         /// GET /api/admin/posts - รายการโพสต์ทั้งหมด (สำหรับจัดการ)
         /// </summary>
         [HttpGet("posts")]
-        public async Task<IActionResult> GetPosts()
+        public async Task<IActionResult> GetPosts(
+            [FromQuery] string? status = null,
+            [FromQuery] string? search = null,
+            [FromQuery] string sortBy = "newest",
+            [FromQuery] int page = 1,
+            [FromQuery] int limit = 20)
         {
             if (await EnsureAdminAsync() == null)
             {
@@ -217,27 +346,48 @@ namespace ServerApi.Controllers
 
             try
             {
-                var (posts, _) = await _supabaseService.GetPostsFilteredAsync(
-                    category: null, search: null, sortBy: "newest", page: 1, limit: 500, postType: null, status: null, useServiceRole: true);
+                var boundedLimit = Math.Clamp(limit, 1, 200);
+                var boundedPage = Math.Max(1, page);
 
-                var profileCache = new Dictionary<string, string>();
-                foreach (var p in posts)
+                var (posts, total) = await _supabaseService.GetPostsFilteredAsync(
+                    category: null,
+                    search: search,
+                    sortBy: sortBy,
+                    page: boundedPage,
+                    limit: boundedLimit,
+                    postType: null,
+                    status: status,
+                    useServiceRole: true,
+                    searchIncludesSellerName: true);
+
+                // เน้นเร็ว: ดึง username ของผู้ขายแบบ batch (แทน N+1 ทีละโพสต์)
+                var sellerIds = posts
+                    .Select(p => p.TryGetValue("sellerId", out var sid) ? sid?.ToString() : null)
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                var profileCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                if (sellerIds.Count > 0)
                 {
-                    if (p.TryGetValue("sellerId", out var sid) && sid != null)
+                    var tasks = sellerIds.Select(async sellerId =>
                     {
-                        var sellerId = sid.ToString();
-                        if (!string.IsNullOrEmpty(sellerId) && !profileCache.ContainsKey(sellerId))
-                        {
-                            var prof = await _supabaseService.GetAsync("profiles", sellerId, useServiceRole: true, idField: "id");
-                            profileCache[sellerId] = prof != null && prof.TryGetValue("username", out var u) && u != null ? u.ToString() ?? "" : "—";
-                        }
-                    }
+                        var prof = await _supabaseService.GetAsync("profiles", sellerId!, useServiceRole: true, idField: "id");
+                        var username = prof != null && prof.TryGetValue("username", out var u) && u != null ? u.ToString() : null;
+                        return (sellerId!, username);
+                    }).ToList();
+
+                    var results = await Task.WhenAll(tasks);
+                    foreach (var (sellerId, username) in results)
+                        profileCache[sellerId] = !string.IsNullOrWhiteSpace(username) ? username! : "—";
                 }
 
                 var list = posts.Select(p =>
                 {
                     var sellerId = p.TryGetValue("sellerId", out var s) ? s?.ToString() : null;
-                    var sellerName = !string.IsNullOrEmpty(sellerId) && profileCache.TryGetValue(sellerId, out var name) ? name : (p.TryGetValue("sellerName", out var sn) ? sn?.ToString() : "—");
+                    var sellerName = !string.IsNullOrEmpty(sellerId) && profileCache.TryGetValue(sellerId, out var name)
+                        ? name
+                        : (p.TryGetValue("sellerName", out var sn) ? sn?.ToString() : "—");
                     var price = GetPostPrice(p);
                     var createdAt = p.TryGetValue("createdAt", out var c) ? c : null;
                     return new
@@ -246,18 +396,40 @@ namespace ServerApi.Controllers
                         title = p.TryGetValue("title", out var t) ? t?.ToString() : null,
                         description = p.TryGetValue("description", out var d) ? d?.ToString() : null,
                         category = p.TryGetValue("category", out var cat) ? cat?.ToString() : null,
-                        images = p.TryGetValue("images", out _) ? p["images"] : null,
+                        images = p.TryGetValue("images", out var imagesObj)
+                            ? NormalizeStringList(imagesObj)
+                            : new List<string>(),
                         sellerId,
                         sellerName,
                         status = p.TryGetValue("status", out var st) ? st?.ToString() : null,
                         postType = p.TryGetValue("postType", out var pt) ? pt?.ToString() : null,
+                        saleType = p.TryGetValue("saleType", out var saleType) ? saleType?.ToString() : null,
+                        auctionStatus = p.TryGetValue("auctionStatus", out var auctionStatus) ? auctionStatus?.ToString() : null,
+                        auctionEndDate = p.TryGetValue("auctionEndDate", out var auctionEndDate) ? auctionEndDate : null,
+                        cardCount = p.TryGetValue("cardCount", out var cardCount) ? cardCount : null,
+                        availableQuantity = p.TryGetValue("availableQuantity", out var availableQuantity) ? availableQuantity : null,
+                        startingBid = p.TryGetValue("startingBid", out var startingBid) ? startingBid : null,
+                        currentBid = p.TryGetValue("currentBid", out var currentBid) ? currentBid : null,
+                        buyNowPrice = p.TryGetValue("buyNowPrice", out var buyNowPrice) ? buyNowPrice : null,
+                        individualPrice = p.TryGetValue("individualPrice", out var individualPrice) ? individualPrice : null,
                         price,
                         createdAt,
                         updatedAt = p.TryGetValue("updatedAt", out var u) ? u : null
                     };
                 }).ToList();
 
-                return Ok(new { posts = list });
+                var totalPages = (int)Math.Ceiling(total / (double)boundedLimit);
+                return Ok(new
+                {
+                    posts = list,
+                    pagination = new
+                    {
+                        page = boundedPage,
+                        limit = boundedLimit,
+                        total,
+                        totalPages
+                    }
+                });
             }
             catch (Exception ex)
             {
@@ -386,10 +558,268 @@ namespace ServerApi.Controllers
         }
 
         /// <summary>
+        /// POST /api/admin/posts/bulk-status - อนุมัติ/ปฏิเสธหลายโพสต์พร้อมกัน
+        /// </summary>
+        [HttpPost("posts/bulk-status")]
+        public async Task<IActionResult> BulkUpdatePostsStatus([FromBody] AdminBulkPostStatusRequest body)
+        {
+            if (await EnsureAdminAsync() == null)
+            {
+                if (string.IsNullOrEmpty(GetUserId()))
+                    return Unauthorized(new { success = false, error = "ไม่พบผู้ใช้" });
+                return StatusCode(403, new { success = false, error = "ไม่มีสิทธิ์แอดมิน" });
+            }
+
+            if (body == null || body.PostIds == null || body.PostIds.Count == 0)
+                return BadRequest(new { success = false, error = "กรุณาส่ง postIds" });
+
+            if (string.IsNullOrWhiteSpace(body.Status))
+                return BadRequest(new { success = false, error = "กรุณาส่ง status (active หรือ rejected)" });
+
+            var status = body.Status.Trim().ToLowerInvariant();
+            if (status != "active" && status != "rejected")
+                return BadRequest(new { success = false, error = "status ต้องเป็น active หรือ rejected" });
+
+            var reasonText = !string.IsNullOrWhiteSpace(body.Reason) ? body.Reason.Trim() : null;
+            var distinctIds = body.PostIds
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => id.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var updated = 0;
+            var failed = 0;
+
+            try
+            {
+                foreach (var postId in distinctIds)
+                {
+                    try
+                    {
+                        var existing = await _supabaseService.GetAsync("posts", postId, useServiceRole: true);
+                        if (existing == null) { failed++; continue; }
+
+                        var updateData = new Dictionary<string, object>
+                        {
+                            ["status"] = status,
+                            ["updatedAt"] = DateTime.UtcNow
+                        };
+
+                        await _supabaseService.UpdateAsync("posts", postId, updateData, idField: "id", useServiceRole: true);
+
+                        // เมื่อปฏิเสธโพสต์: สร้างการแจ้งเตือนให้ผู้โพส (sellerId)
+                        if (status == "rejected")
+                        {
+                            var sellerId = existing.TryGetValue("sellerId", out var sid) ? sid?.ToString() : null;
+                            var postTitle = existing.TryGetValue("title", out var tit) ? tit?.ToString() : "โพสต์";
+                            if (!string.IsNullOrWhiteSpace(sellerId))
+                            {
+                                var notifMessage = string.IsNullOrEmpty(reasonText)
+                                    ? $"โพสต์ \"{postTitle}\" ของคุณไม่ผ่านการอนุมัติ"
+                                    : $"โพสต์ \"{postTitle}\" ของคุณไม่ผ่านการอนุมัติ: {reasonText}";
+
+                                var notifData = new Dictionary<string, object>
+                                {
+                                    ["user_id"] = sellerId,
+                                    ["type"] = "post_rejected",
+                                    ["title"] = "โพสต์ไม่ผ่านการอนุมัติ",
+                                    ["message"] = notifMessage,
+                                    ["post_id"] = postId
+                                };
+
+                                await _supabaseService.CreateAsync("notifications", notifData, useServiceRole: true);
+                            }
+                        }
+
+                        updated++;
+                    }
+                    catch
+                    {
+                        failed++;
+                    }
+                }
+
+                return Ok(new { success = true, updated, failed, total = distinctIds.Count });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Admin BulkUpdatePostsStatus error");
+                return StatusCode(500, new { success = false, error = "เกิดข้อผิดพลาดในการอัปเดตสถานะ" });
+            }
+        }
+
+        /// <summary>
+        /// GET /api/admin/export/banned-users - Export ผู้ใช้ที่ถูกแบนเป็น CSV
+        /// </summary>
+        [HttpGet("export/banned-users")]
+        public async Task<IActionResult> ExportBannedUsersCsv()
+        {
+            if (await EnsureAdminAsync() == null)
+            {
+                if (string.IsNullOrEmpty(GetUserId()))
+                    return Unauthorized(new { success = false, error = "ไม่พบผู้ใช้" });
+                return StatusCode(403, new { success = false, error = "ไม่มีสิทธิ์แอดมิน" });
+            }
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("id,username,role,is_banned,ban_reason,created_at");
+
+            var page = 1;
+            var limit = 500;
+            var totalPages = int.MaxValue;
+
+            while (page <= totalPages)
+            {
+                var (profiles, total) = await _supabaseService.GetProfilesFilteredAsync(
+                    search: null,
+                    isBanned: true,
+                    page: page,
+                    limit: limit,
+                    useServiceRole: true);
+
+                if (profiles == null || profiles.Count == 0)
+                    break;
+
+                if (totalPages == int.MaxValue)
+                    totalPages = (int)Math.Ceiling(total / (double)limit);
+
+                foreach (var p in profiles)
+                {
+                    var id = p.TryGetValue("id", out var i) ? i?.ToString() : "";
+                    var username = p.TryGetValue("username", out var u) ? u?.ToString() : "";
+                    var role = p.TryGetValue("role", out var r) ? r?.ToString() : "";
+                    var createdAt = p.TryGetValue("created_at", out var c) ? c?.ToString() : "";
+                    var banReason = p.TryGetValue("ban_reason", out var br) ? br?.ToString() : "";
+
+                    sb.AppendLine(string.Join(",",
+                        EscapeCsv(id),
+                        EscapeCsv(username),
+                        EscapeCsv(role),
+                        "true",
+                        EscapeCsv(banReason ?? ""),
+                        EscapeCsv(createdAt ?? "")));
+                }
+
+                page++;
+            }
+
+            var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
+            return File(bytes, "text/csv", "banned-users.csv");
+        }
+
+        /// <summary>
+        /// GET /api/admin/export/rejected-posts - Export โพสต์ที่ถูกปฏิเสธเป็น CSV
+        /// </summary>
+        [HttpGet("export/rejected-posts")]
+        public async Task<IActionResult> ExportRejectedPostsCsv()
+        {
+            if (await EnsureAdminAsync() == null)
+            {
+                if (string.IsNullOrEmpty(GetUserId()))
+                    return Unauthorized(new { success = false, error = "ไม่พบผู้ใช้" });
+                return StatusCode(403, new { success = false, error = "ไม่มีสิทธิ์แอดมิน" });
+            }
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("id,title,sellerId,sellerName,status,postType,price,createdAt");
+
+            var page = 1;
+            var limit = 200;
+            var totalPages = int.MaxValue;
+
+            while (page <= totalPages)
+            {
+                var (posts, total) = await _supabaseService.GetPostsFilteredAsync(
+                    category: null,
+                    search: null,
+                    sortBy: "newest",
+                    page: page,
+                    limit: limit,
+                    postType: null,
+                    status: "rejected",
+                    useServiceRole: true);
+
+                if (posts == null || posts.Count == 0)
+                    break;
+
+                if (totalPages == int.MaxValue)
+                    totalPages = (int)Math.Ceiling(total / (double)limit);
+
+                // cache seller username for this page
+                var sellerIds = posts
+                    .Select(p => p.TryGetValue("sellerId", out var sid) ? sid?.ToString() : null)
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                var profileCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                if (sellerIds.Count > 0)
+                {
+                    var tasks = sellerIds.Select(async sellerId =>
+                    {
+                        var prof = await _supabaseService.GetAsync("profiles", sellerId!, useServiceRole: true, idField: "id");
+                        var username = prof != null && prof.TryGetValue("username", out var u) && u != null ? u.ToString() : null;
+                        return (sellerId!, username);
+                    }).ToList();
+
+                    var results = await Task.WhenAll(tasks);
+                    foreach (var (sellerId, username) in results)
+                        profileCache[sellerId] = !string.IsNullOrWhiteSpace(username) ? username! : "—";
+                }
+
+                foreach (var p in posts)
+                {
+                    var id = p.TryGetValue("id", out var pid) ? pid?.ToString() : "";
+                    var title = p.TryGetValue("title", out var t) ? t?.ToString() : "";
+                    var sellerId = p.TryGetValue("sellerId", out var sid) ? sid?.ToString() : "";
+                    var sellerName =
+                        (!string.IsNullOrWhiteSpace(sellerId) && profileCache.TryGetValue(sellerId!, out var name))
+                            ? name
+                            : (p.TryGetValue("sellerName", out var sn) ? sn?.ToString() : "");
+
+                    var status = p.TryGetValue("status", out var st) ? st?.ToString() : "";
+                    var postType = p.TryGetValue("postType", out var pt) ? pt?.ToString() : "";
+                    var price = GetPostPrice(p);
+                    var createdAt = p.TryGetValue("createdAt", out var c) ? c?.ToString() : "";
+
+                    sb.AppendLine(string.Join(",",
+                        EscapeCsv(id),
+                        EscapeCsv(title),
+                        EscapeCsv(sellerId ?? ""),
+                        EscapeCsv(sellerName ?? ""),
+                        EscapeCsv(status ?? ""),
+                        EscapeCsv(postType ?? ""),
+                        price.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                        EscapeCsv(createdAt ?? "")));
+                }
+
+                page++;
+            }
+
+            var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
+            return File(bytes, "text/csv", "rejected-posts.csv");
+        }
+
+        private static string EscapeCsv(string? value)
+        {
+            var v = value ?? string.Empty;
+            if (v.Contains(',') || v.Contains('\n') || v.Contains('\r') || v.Contains('"'))
+            {
+                v = v.Replace("\"", "\"\"");
+                return $"\"{v}\"";
+            }
+            return v;
+        }
+
+        /// <summary>
         /// GET /api/admin/users - รายการผู้ใช้จาก profiles (ไม่มี email ในรอบนี้)
         /// </summary>
         [HttpGet("users")]
-        public async Task<IActionResult> GetUsers()
+        public async Task<IActionResult> GetUsers(
+            [FromQuery] string? search = null,
+            [FromQuery] bool? isBanned = null,
+            [FromQuery] int page = 1,
+            [FromQuery] int limit = 20)
         {
             if (await EnsureAdminAsync() == null)
             {
@@ -400,7 +830,16 @@ namespace ServerApi.Controllers
 
             try
             {
-                var profiles = await _supabaseService.GetAllAsync("profiles", useServiceRole: true);
+                var boundedLimit = Math.Clamp(limit, 1, 200);
+                var boundedPage = Math.Max(1, page);
+
+                var (profiles, total) = await _supabaseService.GetProfilesFilteredAsync(
+                    search: search,
+                    isBanned: isBanned,
+                    page: boundedPage,
+                    limit: boundedLimit,
+                    useServiceRole: true);
+
                 var users = (profiles ?? new List<Dictionary<string, object>>()).Select(p =>
                 {
                     var id = p.TryGetValue("id", out var i) ? i?.ToString() : "";
@@ -424,7 +863,18 @@ namespace ServerApi.Controllers
                     };
                 }).ToList();
 
-                return Ok(new { users });
+                var totalPages = (int)Math.Ceiling(total / (double)boundedLimit);
+                return Ok(new
+                {
+                    users,
+                    pagination = new
+                    {
+                        page = boundedPage,
+                        limit = boundedLimit,
+                        total,
+                        totalPages
+                    }
+                });
             }
             catch (Exception ex)
             {
@@ -567,6 +1017,28 @@ namespace ServerApi.Controllers
             if (DateTime.TryParse(value.ToString(), out var p)) return p;
             return DateTime.MinValue;
         }
+
+        private static List<string> NormalizeStringList(object? value)
+        {
+            if (value == null) return new List<string>();
+            if (value is List<string> ls)
+                return ls.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
+            if (value is List<object> lo)
+                return lo.Select(x => x?.ToString() ?? "").Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
+            if (value is System.Text.Json.JsonElement je && je.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                var urls = new List<string>();
+                foreach (var item in je.EnumerateArray())
+                {
+                    var s = item.GetString();
+                    if (!string.IsNullOrWhiteSpace(s)) urls.Add(s);
+                }
+                return urls;
+            }
+            if (value is string s2)
+                return string.IsNullOrWhiteSpace(s2) ? new List<string>() : new List<string> { s2 };
+            return new List<string>();
+        }
     }
 
     public class AdminDeletePostRequest
@@ -589,5 +1061,12 @@ namespace ServerApi.Controllers
     {
         public bool IsBanned { get; set; }
         public string? Reason { get; set; }
+    }
+
+    public class AdminBulkPostStatusRequest
+    {
+        public List<string> PostIds { get; set; } = new();
+        public string? Status { get; set; } // active | rejected
+        public string? Reason { get; set; } // optional for rejected
     }
 }

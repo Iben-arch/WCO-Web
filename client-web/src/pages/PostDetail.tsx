@@ -42,6 +42,8 @@ const PostDetail: React.FC = () => {
   const [bidCardId, setBidCardId] = useState<string | undefined>(undefined);
   const [bidMinAmount, setBidMinAmount] = useState<number>(0);
 
+  const [similarPosts, setSimilarPosts] = useState<Post[]>([]);
+  const [loadingSimilar, setLoadingSimilar] = useState<boolean>(false);
   const [showResubmitModal, setShowResubmitModal] = useState<boolean>(false);
   const [resubmitLoading, setResubmitLoading] = useState<boolean>(false);
   const [resubmitForm, setResubmitForm] = useState<{
@@ -60,6 +62,16 @@ const PostDetail: React.FC = () => {
   useEffect(() => {
     fetchPost();
   }, [id, currentUser]);
+
+  useEffect(() => {
+    if (post?.id) {
+      setLoadingSimilar(true);
+      postsAPI.getSimilarPosts(post.id, 8)
+        .then((posts) => setSimilarPosts(posts ?? []))
+        .catch(() => setSimilarPosts([]))
+        .finally(() => setLoadingSimilar(false));
+    }
+  }, [post?.id]);
 
   useEffect(() => {
     if (post?.postType === 'auction') {
@@ -1022,6 +1034,53 @@ const PostDetail: React.FC = () => {
               </div>
             </Col>
           </Row>
+
+          {/* AI Similar Cards Recommendation */}
+          {(loadingSimilar || similarPosts.length > 0) && (
+            <div className="similar-cards-section mt-5 pt-4 border-top">
+              <h5 className="similar-cards-title mb-3">
+                <span className="similar-cards-icon">✨</span> การ์ดคล้ายกัน
+              </h5>
+              {loadingSimilar ? (
+                <div className="d-flex justify-content-center py-4">
+                  <Spinner animation="border" size="sm" variant="secondary" />
+                  <span className="ms-2 text-muted">กำลังโหลดการ์ดคล้ายกัน...</span>
+                </div>
+              ) : (
+                <div className="similar-cards-scroll">
+                  {similarPosts.map((p) => (
+                    <Link
+                      key={p.id}
+                      to={`/post/${p.id}`}
+                      className="similar-card-item"
+                    >
+                      <div className="similar-card-image">
+                        {p.images?.[0] ? (
+                          <img src={p.images[0]} alt={p.title} />
+                        ) : (
+                          <div className="no-image">🃏</div>
+                        )}
+                        <div className="similar-card-badge">
+                          {p.status === 'sold' ? 'ขายแล้ว' : p.postType === 'auction' ? 'ประมูล' : 'ขาย'}
+                        </div>
+                      </div>
+                      <div className="similar-card-body">
+                        <div className="similar-card-title" title={p.title}>
+                          {p.title?.length > 30 ? `${p.title.substring(0, 30)}...` : p.title}
+                        </div>
+                        <div className="similar-card-price">
+                          {p.postType === 'auction'
+                            ? `฿${(p.currentBid ?? p.startingBid ?? 0).toLocaleString('th-TH')}`
+                            : `฿${(p.individualPrice ?? p.price ?? 0).toLocaleString('th-TH')}`}
+                        </div>
+                        <div className="similar-card-category">{p.category}</div>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </Container>
 
         {/* Image Lightbox - ดูภาพขยาย */}

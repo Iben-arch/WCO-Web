@@ -209,8 +209,19 @@ export interface Seller {
 export interface AdminStats {
   totalPosts: number;
   activePosts: number;
+  pendingPosts?: number;
+  rejectedPosts?: number;
   totalUsers: number;
+  activeUsers?: number;
   recentPosts: number;
+  embeddingCoverage?: {
+    activePostsWithEmbeddings: number;
+    activePostsWithoutEmbeddings: number;
+    activeEmbeddingCoveragePct: number;
+    pendingPostsWithEmbeddings: number;
+    pendingPostsWithoutEmbeddings: number;
+    pendingEmbeddingCoveragePct: number;
+  };
 }
 
 // Auction Bid Types

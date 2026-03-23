@@ -245,6 +245,18 @@ export const postsAPI = {
     }
   },
 
+  // AI Similar Cards: get similar posts by post ID (uses existing embeddings)
+  getSimilarPosts: async (postId: string, limit?: number): Promise<Post[]> => {
+    try {
+      const params = limit != null ? { limit } : {};
+      const response = await axios.get(`/api/card-detection/similar/${postId}`, { params });
+      return response.data?.posts ?? [];
+    } catch (error: any) {
+      console.error('Error fetching similar posts:', error);
+      return [];
+    }
+  },
+
   // "Lens-like" search: upload one or more images, server will return similar posts.
   searchPostsByImage: async (
     images: File[],

@@ -328,7 +328,9 @@ namespace ServerApi.Services
             int limit,
             string? postType,
             string? status,
-            bool useServiceRole = false)
+            bool useServiceRole = false,
+            bool searchIncludesSellerName = false,
+            DateTime? createdAtFromUtc = null)
         {
             var keyToUse = (useServiceRole && !string.IsNullOrEmpty(_serviceRoleKey)) ? _serviceRoleKey : _supabaseKey;
             var queryParams = new List<string> { "select=*" };
@@ -352,7 +354,20 @@ namespace ServerApi.Services
             if (!string.IsNullOrEmpty(search))
             {
                 var term = Uri.EscapeDataString($"%{search}%");
-                queryParams.Add($"or=(title.ilike.{term},description.ilike.{term})");
+                if (searchIncludesSellerName)
+                {
+                    queryParams.Add($"or=(title.ilike.{term},description.ilike.{term},sellerName.ilike.{term})");
+                }
+                else
+                {
+                    queryParams.Add($"or=(title.ilike.{term},description.ilike.{term})");
+                }
+            }
+
+            if (createdAtFromUtc.HasValue)
+            {
+                // ใช้ ISO-8601 เพื่อให้ Supabase/PostgREST แปลค่า timestamp ได้ชัดเจน
+                queryParams.Add($"createdAt=gte.{Uri.EscapeDataString(createdAtFromUtc.Value.ToString("o"))}");
             }
 
             // Order (price column มีใน posts table)
@@ -380,10 +395,7 @@ namespace ServerApi.Services
             if (!response.IsSuccessStatusCode)
                 return (new List<Dictionary<string, object>>(), 0);
 
-            var totalHeader = response.Headers.TryGetValues("Content-Range", out var rangeValues)
-                ? rangeValues.FirstOrDefault()?.Split('/').LastOrDefault()
-                : null;
-            var total = int.TryParse(totalHeader, out var t) ? t : 0;
+            var total = ParseContentRangeTotal(response);
 
             var content = await response.Content.ReadAsStringAsync();
             var doc = JsonSerializer.Deserialize<JsonElement>(content);
@@ -401,6 +413,218 @@ namespace ServerApi.Services
             }
 
             return (results, total);
+        }
+
+        /// <summary>
+        /// ดึงเฉพาะ post IDs พร้อม filter/sort/pagination (เพื่อคำนวณสถิติ เช่น embedding coverage)
+        /// </summary>
+        public async Task<(List<string> postIds, int total)> GetPostIdsFilteredAsync(
+            string? category,
+            string? search,
+            string? sortBy,
+            int page,
+            int limit,
+            string? postType,
+            string? status,
+            bool useServiceRole = false,
+            bool searchIncludesSellerName = false,
+            DateTime? createdAtFromUtc = null)
+        {
+            var keyToUse = (useServiceRole && !string.IsNullOrEmpty(_serviceRoleKey)) ? _serviceRoleKey : _supabaseKey;
+            var queryParams = new List<string> { "select=id" };
+
+            // Filter: category
+            if (!string.IsNullOrEmpty(category))
+                queryParams.Add($"category=eq.{Uri.EscapeDataString(category)}");
+
+            // Filter: postType
+            if (!string.IsNullOrEmpty(postType))
+                queryParams.Add($"postType=eq.{Uri.EscapeDataString(postType)}");
+
+            // Filter: status
+            if (!string.IsNullOrEmpty(status))
+                queryParams.Add($"status=eq.{Uri.EscapeDataString(status)}");
+
+            // ไม่แสดงโพสต์ประมูลที่หลุด (auction_released) ในรายการหลัก
+            queryParams.Add("or=(postType.neq.auction,auctionStatus.neq.auction_released,auctionStatus.is.null)");
+
+            // Filter: search
+            if (!string.IsNullOrEmpty(search))
+            {
+                var term = Uri.EscapeDataString($"%{search}%");
+                if (searchIncludesSellerName)
+                {
+                    queryParams.Add($"or=(title.ilike.{term},description.ilike.{term},sellerName.ilike.{term})");
+                }
+                else
+                {
+                    queryParams.Add($"or=(title.ilike.{term},description.ilike.{term})");
+                }
+            }
+
+            if (createdAtFromUtc.HasValue)
+            {
+                queryParams.Add($"createdAt=gte.{Uri.EscapeDataString(createdAtFromUtc.Value.ToString("o"))}");
+            }
+
+            // Order
+            var orderCol = sortBy?.ToLower() switch
+            {
+                "priceasc" => "price.asc",
+                "pricedesc" => "price.desc",
+                _ => "createdAt.desc"
+            };
+            queryParams.Add($"order={orderCol}");
+
+            // Pagination
+            var offset = (page - 1) * limit;
+            queryParams.Add($"limit={limit}");
+            queryParams.Add($"offset={offset}");
+
+            var url = $"/rest/v1/posts?{string.Join("&", queryParams)}";
+            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Add("apikey", keyToUse);
+            request.Headers.Add("Authorization", $"Bearer {keyToUse}");
+            request.Headers.Add("Prefer", "count=exact");
+
+            var response = await _httpClient.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+                return (new List<string>(), 0);
+
+            var total = ParseContentRangeTotal(response);
+
+            var content = await response.Content.ReadAsStringAsync();
+            var doc = JsonSerializer.Deserialize<JsonElement>(content);
+
+            var results = new List<string>();
+            if (doc.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in doc.EnumerateArray())
+                {
+                    if (item.TryGetProperty("id", out var idProp))
+                    {
+                        var id = idProp.GetString();
+                        if (!string.IsNullOrWhiteSpace(id))
+                            results.Add(id);
+                    }
+                }
+            }
+
+            return (results, total);
+        }
+
+        /// <summary>
+        /// ดึง profiles พร้อม filter/search/pagination (ใช้สำหรับ admin)
+        /// </summary>
+        public async Task<(List<Dictionary<string, object>> users, int total)> GetProfilesFilteredAsync(
+            string? search,
+            bool? isBanned,
+            int page,
+            int limit,
+            bool useServiceRole = false)
+        {
+            var keyToUse = (useServiceRole && !string.IsNullOrEmpty(_serviceRoleKey)) ? _serviceRoleKey : _supabaseKey;
+            var queryParams = new List<string> { "select=*" };
+
+            if (!string.IsNullOrEmpty(search))
+            {
+                var term = Uri.EscapeDataString($"%{search}%");
+                queryParams.Add($"username.ilike={term}");
+            }
+
+            if (isBanned.HasValue)
+            {
+                queryParams.Add($"is_banned=eq.{(isBanned.Value ? "true" : "false")}");
+            }
+
+            queryParams.Add("order=created_at.desc");
+
+            var offset = (page - 1) * limit;
+            queryParams.Add($"limit={limit}");
+            queryParams.Add($"offset={offset}");
+
+            var url = $"/rest/v1/profiles?{string.Join("&", queryParams)}";
+            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Add("apikey", keyToUse);
+            request.Headers.Add("Authorization", $"Bearer {keyToUse}");
+            request.Headers.Add("Prefer", "count=exact");
+
+            var response = await _httpClient.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+                return (new List<Dictionary<string, object>>(), 0);
+
+            var total = ParseContentRangeTotal(response);
+
+            var content = await response.Content.ReadAsStringAsync();
+            var doc = JsonSerializer.Deserialize<JsonElement>(content);
+
+            var results = new List<Dictionary<string, object>>();
+            if (doc.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in doc.EnumerateArray())
+                {
+                    var dict = new Dictionary<string, object>();
+                    foreach (var prop in item.EnumerateObject())
+                        dict[prop.Name] = ConvertJsonElement(prop.Value);
+                    results.Add(dict);
+                }
+            }
+
+            return (results, total);
+        }
+
+        /// <summary>
+        /// Query แบบ in.(...) เพื่อใช้ในงาน admin/statistics
+        /// </summary>
+        public async Task<List<Dictionary<string, object>>> QueryInAsync(
+            string table,
+            string field,
+            List<string> values,
+            string? select = null,
+            bool useServiceRole = false)
+        {
+            if (values == null || values.Count == 0)
+                return new List<Dictionary<string, object>>();
+
+            var keyToUse = (useServiceRole && !string.IsNullOrEmpty(_serviceRoleKey)) ? _serviceRoleKey : _supabaseKey;
+
+            var cleaned = values
+                .Where(v => !string.IsNullOrWhiteSpace(v))
+                .Select(v => v.Trim())
+                .Distinct()
+                .ToList();
+
+            if (cleaned.Count == 0)
+                return new List<Dictionary<string, object>>();
+
+            var inValues = string.Join(",", cleaned.Select(v => Uri.EscapeDataString(v)));
+            var selectParam = string.IsNullOrWhiteSpace(select) ? "select=*" : $"select={select}";
+
+            var url = $"/rest/v1/{table}?{field}=in.({inValues})&{selectParam}";
+            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Add("apikey", keyToUse);
+            request.Headers.Add("Authorization", $"Bearer {keyToUse}");
+
+            var response = await _httpClient.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+                return new List<Dictionary<string, object>>();
+
+            var content = await response.Content.ReadAsStringAsync();
+            var doc = JsonSerializer.Deserialize<JsonElement>(content);
+
+            var results = new List<Dictionary<string, object>>();
+            if (doc.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in doc.EnumerateArray())
+                {
+                    var dict = new Dictionary<string, object>();
+                    foreach (var prop in item.EnumerateObject())
+                        dict[prop.Name] = ConvertJsonElement(prop.Value);
+                    results.Add(dict);
+                }
+            }
+
+            return results;
         }
 
         /// <summary>
@@ -595,6 +819,29 @@ namespace ServerApi.Services
             }
 
             return results;
+        }
+
+        /// <summary>
+        /// PostgREST ส่ง Prefer: count=exact เป็น header Content-Range: start-end/total
+        /// ใน .NET HttpClient header นี้อยู่ที่ <see cref="HttpContent.Headers"/> ไม่ใช่ <see cref="HttpResponseMessage.Headers"/>
+        /// </summary>
+        private static int ParseContentRangeTotal(HttpResponseMessage response)
+        {
+            string? header = null;
+            if (response.Content?.Headers.TryGetValues("Content-Range", out var fromContent) == true)
+                header = fromContent.FirstOrDefault();
+            else if (response.Headers.TryGetValues("Content-Range", out var fromResponse))
+                header = fromResponse.FirstOrDefault();
+
+            if (string.IsNullOrWhiteSpace(header))
+                return 0;
+
+            var parts = header.Split('/');
+            if (parts.Length < 2)
+                return 0;
+
+            var totalPart = parts[^1].Trim();
+            return int.TryParse(totalPart, out var t) ? t : 0;
         }
 
         /// <summary>
