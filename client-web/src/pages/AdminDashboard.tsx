@@ -907,8 +907,10 @@ const AdminDashboard: React.FC = () => {
                     <td>
                       {user.isBanned ? (
                         <Badge bg="dark">ถูกแบน</Badge>
-                      ) : user.isAdmin ? (
+                      ) : (user.isAdmin || (user.role ?? '').toLowerCase() === 'admin') ? (
                         <Badge bg="danger">แอดมิน</Badge>
+                      ) : (user.role ?? '').toLowerCase() === 'seller' ? (
+                        <Badge bg="info">ผู้ขาย</Badge>
                       ) : (
                         <Badge bg="secondary">ผู้ใช้</Badge>
                       )}

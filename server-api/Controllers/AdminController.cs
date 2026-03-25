@@ -840,7 +840,19 @@ namespace ServerApi.Controllers
                     limit: boundedLimit,
                     useServiceRole: true);
 
-                var users = (profiles ?? new List<Dictionary<string, object>>()).Select(p =>
+                // profiles table doesn't contain email, so we fetch email from GoTrue via Admin API
+                // (profiles.id corresponds to auth.users.id in our schema).
+                var profileList = profiles ?? new List<Dictionary<string, object>>();
+                var profileIds = profileList
+                    .Select(p => p.TryGetValue("id", out var i) ? i?.ToString() : null)
+                    .Where(id => !string.IsNullOrWhiteSpace(id))
+                    .Select(id => id!)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                var emailById = await _supabaseService.GetAuthUserEmailsByIdsAsync(profileIds);
+
+                var users = profileList.Select(p =>
                 {
                     var id = p.TryGetValue("id", out var i) ? i?.ToString() : "";
                     var username = p.TryGetValue("username", out var u) ? u?.ToString() : "";
@@ -850,11 +862,15 @@ namespace ServerApi.Controllers
                                    (b is bool bb ? bb : string.Equals(b.ToString(), "true", StringComparison.OrdinalIgnoreCase));
                     var banReason = p.TryGetValue("ban_reason", out var br) ? br?.ToString() : null;
 
+                    string? email = null;
+                    if (!string.IsNullOrWhiteSpace(id))
+                        emailById.TryGetValue(id, out email);
+
                     return new
                     {
                         id,
                         displayName = username ?? "—",
-                        email = (string?)null,
+                        email,
                         role,
                         isAdmin = string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase),
                         isBanned,

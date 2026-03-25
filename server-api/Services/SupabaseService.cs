@@ -885,6 +885,67 @@ namespace ServerApi.Services
         }
 
         /// <summary>
+        /// ดึง email ของ auth.users โดยใช้ GoTrue Admin API
+        /// (ใช้แทนการ query ผ่าน PostgREST ที่อาจเข้าถึงไม่ได้ในบาง config)
+        /// </summary>
+        public async Task<Dictionary<string, string?>> GetAuthUserEmailsByIdsAsync(IEnumerable<string> userIds)
+        {
+            var ids = userIds
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => id.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var result = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+            if (ids.Count == 0) return result;
+
+            if (string.IsNullOrEmpty(_serviceRoleKey))
+                return result; // ไม่มี service role key = ไม่มีสิทธิ์ดึง email
+
+            foreach (var id in ids)
+            {
+                try
+                {
+                    string? email = null;
+                    
+                    // Call GoTrue Admin REST directly:
+                    // GET {SUPABASE_URL}/auth/v1/admin/users/{id}
+                    var url = $"/auth/v1/admin/users/{Uri.EscapeDataString(id)}";
+                    var request = new HttpRequestMessage(HttpMethod.Get, url);
+                    request.Headers.Add("apikey", _serviceRoleKey!);
+                    request.Headers.Add("Authorization", $"Bearer {_serviceRoleKey!}");
+
+                    var response = await _httpClient.SendAsync(request);
+                    var body = await response.Content.ReadAsStringAsync();
+
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        Console.Error.WriteLine($"[AdminEmailLookup] GoTrue admin failed for id={id}: {(int)response.StatusCode} {response.StatusCode} {body}");
+                        result[id] = null;
+                        continue;
+                    }
+
+                    using var doc = JsonDocument.Parse(body);
+                    if (doc.RootElement.ValueKind == JsonValueKind.Object &&
+                        doc.RootElement.TryGetProperty("email", out var emailProp))
+                    {
+                        email = emailProp.GetString();
+                    }
+
+                    result[id] = email;
+                }
+                catch (Exception ex)
+                {
+                    // ถ้าดึงไม่ได้ ให้คืนค่า null (และให้ caller ใช้ fallback)
+                    Console.Error.WriteLine($"[AdminEmailLookup] GoTrue admin request failed for id={id}: {ex}");
+                    result[id] = null;
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
         /// ลบไฟล์จาก Supabase Storage
         /// </summary>
         public async Task DeleteStorageObjectsAsync(string bucketName, List<string> paths)
