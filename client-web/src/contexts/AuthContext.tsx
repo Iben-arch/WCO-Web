@@ -3,6 +3,7 @@ import { User, UserProfile, Profile, AuthContextType } from '../types';
 import { supabase } from '../config/supabase';
 import { clearSessionCache } from '../utils/axiosInterceptor';
 import { authAPI } from '../api/api';
+import { canSellCards } from '../utils/roles';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -199,6 +200,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  const applyAsSeller = async (payload: {
+    agreedToTerms: boolean;
+    bankName: string;
+    bankAccountNumber: string;
+  }): Promise<void> => {
+    if (!currentUser) {
+      throw new Error('ต้องเข้าสู่ระบบก่อน');
+    }
+    await authAPI.applyAsSeller(payload);
+    await fetchProfile(currentUser.id);
+  };
+
   const updateProfile = async (profileData: any): Promise<Profile> => {
     try {
       if (!currentUser) {
@@ -228,6 +241,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
       if (profileData.address !== undefined) {
         updateData.address = profileData.address;
+      }
+      if (profileData.bank_name !== undefined) {
+        (updateData as any).bank_name = profileData.bank_name;
+      }
+      if (profileData.bank_account_number !== undefined) {
+        (updateData as any).bank_account_number = profileData.bank_account_number;
       }
       // Map displayName to username for backward compatibility
       if (profileData.displayName !== undefined && !profileData.username) {
@@ -380,6 +399,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     register,
     logout,
     updateProfile,
+    applyAsSeller,
     refreshProfileFromApi,
     loading
   };

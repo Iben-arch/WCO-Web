@@ -12,6 +12,9 @@ export interface Profile {
   role: string;
   phone?: string | null;
   address?: string | null;
+  bank_name?: string | null;
+  bank_account_number?: string | null;
+  seller_registered_at?: string | null;
   created_at: string;
   updated_at?: string;
 }
@@ -118,6 +121,7 @@ export interface AuthContextType {
   register: (email: string, password: string, username: string) => Promise<User>;
   logout: () => Promise<void>;
   updateProfile: (profileData: any) => Promise<Profile>;
+  applyAsSeller: (payload: { agreedToTerms: boolean; bankName: string; bankAccountNumber: string }) => Promise<void>;
   refreshProfileFromApi: () => Promise<void>;
   loading: boolean;
 }

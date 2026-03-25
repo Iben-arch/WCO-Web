@@ -17,6 +17,8 @@ import {
   ButtonWithBadge
 } from '../components/common/ButtonComponents';
 import { Post, SortBy, Category, FirestoreTimestamp } from '../types';
+import { canSellCards } from '../utils/roles';
+import SellerApplicationModal from '../components/seller/SellerApplicationModal';
 
 const categories: Category[] = [
   'Yu-Gi-Oh!',
@@ -36,7 +38,7 @@ const categories: Category[] = [
 ];
 
 const Home: React.FC = () => {
-  const { currentUser } = useAuth();
+  const { currentUser, profile, userProfile } = useAuth();
   const navigate = useNavigate();
   const { addToCart, isInCart, cartItems } = useCart();
   const [posts, setPosts] = useState<Post[]>([]);
@@ -57,7 +59,11 @@ const Home: React.FC = () => {
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
   const [imageSearchMode, setImageSearchMode] = useState<boolean>(false);
   const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
+  const [showSellerApplicationModal, setShowSellerApplicationModal] = useState<boolean>(false);
   const [now, setNow] = useState(() => new Date());
+
+  const sellRole = profile?.role ?? userProfile?.role;
+  const userCanSell = canSellCards(sellRole);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
@@ -476,7 +482,27 @@ const Home: React.FC = () => {
                 <h4>เกี่ยวกับ</h4>
                 <ul className="sidebar-links">
                   <li><NavLink to="/" end className={({ isActive }) => isActive ? 'active' : ''}>หน้าแรก</NavLink></li>
-                  <li><Link to="/create-post">สมัครเป็นผู้ขาย</Link></li>
+                  <li>
+                    {!currentUser ? (
+                      <button
+                        type="button"
+                        className="sidebar-link-item"
+                        onClick={() => setShowLoginModal(true)}
+                      >
+                        สมัครเป็นผู้ขาย
+                      </button>
+                    ) : userCanSell ? (
+                      <Link to="/create-post">ขายการ์ด</Link>
+                    ) : (
+                      <button
+                        type="button"
+                        className="sidebar-link-item"
+                        onClick={() => setShowSellerApplicationModal(true)}
+                      >
+                        สมัครเป็นผู้ขาย
+                      </button>
+                    )}
+                  </li>
                   {currentUser && (
                     <>
                       <li><Link to="/my-posts">โพสต์ของฉัน</Link></li>
@@ -751,7 +777,7 @@ const Home: React.FC = () => {
                             ดูรายละเอียด
                           </button>
                           {currentUser && currentUser.id === post.sellerId ? (
-                            // Show "Mark as Sold" button for own posts
+                            userCanSell ? (
                             <button 
                               className={`btn-mark-sold ${post.status === 'sold' ? 'sold' : ''}`}
                               onClick={() => handleMarkAsSold(post)}
@@ -765,8 +791,8 @@ const Home: React.FC = () => {
                                 '💰 ขายแล้ว'
                               )}
                             </button>
+                            ) : null
                           ) : (
-                            // Show action buttons for other posts
                             <div className="buyer-actions">
                               <button
                                 className={`btn-add-cart ${
@@ -928,6 +954,11 @@ const Home: React.FC = () => {
           </div>
         </div>
       )}
+
+      <SellerApplicationModal
+        show={showSellerApplicationModal}
+        onHide={() => setShowSellerApplicationModal(false)}
+      />
 
       <Modal show={showLoginModal} onHide={() => setShowLoginModal(false)} centered>
         <Modal.Header closeButton>

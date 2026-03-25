@@ -637,6 +637,84 @@ namespace ServerApi.Controllers
                 });
             }
         }
+
+        /// <summary>
+        /// สมัครเป็นผู้ขาย — ยืนยันข้อตกลง + บันทึกธนาคาร/เลขบัญชี แล้วอัปเดต role เป็น seller (ผ่าน service role)
+        /// </summary>
+        [HttpPost("apply-seller")]
+        public async Task<IActionResult> ApplySeller([FromBody] ApplySellerRequest? request)
+        {
+            try
+            {
+                if (request == null || !request.AgreedToTerms)
+                {
+                    return BadRequest(new { success = false, error = "กรุณายืนยันข้อตกลงการเป็นผู้ขาย" });
+                }
+
+                var bankName = request.BankName?.Trim() ?? "";
+                var account = request.BankAccountNumber?.Trim() ?? "";
+                if (bankName.Length < 2)
+                {
+                    return BadRequest(new { success = false, error = "กรุณาระบุชื่อธนาคาร" });
+                }
+                if (account.Length < 8)
+                {
+                    return BadRequest(new { success = false, error = "กรุณาระบุเลขบัญชีธนาคารให้ครบถ้วน" });
+                }
+
+                var userId = GetUserIdRequired();
+                var profile = await _supabaseService.GetAsync("profiles", userId, useServiceRole: true, idField: "id");
+                if (profile == null)
+                {
+                    return NotFound(new { success = false, error = "ไม่พบโปรไฟล์ผู้ใช้" });
+                }
+
+                var currentRole = profile.TryGetValue("role", out var r) ? r?.ToString() : null;
+                if (string.Equals(currentRole, "seller", StringComparison.OrdinalIgnoreCase))
+                {
+                    return BadRequest(new { success = false, error = "บัญชีนี้เป็นผู้ขายอยู่แล้ว" });
+                }
+                if (string.Equals(currentRole, "admin", StringComparison.OrdinalIgnoreCase))
+                {
+                    return BadRequest(new { success = false, error = "บัญชีแอดมินไม่ต้องสมัครเป็นผู้ขาย" });
+                }
+
+                var updateData = new Dictionary<string, object>
+                {
+                    ["role"] = "seller",
+                    ["bank_name"] = bankName,
+                    ["bank_account_number"] = account,
+                    ["seller_registered_at"] = DateTime.UtcNow,
+                    ["updated_at"] = DateTime.UtcNow
+                };
+
+                await _supabaseService.UpdateAsync("profiles", userId, updateData, idField: "id", useServiceRole: true);
+
+                var updated = await _supabaseService.GetAsync("profiles", userId, useServiceRole: true, idField: "id");
+                if (updated != null)
+                {
+                    updated.Remove("passwordhash");
+                }
+
+                _logger.LogInformation("User {UserId} applied as seller", userId);
+
+                return Ok(new
+                {
+                    success = true,
+                    message = "สมัครเป็นผู้ขายสำเร็จ",
+                    profile = updated
+                });
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Unauthorized(new { success = false, error = "กรุณาเข้าสู่ระบบ" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "ApplySeller failed");
+                return StatusCode(500, new { success = false, error = "เกิดข้อผิดพลาดในการสมัครเป็นผู้ขาย" });
+            }
+        }
     }
 
     public class LoginRequest
@@ -681,5 +759,17 @@ namespace ServerApi.Controllers
 
         [JsonPropertyName("address")]
         public string? Address { get; set; }
+    }
+
+    public class ApplySellerRequest
+    {
+        [JsonPropertyName("agreedToTerms")]
+        public bool AgreedToTerms { get; set; }
+
+        [JsonPropertyName("bankName")]
+        public string? BankName { get; set; }
+
+        [JsonPropertyName("bankAccountNumber")]
+        public string? BankAccountNumber { get; set; }
     }
 }

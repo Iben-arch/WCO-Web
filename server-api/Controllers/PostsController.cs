@@ -54,16 +54,29 @@ namespace ServerApi.Controllers
                 }
 
                 var userId = GetUserId() ?? "unknown";
-                var userName = "Unknown User";
-
-                // ดึง username จาก profiles table (เพราะ JWT ไม่มี claim "name")
-                if (userId != "unknown")
+                if (userId == "unknown")
                 {
-                    var profile = await _supabaseService.GetAsync("profiles", userId, useServiceRole: true);
-                    if (profile != null && profile.TryGetValue("username", out var usernameObj) && usernameObj != null)
+                    return Unauthorized(new { success = false, error = "กรุณาเข้าสู่ระบบ" });
+                }
+
+                var userName = "Unknown User";
+                var profile = await _supabaseService.GetAsync("profiles", userId, useServiceRole: true, idField: "id");
+                if (profile != null && profile.TryGetValue("username", out var usernameObj) && usernameObj != null)
+                {
+                    userName = usernameObj.ToString() ?? userName;
+                }
+
+                var role = profile != null && profile.TryGetValue("role", out var roleObj) ? roleObj?.ToString() : null;
+                var canCreatePost = !string.IsNullOrEmpty(role) &&
+                    (role.Equals("seller", StringComparison.OrdinalIgnoreCase) ||
+                     role.Equals("admin", StringComparison.OrdinalIgnoreCase));
+                if (!canCreatePost)
+                {
+                    return StatusCode(403, new
                     {
-                        userName = usernameObj.ToString() ?? userName;
-                    }
+                        success = false,
+                        error = "เฉพาะผู้ขายที่สมัครแล้วเท่านั้นที่สามารถสร้างโพสต์ได้ กรุณาสมัครเป็นผู้ขายจากหน้าแรก"
+                    });
                 }
 
                 var postData = new Dictionary<string, object>

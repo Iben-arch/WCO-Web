@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
 import { useAuth } from '../contexts/AuthContext';
+import { canSellCards } from '../utils/roles';
 import axios from '../utils/axiosInterceptor';
 import { supabase } from '../config/supabase';
 import { toast } from 'react-toastify';
@@ -119,7 +120,7 @@ const STEPS = [
 
 const CreatePost: React.FC = () => {
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
+  const { currentUser, profile, userProfile, loading: authLoading } = useAuth();
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [formData, setFormData] = useState<CreatePostFormData>({
     title: '',
@@ -150,6 +151,20 @@ const CreatePost: React.FC = () => {
   const [cropPosition, setCropPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [addingCrop, setAddingCrop] = useState<boolean>(false);
   const [cropImageObjectUrl, setCropImageObjectUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!currentUser) {
+      navigate('/login', { replace: true });
+      return;
+    }
+    if (!profile && !userProfile) return;
+    const r = profile?.role ?? userProfile?.role;
+    if (!canSellCards(r)) {
+      toast.warning('กรุณาสมัครเป็นผู้ขายจากหน้าแรกก่อนสร้างโพสต์');
+      navigate('/', { replace: true });
+    }
+  }, [authLoading, currentUser, profile, userProfile, navigate]);
 
   useEffect(() => {
     if (previewImageIndex !== null && formData.images[previewImageIndex]) {

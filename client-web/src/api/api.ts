@@ -94,6 +94,20 @@ export const authAPI = {
     }
   },
 
+  /** สมัครเป็นผู้ขาย (ข้อตกลง + ธนาคาร/เลขบัญชี) — อัปเดต role ที่เซิร์ฟเวอร์ */
+  applyAsSeller: async (payload: {
+    agreedToTerms: boolean;
+    bankName: string;
+    bankAccountNumber: string;
+  }): Promise<{ success: boolean; message?: string }> => {
+    const response = await axios.post('/api/auth/apply-seller', {
+      agreedToTerms: payload.agreedToTerms,
+      bankName: payload.bankName,
+      bankAccountNumber: payload.bankAccountNumber
+    });
+    return response.data;
+  },
+
   // Check if user liked a post (สำหรับ PostDetail - single)
   checkLike: async (postId: string): Promise<{ liked: boolean }> => {
     try {

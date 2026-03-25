@@ -1634,6 +1634,45 @@ input[type="datetime-local"].form-control-sakura {
   box-shadow: var(--focus-ring);
 }
 
+.sidebar-links button.sidebar-link-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-md) var(--spacing-lg);
+  color: var(--gray-600);
+  text-decoration: none;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.sidebar-links button.sidebar-link-item:hover {
+  background: var(--gray-100);
+  color: var(--primary);
+}
+
+.sidebar-links button.sidebar-link-item::after {
+  content: '›';
+  font-size: var(--text-base);
+  color: var(--gray-400);
+  opacity: 0.8;
+}
+
+.sidebar-links button.sidebar-link-item:hover::after {
+  color: var(--primary);
+  opacity: 1;
+}
+
+.sidebar-links button.sidebar-link-item:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 /* ===== MAIN CONTENT AREA ===== */
 .main-search-section {
   background: var(--bg-card);

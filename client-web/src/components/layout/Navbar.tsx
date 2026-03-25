@@ -2,13 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { Navbar as BootstrapNavbar, Nav, Container, Dropdown } from 'react-bootstrap';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { canSellCards } from '../../utils/roles';
 import { useCart } from '../../contexts/CartContext';
 import { notificationsAPI, WCO_NOTIFICATIONS_CHANGED } from '../../api/api';
 import { TCGButton } from '../common/ButtonComponents';
 import ProfileButton from '../common/ProfileButton';
 
 const Navbar: React.FC = () => {
-  const { currentUser, userProfile, logout } = useAuth();
+  const { currentUser, userProfile, profile, logout } = useAuth();
+  const navSellRole = profile?.role ?? userProfile?.role;
   const { getCartCount } = useCart();
   const [expanded, setExpanded] = useState<boolean>(false);
   const [scrolled, setScrolled] = useState<boolean>(false);
@@ -86,12 +88,10 @@ const Navbar: React.FC = () => {
             <Nav.Link as={Link} to="/" onClick={() => setExpanded(false)}>
               หน้าแรก
             </Nav.Link>
-            {currentUser && (
-              <>
-                <Nav.Link as={Link} to="/create-post" onClick={() => setExpanded(false)}>
-                  ขายการ์ด
-                </Nav.Link>
-              </>
+            {currentUser && canSellCards(navSellRole) && (
+              <Nav.Link as={Link} to="/create-post" onClick={() => setExpanded(false)}>
+                ขายการ์ด
+              </Nav.Link>
             )}
             {userProfile?.isAdmin && (
               <Nav.Link as={Link} to="/admin" onClick={() => setExpanded(false)}>

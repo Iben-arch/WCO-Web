@@ -11,11 +11,12 @@ import '../styles/auction-bids.css';
 import { Post, Message, AuctionBid, DetectedCard, FirestoreTimestamp, IndividualCardItem } from '../types';
 import { recordCategoryInterest } from '../utils/categoryInterest';
 import { supabase } from '../config/supabase';
+import { canSellCards } from '../utils/roles';
 
 const PostDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { currentUser, userProfile } = useAuth();
+  const { currentUser, userProfile, profile } = useAuth();
   const { addToCart, isInCart } = useCart();
   const [post, setPost] = useState<Post | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -612,6 +613,8 @@ const PostDetail: React.FC = () => {
   }
 
   const isOwner = currentUser && currentUser.id === post.sellerId;
+  const isOwnerSeller =
+    isOwner && canSellCards(userProfile?.role ?? profile?.role);
   const isSold = post.status === 'sold';
   const isPostActive = post.status === 'active';
   const isRejected = post.status === 'rejected';
@@ -866,7 +869,7 @@ const PostDetail: React.FC = () => {
                     </Alert>
                   ) : isOwner ? (
                     <>
-                      {isAuctionReleased && (
+                      {isOwnerSeller && isAuctionReleased && (
                         <button
                           type="button"
                           className="btn-mercari-primary"
@@ -876,7 +879,7 @@ const PostDetail: React.FC = () => {
                           {reAuctioning ? 'กำลังเปิด...' : 'ประมูลใหม่'}
                         </button>
                       )}
-                      {isRejected && (
+                      {isOwnerSeller && isRejected && (
                         <button
                           type="button"
                           className="btn-mercari-primary"
@@ -893,7 +896,7 @@ const PostDetail: React.FC = () => {
                           )}
                         </button>
                       )}
-                      {canOwnerCloseAuction && (
+                      {isOwnerSeller && canOwnerCloseAuction && (
                         <button
                           type="button"
                           className="btn-mercari-primary"
@@ -902,7 +905,7 @@ const PostDetail: React.FC = () => {
                           จบการประมูล
                         </button>
                       )}
-                      {canOwnerMarkSoldSale && (
+                      {isOwnerSeller && canOwnerMarkSoldSale && (
                         <button
                           type="button"
                           className="btn-mercari-primary"

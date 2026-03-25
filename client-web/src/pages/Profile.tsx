@@ -7,6 +7,8 @@ import axios from '../utils/axiosInterceptor';
 import { ordersAPI } from '../api/api';
 import { toast } from 'react-toastify';
 import ProfileSidebar from '../components/layout/ProfileSidebar';
+import SellerApplicationModal from '../components/seller/SellerApplicationModal';
+import { canSellCards } from '../utils/roles';
 import { Post, FirestoreTimestamp, OrderDto, OrderItemDto } from '../types';
 
 interface ProfileFormData {
@@ -33,7 +35,7 @@ interface ProfileProps {
 }
 
 const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
-  const { userProfile, updateProfile, currentUser, refreshProfileFromApi } = useAuth();
+  const { userProfile, profile, updateProfile, currentUser, refreshProfileFromApi } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [activeTab, setActiveTab] = useState<ActiveTab>(initialTab);
@@ -95,6 +97,15 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
   });
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [showSellerApplicationModal, setShowSellerApplicationModal] = useState<boolean>(false);
+
+  useEffect(() => {
+    const st = location.state as { openSellerApplication?: boolean } | null | undefined;
+    if (st?.openSellerApplication) {
+      setShowSellerApplicationModal(true);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, location.pathname, navigate]);
 
   // Lazy load: โหลดข้อมูลเฉพาะเมื่อเปลี่ยนแท็บ (แทนการโหลดทั้งหมดพร้อมกัน)
   useEffect(() => {
@@ -1424,6 +1435,11 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
           </Form>
         </Modal.Body>
       </Modal>
+
+      <SellerApplicationModal
+        show={showSellerApplicationModal}
+        onHide={() => setShowSellerApplicationModal(false)}
+      />
     </div>
   );
 };
