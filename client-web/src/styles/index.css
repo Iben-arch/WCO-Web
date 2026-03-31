@@ -1,34 +1,37 @@
-/* WCO Thailand — Refined Teal Theme */
+/* WCO Thailand — Design system (cyan / slate / amber) */
 :root {
-  /* Primary — Teal (สดใส นุ่มตา) */
+  /* Primary scale — base #00B8D9, dark CTA #005A6E */
   --deep-twilight: #0f172a;
-  --french-blue: #0e4d6e;
-  --bright-teal-blue: #0d9488;
-  --blue-green: #0f766e;
-  --turquoise-surf: #14b8a6;
-  --sky-aqua: #2dd4bf;
-  --frosted-blue: #5eead4;
-  --frosted-blue-light: #99f6e4;
-  --light-cyan: #ccfbf1;
-  
-  /* Brand */
+  --french-blue: #005a6e;
+  --bright-teal-blue: #00b8d9;
+  --blue-green: #008a9e;
+  --turquoise-surf: #33c5e0;
+  --sky-aqua: #5dd4e8;
+  --frosted-blue: #88d8ec;
+  --frosted-blue-light: #cceef7;
+  --light-cyan: #e8f7fb;
+
+  /* Brand (secondary slate #517E8B, tertiary amber #ED9439) */
+  --brand-slate: #517e8b;
+  --brand-tertiary: #ed9439;
+
   --primary: var(--bright-teal-blue);
   --primary-light: var(--turquoise-surf);
   --primary-dark: var(--french-blue);
-  --primary-hover: var(--turquoise-surf);
-  
+  --primary-hover: #00a3c2;
+
   --secondary: var(--sky-aqua);
   --secondary-light: var(--frosted-blue);
   --secondary-dark: var(--blue-green);
-  
+
   --accent: var(--turquoise-surf);
   --accent-light: var(--frosted-blue-light);
   --success: #059669;
-  --warning: #d97706;
+  --warning: var(--brand-tertiary);
   --danger: #dc2626;
-  --info: var(--sky-aqua);
-  
-  /* Neutrals — โทนเย็นเล็กน้อย */
+  --info: var(--bright-teal-blue);
+
+  /* Neutrals — base neutral #F8FAFC */
   --gray-50: #f8fafc;
   --gray-100: #f1f5f9;
   --gray-200: #e2e8f0;
@@ -39,41 +42,42 @@
   --gray-700: #334155;
   --gray-800: #1e293b;
   --gray-900: #0f172a;
-  
-  --white-tint: #fafbfc;
-  --text-on-dark: #f0fdfa;
+
+  --white-tint: #f8fafc;
+  --text-on-dark: #f8fafc;
 
   /* Background Colors */
   --bg-primary: var(--white-tint);
   --bg-secondary: var(--light-cyan);
   --bg-tertiary: var(--frosted-blue-light);
-  --bg-card: var(--white-tint);
+  --bg-card: #ffffff;
   --bg-overlay: rgba(15, 23, 42, 0.5);
   --overlay-dark: rgba(15, 23, 42, 0.6);
   --overlay-darker: rgba(15, 23, 42, 0.75);
-  
+
   /* Text Colors */
   --text-primary: var(--deep-twilight);
-  --text-secondary: var(--french-blue);
-  --text-tertiary: var(--french-blue);
+  --text-secondary: var(--brand-slate);
+  --text-tertiary: var(--brand-slate);
   --text-light: var(--text-on-dark);
   --text-muted: var(--gray-500);
-  
+
   /* Border Colors */
   --border-light: var(--gray-200);
   --border-medium: var(--gray-300);
   --border-dark: var(--gray-400);
-  
-  /* Semantic alpha */
-  --primary-alpha-08: rgba(13, 148, 136, 0.08);
-  --primary-alpha-10: rgba(13, 148, 136, 0.1);
-  --primary-alpha-15: rgba(13, 148, 136, 0.15);
-  --primary-alpha-20: rgba(13, 148, 136, 0.2);
-  --primary-alpha-25: rgba(13, 148, 136, 0.25);
-  --sky-aqua-alpha-08: rgba(45, 212, 191, 0.08);
-  --sky-aqua-alpha-10: rgba(45, 212, 191, 0.1);
-  --sky-aqua-alpha-15: rgba(45, 212, 191, 0.15);
-  --sky-aqua-alpha-20: rgba(45, 212, 191, 0.2);
+
+  /* Semantic alpha (primary rgb 0,184,217) */
+  --primary-alpha-08: rgba(0, 184, 217, 0.08);
+  --primary-alpha-10: rgba(0, 184, 217, 0.1);
+  --primary-alpha-15: rgba(0, 184, 217, 0.15);
+  --primary-alpha-20: rgba(0, 184, 217, 0.2);
+  --primary-alpha-25: rgba(0, 184, 217, 0.25);
+  --sky-aqua-alpha-08: rgba(93, 212, 232, 0.08);
+  --sky-aqua-alpha-10: rgba(93, 212, 232, 0.1);
+  --sky-aqua-alpha-12: rgba(93, 212, 232, 0.12);
+  --sky-aqua-alpha-15: rgba(93, 212, 232, 0.15);
+  --sky-aqua-alpha-20: rgba(93, 212, 232, 0.2);
   --deep-twilight-alpha-08: rgba(15, 23, 42, 0.08);
   --deep-twilight-alpha-10: rgba(15, 23, 42, 0.1);
   --deep-twilight-alpha-12: rgba(15, 23, 42, 0.12);
@@ -81,22 +85,22 @@
   --deep-twilight-alpha-15: rgba(15, 23, 42, 0.15);
   --deep-twilight-alpha-25: rgba(15, 23, 42, 0.25);
   --deep-twilight-alpha-30: rgba(15, 23, 42, 0.3);
-  --sky-aqua-alpha-30: rgba(45, 212, 191, 0.3);
-  --sky-aqua-alpha-04: rgba(45, 212, 191, 0.04);
+  --sky-aqua-alpha-30: rgba(93, 212, 232, 0.3);
+  --sky-aqua-alpha-04: rgba(93, 212, 232, 0.04);
   --white-alpha-20: rgba(255, 255, 255, 0.2);
   --white-alpha-25: rgba(255, 255, 255, 0.25);
   --white-alpha-30: rgba(255, 255, 255, 0.3);
-  --light-cyan-alpha-10: rgba(204, 251, 241, 0.15);
+  --light-cyan-alpha-10: rgba(232, 247, 251, 0.35);
   --success-alpha-10: rgba(5, 150, 105, 0.1);
   --danger-alpha-10: rgba(220, 38, 38, 0.1);
-  
-  /* Shadows — โทนเทาอ่อน */
-  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(13, 148, 136, 0.06);
-  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.1), 0 2px 4px rgba(13, 148, 136, 0.08);
-  --shadow-lg: 0 10px 24px rgba(15, 23, 42, 0.12), 0 4px 8px rgba(13, 148, 136, 0.1);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(0, 184, 217, 0.06);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.1), 0 2px 4px rgba(0, 184, 217, 0.08);
+  --shadow-lg: 0 10px 24px rgba(15, 23, 42, 0.12), 0 4px 8px rgba(0, 184, 217, 0.1);
   --shadow-xl: 0 20px 40px rgba(15, 23, 42, 0.14);
-  --shadow-hover: 0 12px 28px rgba(13, 148, 136, 0.2);
-  --shadow-glow: 0 0 24px rgba(13, 148, 136, 0.2);
+  --shadow-hover: 0 12px 28px rgba(0, 184, 217, 0.2);
+  --shadow-glow: 0 0 24px rgba(0, 184, 217, 0.2);
   
   /* Border Radius - Ocean Blue Theme */
   --radius-sm: 0.75rem;
@@ -629,7 +633,7 @@ textarea:focus-visible {
 .btn-sakura[class*="primary"],
 .btn-tcg-primary,
 .btn.btn-tcg-primary {
-  background: linear-gradient(135deg, var(--primary) 0%, var(--blue-green) 100%);
+  background: linear-gradient(135deg, var(--french-blue) 0%, var(--blue-green) 100%);
   color: var(--text-light);
   border: 2px solid rgba(255, 255, 255, 0.2);
   box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.3);
@@ -640,7 +644,7 @@ textarea:focus-visible {
 .btn-sakura:hover,
 .btn-tcg-primary:hover,
 .btn.btn-tcg-primary:hover {
-  background: var(--primary-hover);
+  background: linear-gradient(135deg, var(--blue-green) 0%, var(--bright-teal-blue) 100%);
   color: var(--text-light);
   transform: translateY(-3px) scale(1.02);
   box-shadow: var(--shadow-hover), var(--shadow-glow);
@@ -648,16 +652,16 @@ textarea:focus-visible {
 }
 
 .btn-modern-secondary {
-  background: var(--bg-primary);
+  background: var(--gray-100);
   color: var(--text-primary);
-  border: 2px solid var(--border-medium);
+  border: 2px solid var(--border-light);
   box-shadow: var(--shadow-sm);
 }
 
 .btn-modern-secondary:hover {
-  background: var(--sky-aqua);
-  border-color: var(--primary);
-  color: var(--primary-dark);
+  background: var(--gray-200);
+  border-color: var(--border-medium);
+  color: var(--text-primary);
   transform: translateY(-3px) scale(1.02);
   box-shadow: var(--shadow-md);
 }
@@ -714,7 +718,7 @@ textarea:focus-visible {
 /* Navbar Login Button */
 .navbar-login-btn,
 .navbar-sakura .navbar-login-btn {
-  background: var(--primary) !important;
+  background: var(--french-blue) !important;
   color: var(--text-on-dark) !important;
   border: none !important;
   border-radius: var(--radius-md) !important;
@@ -727,7 +731,7 @@ textarea:focus-visible {
 
 .navbar-login-btn:hover,
 .navbar-sakura .navbar-login-btn:hover {
-  background: var(--primary-hover) !important;
+  background: var(--blue-green) !important;
   box-shadow: var(--shadow-md);
 }
 
