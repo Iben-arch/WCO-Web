@@ -39,13 +39,17 @@ CREATE POLICY "Anyone can read post_image_embeddings" ON post_image_embeddings
 -- 4. RPC: ค้นหาโพสต์ที่คล้ายกับ query embedding หนึ่งตัว (cosine distance)
 -- ลบ overload เก่า (double precision[]) ถ้ามี เพื่อไม่ให้ PostgREST งง (PGRST203)
 DROP FUNCTION IF EXISTS match_posts_by_embedding(double precision[], int, text);
+-- ลบเวอร์ชัน 3 พารามิเตอร์ (text) ก่อนสร้างใหม่ที่มี match_threshold
+DROP FUNCTION IF EXISTS match_posts_by_embedding(text, int, text);
 
 -- รับ query_embedding เป็น text รูปแบบ '[0.1, -0.2, ...]' (pgvector)
--- คืน (postId, score) โดย score = 1 - cosine_distance (ยิ่งสูงยิ่งคล้าย)
+-- คืน (postId, score) โดย score = 1 - cosine_distance (ยิ่งสูงยิ่งคล้าย; โดยทั่วไป ~0–1)
+-- match_threshold: กรองเฉพาะคู่ที่ similarity >= ค่านี้ (0 = ไม่กรอง เหมือนเดิม)
 CREATE OR REPLACE FUNCTION match_posts_by_embedding(
   query_embedding text,
   match_limit int DEFAULT 20,
-  match_status text DEFAULT 'active'
+  match_status text DEFAULT 'active',
+  match_threshold double precision DEFAULT 0.0
 )
 RETURNS TABLE(
   "postId" uuid,
@@ -66,6 +70,7 @@ BEGIN
   FROM post_image_embeddings e
   INNER JOIN posts p ON p.id = e."postId"
   WHERE p.status = match_status
+    AND (1 - (e.embedding <=> v)) >= match_threshold
   ORDER BY e.embedding <=> v
   LIMIT match_limit;
 END;

@@ -67,7 +67,7 @@ const PostDetail: React.FC = () => {
   useEffect(() => {
     if (post?.id) {
       setLoadingSimilar(true);
-      postsAPI.getSimilarPosts(post.id, 8)
+      postsAPI.getRelatedPostsForDetail(post.id, 8)
         .then((posts) => setSimilarPosts(posts ?? []))
         .catch(() => setSimilarPosts([]))
         .finally(() => setLoadingSimilar(false));
@@ -1038,16 +1038,17 @@ const PostDetail: React.FC = () => {
             </Col>
           </Row>
 
-          {/* AI Similar Cards Recommendation */}
+          {/* Related posts: CLIP similarity + same category (API แยกจากค้นหาด้วยรูป) */}
           {(loadingSimilar || similarPosts.length > 0) && (
             <div className="similar-cards-section mt-5 pt-4 border-top">
               <h5 className="similar-cards-title mb-3">
-                <span className="similar-cards-icon">✨</span> การ์ดคล้ายกัน
+                <span className="similar-cards-icon">✨</span> โพสที่เกี่ยวข้อง
               </h5>
+              <p className="text-muted small mb-3">ภาพคล้ายหรือหมวดเดียวกัน</p>
               {loadingSimilar ? (
                 <div className="d-flex justify-content-center py-4">
                   <Spinner animation="border" size="sm" variant="secondary" />
-                  <span className="ms-2 text-muted">กำลังโหลดการ์ดคล้ายกัน...</span>
+                  <span className="ms-2 text-muted">กำลังโหลด...</span>
                 </div>
               ) : (
                 <div className="similar-cards-scroll">

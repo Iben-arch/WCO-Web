@@ -259,14 +259,14 @@ export const postsAPI = {
     }
   },
 
-  // AI Similar Cards: get similar posts by post ID (uses existing embeddings)
-  getSimilarPosts: async (postId: string, limit?: number): Promise<Post[]> => {
+  /** โพสที่เกี่ยวข้องในหน้าโพสดีเทล (CLIP + หมวดเดียวกัน) — แยกจากค้นหาด้วยรูป (searchPostsByImage) */
+  getRelatedPostsForDetail: async (postId: string, limit?: number): Promise<Post[]> => {
     try {
       const params = limit != null ? { limit } : {};
-      const response = await axios.get(`/api/card-detection/similar/${postId}`, { params });
+      const response = await axios.get(`/api/posts/${postId}/related`, { params });
       return response.data?.posts ?? [];
     } catch (error: any) {
-      console.error('Error fetching similar posts:', error);
+      console.error('Error fetching related posts:', error);
       return [];
     }
   },

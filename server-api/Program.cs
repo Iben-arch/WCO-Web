@@ -63,6 +63,7 @@ try
     builder.Services.AddScoped<CardDetectionService>();
     builder.Services.AddScoped<ClipEmbeddingService>();
     builder.Services.AddScoped<PostEmbeddingIndexingService>();
+    builder.Services.AddScoped<RelatedPostsService>();
     Console.WriteLine("✅ SupabaseService registered");
 }
 catch (Exception ex)

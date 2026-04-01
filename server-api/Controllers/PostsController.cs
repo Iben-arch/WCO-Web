@@ -14,6 +14,7 @@ namespace ServerApi.Controllers
     {
         private readonly SupabaseService _supabaseService;
         private readonly AuctionService _auctionService;
+        private readonly RelatedPostsService _relatedPostsService;
         private readonly ILogger<PostsController> _logger;
 
         private readonly IServiceScopeFactory _scopeFactory;
@@ -21,11 +22,13 @@ namespace ServerApi.Controllers
         public PostsController(
             SupabaseService supabaseService,
             AuctionService auctionService,
+            RelatedPostsService relatedPostsService,
             ILogger<PostsController> logger,
             IServiceScopeFactory scopeFactory)
         {
             _supabaseService = supabaseService;
             _auctionService = auctionService;
+            _relatedPostsService = relatedPostsService;
             _logger = logger;
             _scopeFactory = scopeFactory;
         }
@@ -370,6 +373,35 @@ namespace ServerApi.Controllers
                     error = "เกิดข้อผิดพลาดในการดึงข้อมูลโพสต์ของผู้ขาย",
                     posts = Array.Empty<object>()
                 });
+            }
+        }
+
+        /// <summary>
+        /// โพสที่เกี่ยวข้องในหน้าโพสดีเทล (ภาพคล้ายจาก embedding + เติมหมวดเดียวกัน)
+        /// แยกจากการค้นหาด้วยรูป — ใช้เกณฑ์ RelatedPosts:MinSimilarityScore ไม่ใช่ ImageSearch:MinSimilarityScore
+        /// </summary>
+        [HttpGet("{id}/related")]
+        public async Task<IActionResult> GetRelatedPosts(string id, [FromQuery] int limit = 8, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+                return BadRequest(new { success = false, error = "กรุณาระบุโพสต์" });
+
+            try
+            {
+                var posts = await _relatedPostsService.GetRelatedPostsForDetailAsync(id, limit, cancellationToken).ConfigureAwait(false);
+                return Ok(new { success = true, posts });
+            }
+            catch (OperationCanceledException)
+            {
+                return StatusCode(499, new { success = false, error = "Request cancelled" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "GetRelatedPosts failed for {PostId}", id);
+                var msg = ex.Message;
+                if (msg.Contains("404") && (msg.Contains("Not Found") || msg.Contains("NotFound")))
+                    msg = "Image search is not set up. Run supabase-image-embeddings-setup.sql";
+                return StatusCode(500, new { success = false, error = "เกิดข้อผิดพลาดในการดึงโพสต์ที่เกี่ยวข้อง", message = msg });
             }
         }
 
