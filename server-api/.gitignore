@@ -284,3 +284,6 @@ $RECYCLE.BIN/
 .Trash-*
 .nfs*
 
+# Temp verification artifacts (generated during moderation/image processing)
+bin_temp_verify/
+

@@ -1,0 +1,5 @@
+# Temp verification artifacts (generated during moderation/image processing)
+bin_temp_verify/
+server-api/bin_temp_verify/
+client-web/bin_temp_verify/
+

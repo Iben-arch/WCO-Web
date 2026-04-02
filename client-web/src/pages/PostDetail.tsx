@@ -4,11 +4,11 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
 import IndividualCardsGrid from '../components/common/IndividualCardsGrid';
-import { postsAPI, authAPI, auctionAPI, chatAPI } from '../api/api';
+import { postsAPI, authAPI, auctionAPI, chatAPI, adminAPI } from '../api/api';
 import axios from '../utils/axiosInterceptor';
 import { toast } from 'react-toastify';
 import '../styles/auction-bids.css';
-import { Post, Message, AuctionBid, DetectedCard, FirestoreTimestamp, IndividualCardItem } from '../types';
+import { Post, Message, AuctionBid, DetectedCard, FirestoreTimestamp, IndividualCardItem, AiScreeningResult, AiSourceWarningLevel, AiManipulationWarningLevel } from '../types';
 import { recordCategoryInterest } from '../utils/categoryInterest';
 import { supabase } from '../config/supabase';
 import { canSellCards } from '../utils/roles';
@@ -42,6 +42,10 @@ const PostDetail: React.FC = () => {
   const [reAuctioning, setReAuctioning] = useState<boolean>(false);
   const [bidCardId, setBidCardId] = useState<string | undefined>(undefined);
   const [bidMinAmount, setBidMinAmount] = useState<number>(0);
+  const [sourceScreening, setSourceScreening] = useState<AiScreeningResult | null>(null);
+  const [manipulationScreening, setManipulationScreening] = useState<AiScreeningResult | null>(null);
+  const [sourceAnalyzing, setSourceAnalyzing] = useState<boolean>(false);
+  const [manipulationAnalyzing, setManipulationAnalyzing] = useState<boolean>(false);
 
   const [similarPosts, setSimilarPosts] = useState<Post[]>([]);
   const [loadingSimilar, setLoadingSimilar] = useState<boolean>(false);
@@ -613,6 +617,7 @@ const PostDetail: React.FC = () => {
   }
 
   const isOwner = currentUser && currentUser.id === post.sellerId;
+  const isAdminViewer = !!userProfile?.isAdmin;
   const isOwnerSeller =
     isOwner && canSellCards(userProfile?.role ?? profile?.role);
   const isSold = post.status === 'sold';
@@ -633,6 +638,78 @@ const PostDetail: React.FC = () => {
 
   const canOwnerMarkSoldSale = post.postType === 'sale' && isPostActive && !isSold;
   const canOwnerCloseAuction = post.postType === 'auction' && isAuctionActive && isAuctionEnded && isPostActive && !isSold;
+
+  const getRiskVariant = (risk: number): 'success' | 'warning' | 'danger' => {
+    if (risk >= 65) return 'danger';
+    if (risk >= 35) return 'warning';
+    return 'success';
+  };
+
+  const sourceLevelLabel = (level?: AiSourceWarningLevel): { variant: 'danger' | 'warning' | 'success' | 'secondary'; text: string } => {
+    switch (level) {
+      case 'danger':
+        return { variant: 'danger', text: 'อันตราย — ควรตรวจสอบเพิ่ม' };
+      case 'warning':
+        return { variant: 'warning', text: 'ระวัง — พิจารณาตรวจสอบเพิ่มเติม' };
+      case 'safe':
+        return { variant: 'success', text: 'ปลอดภัย — สัญญาณต่ำ' };
+      default:
+        return { variant: 'secondary', text: 'ไม่สามารถประเมินระดับได้' };
+    }
+  };
+
+  const manipulationLevelLabel = (level?: AiManipulationWarningLevel | null): { variant: 'danger' | 'warning' | 'success'; text: string } => {
+    switch (level) {
+      case 'danger':
+        return { variant: 'danger', text: 'อันตราย — ควรตรวจสอบเพิ่ม' };
+      case 'warning':
+        return { variant: 'warning', text: 'ระวัง — พิจารณาตรวจสอบเพิ่มเติม' };
+      case 'safe':
+        return { variant: 'success', text: 'ปลอดภัย — สัญญาณต่ำ' };
+      default:
+        return { variant: 'success', text: 'ปลอดภัย' };
+    }
+  };
+
+  const analyzeSource = async (): Promise<void> => {
+    if (!post?.id) return;
+    try {
+      setSourceAnalyzing(true);
+      const data = await adminAPI.getPostSourceScreening(post.id);
+      setSourceScreening(data);
+    } catch (err) {
+      console.error(err);
+      toast.error('วิเคราะห์ภาพจากแหล่งอื่นไม่สำเร็จ');
+    } finally {
+      setSourceAnalyzing(false);
+    }
+  };
+
+  const analyzeManipulation = async (): Promise<void> => {
+    if (!post?.id) return;
+    try {
+      setManipulationAnalyzing(true);
+      const data = await adminAPI.getPostManipulationScreening(post.id);
+      setManipulationScreening(data);
+    } catch (err) {
+      console.error(err);
+      toast.error('วิเคราะห์ภาพตัดต่อไม่สำเร็จ');
+    } finally {
+      setManipulationAnalyzing(false);
+    }
+  };
+
+  const mapSourceUnavailableReason = (reason?: string | null): string => {
+    if (!reason) return 'unknown';
+    const r = reason.toLowerCase();
+    if (r.includes('missing-api-key')) return 'ยังไม่ได้ตั้งค่า API key';
+    if (r.includes('http-429')) return 'เกินโควต้า/โดนจำกัดการเรียก';
+    if (r.includes('http-401') || r.includes('http-403')) return 'API key ไม่ถูกต้องหรือไม่มีสิทธิ์';
+    if (r.includes('http-5')) return 'ผู้ให้บริการภายนอกขัดข้องชั่วคราว';
+    if (r.includes('exception')) return 'เชื่อมต่อผู้ให้บริการไม่สำเร็จ';
+    if (r.includes('provider-not-supported')) return 'provider ที่ตั้งค่ายังไม่รองรับ';
+    return reason;
+  };
 
   return (
     <div className="post-detail-container mercari-style">
@@ -863,6 +940,107 @@ const PostDetail: React.FC = () => {
                 )}
 
                 <div className="mercari-actions-block">
+                  {isAdminViewer && (
+                    <div className="mb-3 p-2 border rounded">
+                      <div className="fw-semibold mb-2">เครื่องมือแอดมิน (AI)</div>
+                      <div className="d-flex flex-wrap gap-2 mb-2">
+                        <Button size="sm" variant="outline-secondary" onClick={analyzeSource} disabled={sourceAnalyzing}>
+                          {sourceAnalyzing ? 'กำลังวิเคราะห์...' : 'วิเคราะห์ภาพจากแหล่งอื่น'}
+                        </Button>
+                        <Button size="sm" variant="outline-secondary" onClick={analyzeManipulation} disabled={manipulationAnalyzing}>
+                          {manipulationAnalyzing ? 'กำลังวิเคราะห์...' : 'วิเคราะห์ภาพตัดต่อ'}
+                        </Button>
+                      </div>
+                      {sourceScreening && (
+                        <div className="small mb-2">
+                          {(() => {
+                            const lv = sourceLevelLabel(sourceScreening.sourceWarningLevel);
+                            return (
+                              <Alert variant={lv.variant} className="py-2 mb-2">
+                                <div className="fw-semibold mb-1">แหล่งที่มาภาพ — ระดับเตือน</div>
+                                <Badge
+                                  bg={lv.variant}
+                                  text={lv.variant === 'warning' ? 'dark' : undefined}
+                                  className="me-2 text-wrap text-start"
+                                  style={{ maxWidth: '100%', whiteSpace: 'normal' }}
+                                >
+                                  {lv.text}
+                                </Badge>
+                                {sourceScreening.sourceAnalysisAvailable !== false &&
+                                  sourceScreening.maxCompositionSimilarityPct != null && (
+                                    <div className="mt-2">
+                                      <span className="fw-semibold">
+                                        ความคล้ายทั้งภาพกับรูปบน Mercari / Yahoo! Auctions Japan / Magi:{' '}
+                                      </span>
+                                      <span className="fw-semibold">{sourceScreening.maxCompositionSimilarityPct.toFixed(0)}%</span>
+                                      <span className="text-muted d-block small mt-1">
+                                        เทียบเฉพาะรูปจาก 3 เว็บนี้กับรูปในโพสต์ — ถ้าใกล้ 90% แปลว่าอาจเป็นภาพเดียวกับที่ขายในเว็บเหล่านั้น
+                                      </span>
+                                    </div>
+                                  )}
+                                {sourceScreening.sourceAnalysisAvailable !== false &&
+                                  sourceScreening.maxCompositionSimilarityPct == null && (
+                                    <div className="mt-2 text-muted small">
+                                      {(sourceScreening.totalTargetMarketplaceMatchLinks ?? 0) === 0
+                                        ? 'ไม่พบลิงก์จาก Mercari / Yahoo! Auctions Japan / Magi ในผลค้นหา — จึงยังไม่ได้วัดความคล้ายทั้งภาพกับ 3 เว็บนี้'
+                                        : 'ยังไม่มีค่าความคล้ายทั้งภาพ — ต้องให้บริการ CLIP (clip-worker) ทำงานเพื่อเทียบรูปในโพสต์กับตัวอย่างจาก 3 เว็บ'}
+                                    </div>
+                                  )}
+                                <div className="mt-2">
+                                  <Badge bg={getRiskVariant(sourceScreening.overallRiskPct)} className="me-2">
+                                    ความเสี่ยงแหล่งที่มา (รวม) {sourceScreening.overallRiskPct.toFixed(0)}%
+                                  </Badge>
+                                  {sourceScreening.sourceAnalysisAvailable === false ? (
+                                    <span className="text-danger">
+                                      วิเคราะห์แหล่งอื่นไม่ได้ ({mapSourceUnavailableReason(sourceScreening.sourceUnavailableReason)})
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted">
+                                      ภายนอก {sourceScreening.externalSourceRiskPct.toFixed(0)}% | ซ้ำในเว็บ {sourceScreening.internalDuplicateRiskPct.toFixed(0)}%
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-muted mt-1">
+                                  provider: {sourceScreening.sourceProviderStatus || '-'} | ลิงก์ Mercari / Yahoo! Auctions / Magi ใน
+                                  ผลค้นหา {sourceScreening.totalTargetMarketplaceMatchLinks ?? sourceScreening.images.reduce((s, i) => s + (i.targetMarketplaceMatchCount ?? 0), 0)} รายการ
+                                  (ผลค้นหาทั้งหมด {sourceScreening.images.reduce((sum, img) => sum + (img.externalMatchCount || 0), 0)} รายการ)
+                                </div>
+                                {sourceScreening.hasStrongExternalMatch && sourceScreening.sourceWarningLevel !== 'danger' && (
+                                  <div className="small mt-2 mb-0">เตือนเพิ่มเติม: พบรูปที่ใกล้เคียงมากในเว็บอื่นจากผลค้นหา</div>
+                                )}
+                              </Alert>
+                            );
+                          })()}
+                        </div>
+                      )}
+                      {manipulationScreening && (
+                        <div className="small">
+                          {(() => {
+                            const ml = manipulationLevelLabel(manipulationScreening.manipulationWarningLevel);
+                            return (
+                              <Alert variant={ml.variant} className="py-2 mb-0">
+                                <div className="fw-semibold mb-1">ภาพตัดต่อ — ระดับเตือน</div>
+                                <Badge
+                                  bg={ml.variant}
+                                  text={ml.variant === 'warning' ? 'dark' : undefined}
+                                  className="me-2 text-wrap text-start"
+                                  style={{ maxWidth: '100%', whiteSpace: 'normal' }}
+                                >
+                                  {ml.text}
+                                </Badge>
+                                <div className="mt-2">
+                                  <Badge bg={getRiskVariant(manipulationScreening.overallRiskPct)} className="me-2">
+                                    ความเสี่ยงภาพตัดต่อ {manipulationScreening.overallRiskPct.toFixed(0)}%
+                                  </Badge>
+                                  <span className="text-muted">ค่าเฉลี่ยตรวจจับ {manipulationScreening.manipulationRiskPct.toFixed(0)}%</span>
+                                </div>
+                              </Alert>
+                            );
+                          })()}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {!currentUser ? (
                     <Alert variant="info" className="mb-0 small">
                       <Link to="/login">เข้าสู่ระบบ</Link> เพื่อซื้อหรือติดต่อผู้ขาย

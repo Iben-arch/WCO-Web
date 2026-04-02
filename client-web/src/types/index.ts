@@ -228,6 +228,54 @@ export interface AdminStats {
   };
 }
 
+export interface AiScreeningImageResult {
+  imageUrl: string;
+  externalSourceRiskPct: number;
+  internalDuplicateRiskPct: number;
+  manipulationRiskPct: number;
+  overallRiskPct: number;
+  internalBestMatchPostId?: string | null;
+  internalBestSimilarityScore?: number | null;
+  externalProvider?: string | null;
+  externalMatchCount: number;
+  /** ลิงก์จาก Mercari / Yahoo! Auctions JP / Magi ในผลค้นหาเท่านั้น */
+  targetMarketplaceMatchCount?: number;
+  externalHasOurDomain: boolean;
+  externalMatchLevel?: string | null;
+  /** ความคล้ายทั้งภาพกับตัวอย่างจากเว็บอื่น (CLIP) — ดูองค์ประกอบภาพรวม ไม่ใช่แค่การ์ด */
+  externalCompositionSimilarityPct?: number | null;
+  sourceAnalysisAvailable?: boolean;
+  sourceUnavailableReason?: string | null;
+  error?: string | null;
+}
+
+export type AiSourceWarningLevel = 'danger' | 'warning' | 'safe' | 'unknown';
+export type AiManipulationWarningLevel = 'danger' | 'warning' | 'safe';
+
+export interface AiScreeningResult {
+  postId: string;
+  warningThresholdPct: number;
+  externalSourceRiskPct: number;
+  internalDuplicateRiskPct: number;
+  manipulationRiskPct: number;
+  overallRiskPct: number;
+  shouldWarn: boolean;
+  sourceAnalysisAvailable?: boolean;
+  sourceUnavailableReason?: string | null;
+  sourceProviderStatus?: string | null;
+  hasStrongExternalMatch?: boolean;
+  /** สูงสุดของความคล้ายทั้งภาพ — เทียบกับรูปบน Mercari / Yahoo! Auctions JP / Magi เท่านั้น */
+  maxCompositionSimilarityPct?: number | null;
+  /** รวมจำนวนลิงก์จาก 3 เว็บเป้าหมายในผลค้นหา */
+  totalTargetMarketplaceMatchLinks?: number;
+  /** แดง=อันตราย เหลือง=ระวัง เขียว=ปลอดภัย — อิงความคล้ายทั้งภาพเป็นหลัก */
+  sourceWarningLevel?: AiSourceWarningLevel;
+  /** เฉพาะโหมดวิเคราะห์ตัดต่อ / รวม */
+  manipulationWarningLevel?: AiManipulationWarningLevel | null;
+  reasons: string[];
+  images: AiScreeningImageResult[];
+}
+
 // Auction Bid Types
 export interface AuctionBid {
   id: string;

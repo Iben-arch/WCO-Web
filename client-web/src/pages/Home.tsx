@@ -347,18 +347,21 @@ const Home: React.FC = () => {
       const result = await authAPI.toggleLike(post.id);
       const liked = result.liked;
       
-      // Update liked posts state
+      // Keep updater pure to avoid duplicate side effects in React StrictMode.
       setLikedPosts(prev => {
         const newSet = new Set(prev);
         if (liked) {
           newSet.add(post.id);
-          toast.success('เพิ่มในรายการโปรดแล้ว ❤️');
         } else {
           newSet.delete(post.id);
-          toast.success('ลบออกจากรายการโปรดแล้ว');
         }
         return newSet;
       });
+      if (liked) {
+        toast.success('เพิ่มในรายการโปรดแล้ว ❤️');
+      } else {
+        toast.success('ลบออกจากรายการโปรดแล้ว');
+      }
     } catch (error) {
       console.error('Error updating favorites:', error);
       toast.error('เกิดข้อผิดพลาดในการอัปเดตรายการโปรด');

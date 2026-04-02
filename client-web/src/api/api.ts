@@ -4,7 +4,7 @@
  */
 
 import axios from '../utils/axiosInterceptor';
-import { Post, UserProfile, CartItem, AuctionBid } from '../types';
+import { Post, UserProfile, CartItem, AuctionBid, AiScreeningResult } from '../types';
 
 // Get API base URL
 const getApiBaseUrl = (): string => {
@@ -536,6 +536,21 @@ export const adminAPI = {
       console.error('Error rejecting post:', error);
       throw error;
     }
+  },
+
+  getPostAiScreening: async (postId: string, forceRefresh = false): Promise<AiScreeningResult> => {
+    const response = await axios.get(`/api/admin/posts/${postId}/ai-screening`, { params: { forceRefresh } });
+    return response.data?.data;
+  },
+
+  getPostSourceScreening: async (postId: string, forceRefresh = true): Promise<AiScreeningResult> => {
+    const response = await axios.get(`/api/admin/posts/${postId}/ai-screening`, { params: { mode: 'source', forceRefresh } });
+    return response.data?.data;
+  },
+
+  getPostManipulationScreening: async (postId: string, forceRefresh = false): Promise<AiScreeningResult> => {
+    const response = await axios.get(`/api/admin/posts/${postId}/ai-screening`, { params: { mode: 'manipulation', forceRefresh } });
+    return response.data?.data;
   },
 };
 

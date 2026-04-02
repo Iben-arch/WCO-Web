@@ -64,6 +64,9 @@ try
     builder.Services.AddScoped<ClipEmbeddingService>();
     builder.Services.AddScoped<PostEmbeddingIndexingService>();
     builder.Services.AddScoped<RelatedPostsService>();
+    builder.Services.AddScoped<ExternalReverseImageService>();
+    builder.Services.AddScoped<ImageManipulationDetectionService>();
+    builder.Services.AddScoped<PostModerationAiService>();
     Console.WriteLine("✅ SupabaseService registered");
 }
 catch (Exception ex)

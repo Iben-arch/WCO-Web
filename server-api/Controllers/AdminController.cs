@@ -13,15 +13,18 @@ namespace ServerApi.Controllers
     {
         private readonly SupabaseService _supabaseService;
         private readonly PostEmbeddingIndexingService _embeddingIndexing;
+        private readonly PostModerationAiService _postModerationAiService;
         private readonly ILogger<AdminController> _logger;
 
         public AdminController(
             SupabaseService supabaseService,
             PostEmbeddingIndexingService embeddingIndexing,
+            PostModerationAiService postModerationAiService,
             ILogger<AdminController> logger)
         {
             _supabaseService = supabaseService;
             _embeddingIndexing = embeddingIndexing;
+            _postModerationAiService = postModerationAiService;
             _logger = logger;
         }
 
@@ -435,6 +438,59 @@ namespace ServerApi.Controllers
             {
                 _logger.LogError(ex, "Admin GetPosts error");
                 return StatusCode(500, new { success = false, error = "เกิดข้อผิดพลาดในการโหลดโพสต์" });
+            }
+        }
+
+        /// <summary>
+        /// GET /api/admin/posts/{id}/ai-screening - AI ช่วยประเมินความเสี่ยงรูปภาพสำหรับการอนุมัติโพสต์
+        /// </summary>
+        [HttpGet("posts/{id}/ai-screening")]
+        public async Task<IActionResult> GetPostAiScreening(
+            string id,
+            [FromQuery] string mode = "all",
+            [FromQuery] bool forceRefresh = false,
+            CancellationToken cancellationToken = default)
+        {
+            if (await EnsureAdminAsync() == null)
+            {
+                if (string.IsNullOrEmpty(GetUserId()))
+                    return Unauthorized(new { success = false, error = "ไม่พบผู้ใช้" });
+                return StatusCode(403, new { success = false, error = "ไม่มีสิทธิ์แอดมิน" });
+            }
+
+            if (string.IsNullOrWhiteSpace(id))
+                return BadRequest(new { success = false, error = "กรุณาระบุ post id" });
+
+            try
+            {
+                var existing = await _supabaseService.GetAsync("posts", id, useServiceRole: true);
+                if (existing == null)
+                    return NotFound(new { success = false, error = "ไม่พบโพสต์ที่ระบุ" });
+
+                var normalizedMode = (mode ?? "all").Trim().ToLowerInvariant();
+                AiScreeningResult screening;
+                if (normalizedMode == "source")
+                {
+                    screening = await _postModerationAiService.AnalyzePostSourceAsync(id, forceRefresh, cancellationToken);
+                }
+                else if (normalizedMode == "manipulation")
+                {
+                    screening = await _postModerationAiService.AnalyzePostManipulationAsync(id, forceRefresh, cancellationToken);
+                }
+                else
+                {
+                    screening = await _postModerationAiService.AnalyzePostAsync(id, forceRefresh, cancellationToken);
+                }
+                return Ok(new { success = true, data = screening });
+            }
+            catch (OperationCanceledException)
+            {
+                return StatusCode(499, new { success = false, error = "Request cancelled" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Admin GetPostAiScreening error for {PostId}", id);
+                return StatusCode(500, new { success = false, error = "เกิดข้อผิดพลาดในการวิเคราะห์ AI" });
             }
         }
 
