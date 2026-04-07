@@ -1,11 +1,8 @@
-const { heroui } = require("@heroui/react");
+const daisyui = require('daisyui');
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: [
-    "./src/**/*.{js,jsx,ts,tsx}",
-    "./node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}",
-  ],
+  content: ["./src/**/*.{js,jsx,ts,tsx}"],
   theme: {
     extend: {
       fontFamily: {
@@ -23,22 +20,38 @@ module.exports = {
     },
   },
   darkMode: "class",
-  plugins: [
-    heroui({
-      themes: {
-        light: {
-          colors: {
-            primary: "#0077B6",
-            secondary: "#00B4D8",
-          },
-        },
-        dark: {
-          colors: {
-            primary: "#0077B6",
-            secondary: "#00B4D8",
-          },
+  corePlugins: {
+    preflight: false,
+  },
+  plugins: [daisyui],
+  daisyui: {
+    prefix: "d-",
+    themes: [
+      {
+        wcothailand: {
+          "primary": "#0077B6",
+          "primary-content": "#ffffff",
+          "secondary": "#00B4D8",
+          "secondary-content": "#ffffff",
+          "accent": "#48CAE4",
+          "accent-content": "#0a1628",
+          "neutral": "#1e293b",
+          "neutral-content": "#ffffff",
+          "base-100": "#ffffff",
+          "base-200": "#f8fafc",
+          "base-300": "#e2e8f0",
+          "base-content": "#1e293b",
+          "info": "#0ea5e9",
+          "info-content": "#ffffff",
+          "success": "#22c55e",
+          "success-content": "#ffffff",
+          "warning": "#f59e0b",
+          "warning-content": "#1e293b",
+          "error": "#ef4444",
+          "error-content": "#ffffff",
         },
       },
-    }),
-  ],
+    ],
+    defaultTheme: "wcothailand",
+  },
 };
