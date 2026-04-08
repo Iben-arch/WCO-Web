@@ -528,71 +528,80 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
 
           <div className="px-6 pb-6">
             {/* Avatar + Info Row */}
-            <div className="flex flex-wrap items-end gap-4 -mt-10 mb-4">
-              {/* Avatar upload */}
-              <label
-                htmlFor="profile-image-upload"
-                className="relative cursor-pointer shrink-0 group"
-                title="คลิกเพื่ออัปโหลดรูปโปรไฟล์"
-              >
-                <div className="w-20 h-20 rounded-2xl border-4 border-base-100 shadow-md overflow-hidden bg-base-200 flex items-center justify-center">
-                  {avatarSrc ? (
-                    <img src={avatarSrc} alt="Profile" className="w-full h-full object-cover" />
-                  ) : (
-                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" className="text-base-content/40" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
+            <div className="flex flex-wrap items-end gap-4 -mt-10 mb-2">
+              {/* Avatar */}
+              <div className="shrink-0 flex flex-col items-center gap-2">
+                <label
+                  htmlFor="profile-image-upload"
+                  className="relative cursor-pointer group"
+                  title="คลิกเพื่ออัปโหลดรูปโปรไฟล์"
+                >
+                  <div className="w-20 h-20 rounded-2xl border-4 border-base-100 shadow-md overflow-hidden bg-base-200 flex items-center justify-center">
+                    {avatarSrc ? (
+                      <img src={avatarSrc} alt="Profile" className="w-full h-full object-cover" />
+                    ) : (
+                      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" className="text-base-content/40" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
+                      </svg>
+                    )}
+                    {loading && (
+                      <div className="absolute inset-0 bg-black/50 rounded-2xl flex items-center justify-center">
+                        <Spinner size="sm" className="text-white" />
+                      </div>
+                    )}
+                  </div>
+                  {/* Camera overlay on hover */}
+                  <div className="absolute inset-0 rounded-2xl bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-white" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>
                     </svg>
+                  </div>
+                  <input type="file" accept="image/*" onChange={handleProfileImageUpload} className="hidden" id="profile-image-upload" disabled={loading} />
+                </label>
+
+                {/* Upload button below avatar */}
+                <label htmlFor="profile-image-upload" className={cx('btn btn-xs btn-outline gap-1.5', loading ? 'btn-disabled' : '')}>
+                  {loading ? (
+                    <><Spinner size="sm" /> กำลังอัปโหลด...</>
+                  ) : (
+                    <>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                      </svg>
+                      อัปโหลดรูป
+                    </>
                   )}
-                  {loading && (
-                    <div className="absolute inset-0 bg-black/50 rounded-2xl flex items-center justify-center">
-                      <Spinner size="sm" className="text-white" />
-                    </div>
-                  )}
-                </div>
-                {/* Camera overlay on hover */}
-                <div className="absolute inset-0 rounded-2xl bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-white" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>
-                  </svg>
-                </div>
-                <input type="file" accept="image/*" onChange={handleProfileImageUpload} className="hidden" id="profile-image-upload" disabled={loading} />
-              </label>
+                </label>
+                <p className="text-[10px] text-base-content/35 leading-tight text-center">JPG, PNG · ไม่เกิน 5MB</p>
+              </div>
 
               <div className="flex-1 min-w-0 pb-1">
-                <div className="flex flex-wrap items-center gap-2 mb-1">
+                <div className="flex flex-wrap items-center gap-2 mb-2">
                   <h2 className="text-xl font-bold text-base-content truncate">{getDisplayName()}</h2>
                   {isSeller && (
                     <span className="badge badge-primary badge-sm font-medium">ผู้ขาย</span>
                   )}
                 </div>
-                <p className="text-sm text-base-content/50">
-                  <span className="mr-1">📅</span>
-                  เป็นสมาชิกเมื่อ {formatDate(userProfile?.createdAt)}
-                </p>
-              </div>
-
-              <label htmlFor="profile-image-upload" className={cx('btn btn-sm btn-outline gap-2 shrink-0', loading ? 'btn-disabled' : '')}>
-                {loading ? (
-                  <><Spinner size="sm" /> กำลังอัปโหลด...</>
-                ) : (
-                  <>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                {userProfile?.createdAt && (
+                  <div className="flex items-center gap-1.5 text-xs text-base-content/45">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
                     </svg>
-                    อัปโหลดรูป
-                  </>
+                    <span>เป็นสมาชิกเมื่อ {formatDate(userProfile.createdAt)}</span>
+                  </div>
                 )}
-              </label>
+              </div>
             </div>
 
             {loading && uploadProgress > 0 && (
-              <div className="mb-4">
+              <div className="mt-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-base-content/50">กำลังอัปโหลด...</span>
+                  <span className="text-xs text-primary font-medium">{uploadProgress}%</span>
+                </div>
                 <progress className="progress progress-primary w-full h-1.5" value={uploadProgress} max="100" />
-                <p className="text-xs text-base-content/50 mt-1 text-right">{uploadProgress}%</p>
               </div>
             )}
-
-            <p className="text-xs text-base-content/40">รองรับไฟล์ JPG, PNG ขนาดไม่เกิน 5MB</p>
           </div>
         </div>
 
@@ -900,28 +909,62 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
     };
 
     const getOrderItemDisplay = (it: OrderItemDto) => {
-      const isIndividualCard = !!it.cardId && it.post?.individualCards?.length;
+      const post = it.post as any;
+      const isIndividualCard = !!it.cardId && post?.individualCards?.length;
       const card = isIndividualCard
-        ? it.post!.individualCards!.find((c: { id?: string }) => c.id === it.cardId)
+        ? (post?.individualCards as Array<{ id?: string; imageUrl?: string; price?: number }>)?.find((c) => c.id === it.cardId)
         : null;
-      const cardImage = card && 'imageUrl' in card ? card.imageUrl : null;
-      const title = it.post?.title || `โพสต์ #${it.postId}`;
-      return { title, cardImage, isIndividualCard };
+      const cardImage: string | null = card?.imageUrl ?? null;
+      const postImages: string[] = Array.isArray(post?.images) ? post.images : [];
+      const postImage: string | null = postImages[0] ?? null;
+      const displayImage = cardImage || postImage;
+      const title: string = post?.title || post?.Title || null;
+      const isDeleted = !post;
+      return { title, displayImage, isIndividualCard, isDeleted };
     };
 
     const renderOrderItemRow = (it: OrderItemDto, idx: number, showPrice: boolean) => {
-      const { title, cardImage, isIndividualCard } = getOrderItemDisplay(it);
+      const { title, displayImage, isIndividualCard, isDeleted } = getOrderItemDisplay(it);
       return (
-        <li key={it.id || idx} className="flex items-center gap-2">
-          {cardImage && (
-            <img src={cardImage} alt="" className="w-9 h-12 object-cover rounded-md shrink-0" />
+        <li key={it.id || idx}
+          className="flex items-center gap-3 p-2.5 rounded-xl bg-base-200/40 hover:bg-base-200/70 transition-colors cursor-pointer"
+          onClick={() => it.postId && navigate(`/posts/${it.postId}`)}
+        >
+          {/* Thumbnail */}
+          <div className="w-12 h-14 rounded-lg overflow-hidden bg-base-300 shrink-0 flex items-center justify-center">
+            {displayImage ? (
+              <img src={displayImage} alt={title || ''} className="w-full h-full object-cover" />
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-base-content/30">
+                <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+              </svg>
+            )}
+          </div>
+
+          {/* Info */}
+          <div className="flex-1 min-w-0">
+            {isDeleted ? (
+              <p className="text-sm text-base-content/40 italic">สินค้าที่ถูกลบออกจากระบบ</p>
+            ) : title ? (
+              <p className="text-sm font-medium text-base-content leading-snug line-clamp-2">{title}</p>
+            ) : (
+              <p className="text-sm text-base-content/50">รายการสินค้า</p>
+            )}
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              {isIndividualCard && <Badge bg="secondary">แยกใบ</Badge>}
+              <span className="text-xs text-base-content/50">×{it.quantity}</span>
+            </div>
+          </div>
+
+          {/* Price */}
+          {showPrice && (
+            <div className="text-right shrink-0">
+              <p className="text-sm font-semibold text-base-content">{formatPrice(Number(it.unitPrice))}</p>
+              {it.quantity > 1 && (
+                <p className="text-xs text-base-content/40">{formatPrice(Number(it.unitPrice))} / ชิ้น</p>
+              )}
+            </div>
           )}
-          <span className="text-sm text-base-content/80">
-            {title}
-            {isIndividualCard && <Badge bg="secondary" className="ml-1">แยกใบ</Badge>}
-            {' '}×{it.quantity}
-            {showPrice && <span className="text-base-content/60"> — {formatPrice(Number(it.unitPrice))}</span>}
-          </span>
         </li>
       );
     };
@@ -972,10 +1015,10 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
                       </div>
                     </div>
                     <div className="px-4 py-3">
-                      <ul className="space-y-2 mb-3">
+                      <ul className="space-y-1.5 mb-3">
                         {order.items?.map((it, idx) => renderOrderItemRow(it, idx, true))}
                       </ul>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-2 pt-2 border-t border-base-300">
                         {order.status === 'shipped' && (
                           <button
                             className="btn btn-success btn-sm gap-1"
@@ -990,7 +1033,10 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
                         )}
                         {(order.status === 'shipped' || order.status === 'sold') && order.receiptUrl && (
                           <button className="btn btn-outline btn-sm gap-1" onClick={() => window.open(order.receiptUrl!, '_blank')}>
-                            📄 ดูใบเสร็จ
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+                            </svg>
+                            ดูใบเสร็จ
                           </button>
                         )}
                       </div>
@@ -1049,10 +1095,10 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
                       {order.shippingPhone && (
                         <p className="text-sm text-base-content/60"><span className="font-medium text-base-content/70">เบอร์โทร:</span> {order.shippingPhone}</p>
                       )}
-                      <ul className="space-y-2 pt-1 border-t border-base-300">
+                      <ul className="space-y-1.5 pt-1 border-t border-base-300">
                         {order.items?.map((it, idx) => renderOrderItemRow(it, idx, false))}
                       </ul>
-                      <div className="flex flex-wrap gap-2 pt-1">
+                      <div className="flex flex-wrap gap-2 pt-2 border-t border-base-300">
                         {order.status === 'pending_shipment' && (
                           <button
                             className="btn btn-primary btn-sm gap-1"
@@ -1065,8 +1111,11 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
                           </button>
                         )}
                         {(order.status === 'shipped' || order.status === 'sold') && order.receiptUrl && (
-                          <button className="btn btn-outline btn-sm" onClick={() => window.open(order.receiptUrl!, '_blank')}>
-                            📄 ดูใบเสร็จ
+                          <button className="btn btn-outline btn-sm gap-1" onClick={() => window.open(order.receiptUrl!, '_blank')}>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+                            </svg>
+                            ดูใบเสร็จ
                           </button>
                         )}
                       </div>
