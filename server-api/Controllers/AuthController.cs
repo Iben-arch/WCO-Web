@@ -26,7 +26,7 @@ namespace ServerApi.Controllers
         }
 
         /// <summary>
-        /// Login endpoint - ตรวจสอบ email/password
+        /// Login endpoint - ตรวจสอบ email/password ผ่าน Supabase Auth แล้วส่ง session กลับ client
         /// </summary>
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest? request)
@@ -35,136 +35,69 @@ namespace ServerApi.Controllers
             {
                 if (request == null)
                 {
-                    return BadRequest(new
-                    {
-                        success = false,
-                        error = "กรุณากรอกข้อมูลให้ถูกต้อง"
-                    });
+                    return BadRequest(new { success = false, error = "กรุณากรอกข้อมูลให้ถูกต้อง" });
                 }
 
                 if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Password))
                 {
-                    return BadRequest(new
-                    {
-                        success = false,
-                        error = "กรุณากรอกอีเมลและรหัสผ่าน"
-                    });
+                    return BadRequest(new { success = false, error = "กรุณากรอกอีเมลและรหัสผ่าน" });
                 }
 
-                // ค้นหา user จาก database
-                var users = await _supabaseService.QueryAsync("users", "email", request.Email, useServiceRole: true);
-                
-                if (users == null || users.Count == 0)
+                // เรียก Supabase Auth เพื่อตรวจสอบ email/password และรับ session
+                SupabaseSession session;
+                try
                 {
-                    _logger.LogWarning($"User not found: {request.Email}");
-                    return Unauthorized(new
-                    {
-                        success = false,
-                        error = "อีเมลหรือรหัสผ่านไม่ถูกต้อง"
-                    });
+                    session = await _supabaseService.SignInWithPasswordAsync(request.Email, request.Password);
                 }
-
-                var user = users[0];
-
-                // ตรวจสอบ password hash
-                if (!user.ContainsKey("passwordhash") || user["passwordhash"] == null)
+                catch (InvalidOperationException ex)
                 {
-                    return Unauthorized(new
-                    {
-                        success = false,
-                        error = "อีเมลหรือรหัสผ่านไม่ถูกต้อง"
-                    });
+                    _logger.LogWarning("Login failed for {Email}: {Error}", request.Email, ex.Message);
+                    var msg = ex.Message;
+                    if (msg.Contains("Invalid login credentials") || msg.Contains("invalid_credentials"))
+                        msg = "อีเมลหรือรหัสผ่านไม่ถูกต้อง";
+                    else if (msg.Contains("Email not confirmed"))
+                        msg = "กรุณายืนยันอีเมลก่อนเข้าสู่ระบบ";
+                    return Unauthorized(new { success = false, error = msg });
                 }
 
-                var passwordHash = user["passwordhash"]?.ToString();
-                if (string.IsNullOrEmpty(passwordHash))
+                // ดึง userId จาก session user
+                var userId = session.User != null && session.User.TryGetValue("id", out var idVal)
+                    ? idVal?.ToString()
+                    : null;
+
+                // ตรวจสอบสถานะแบนจาก profiles
+                if (!string.IsNullOrEmpty(userId))
                 {
-                    return Unauthorized(new
+                    var profile = await _supabaseService.GetAsync("profiles", userId, useServiceRole: true, idField: "id");
+                    if (profile != null && profile.TryGetValue("is_banned", out var isBanned))
                     {
-                        success = false,
-                        error = "อีเมลหรือรหัสผ่านไม่ถูกต้อง"
-                    });
+                        bool banned = isBanned is bool b ? b
+                            : isBanned is JsonElement je && je.ValueKind == JsonValueKind.True;
+                        if (banned)
+                        {
+                            _logger.LogWarning("Banned user attempted login: {UserId}", userId);
+                            return Unauthorized(new { success = false, error = "บัญชีของคุณถูกแบน ไม่สามารถเข้าสู่ระบบได้" });
+                        }
+                    }
                 }
 
-                // ตรวจสอบ password ด้วย BCrypt
-                bool isPasswordValid = BCrypt.Net.BCrypt.Verify(request.Password, passwordHash);
-                
-                if (!isPasswordValid)
-                {
-                    _logger.LogWarning($"Invalid password for user: {request.Email}");
-                    return Unauthorized(new
-                    {
-                        success = false,
-                        error = "อีเมลหรือรหัสผ่านไม่ถูกต้อง"
-                    });
-                }
-
-                // ตรวจสอบว่า user active หรือไม่
-                bool isActive = true;
-                if (user.ContainsKey("isActive"))
-                {
-                    var isActiveValue = user["isActive"];
-                    if (isActiveValue is bool active)
-                        isActive = active;
-                    else if (isActiveValue is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.True)
-                        isActive = true;
-                    else
-                        isActive = false;
-                }
-
-                if (!isActive)
-                {
-                    return Unauthorized(new
-                    {
-                        success = false,
-                        error = "บัญชีของคุณถูกปิดการใช้งาน"
-                    });
-                }
-
-                // ดึง userId และ email
-                string? userId = null;
-                string? email = null;
-
-                if (user.ContainsKey("uid") && user["uid"] != null)
-                    userId = user["uid"].ToString();
-                else if (user.ContainsKey("id") && user["id"] != null)
-                    userId = user["id"].ToString();
-
-                if (user.ContainsKey("email") && user["email"] != null)
-                    email = user["email"].ToString();
-
-                if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(email))
-                {
-                    return StatusCode(500, new
-                    {
-                        success = false,
-                        error = "เกิดข้อผิดพลาดในการเข้าสู่ระบบ"
-                    });
-                }
-
-                // สร้าง user profile (ลบ passwordhash ออก)
-                var userProfile = new Dictionary<string, object>(user);
-                userProfile.Remove("passwordhash");
-
-                _logger.LogInformation($"User logged in successfully: {email}");
+                _logger.LogInformation("User logged in via API: {Email}", request.Email);
 
                 return Ok(new
                 {
                     success = true,
-                    userId = userId,
-                    email = email,
-                    user = userProfile,
+                    access_token = session.AccessToken,
+                    refresh_token = session.RefreshToken,
+                    expires_in = session.ExpiresIn,
+                    token_type = session.TokenType,
+                    user = session.User,
                     message = "เข้าสู่ระบบสำเร็จ"
                 });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error during login");
-                return StatusCode(500, new
-                {
-                    success = false,
-                    error = "เกิดข้อผิดพลาดในการเข้าสู่ระบบ"
-                });
+                return StatusCode(500, new { success = false, error = "เกิดข้อผิดพลาดในการเข้าสู่ระบบ" });
             }
         }
 

@@ -119,6 +119,7 @@ export interface AuthContextType {
   userProfile: UserProfile | null;
   profile: Profile | null;
   login: (email: string, password: string) => Promise<User>;
+  loginWithGoogle: () => Promise<void>;
   register: (email: string, password: string, username: string) => Promise<User>;
   logout: () => Promise<void>;
   updateProfile: (profileData: any) => Promise<Profile>;

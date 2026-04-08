@@ -3279,6 +3279,12 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
 }
 
 .profile-button-placeholder-icon svg {

@@ -27,13 +27,19 @@ if (apiBaseUrl) {
 
 // ==================== AUTH API ====================
 export const authAPI = {
-  // Login
-  login: async (email: string, password: string): Promise<{ userId: string; email: string; user?: any }> => {
+  // Login — server ยิง Supabase Auth แล้วส่ง session กลับ
+  login: async (email: string, password: string): Promise<{
+    success: boolean;
+    access_token: string;
+    refresh_token: string;
+    expires_in: number;
+    token_type: string;
+    user?: any;
+  }> => {
     try {
       const response = await axios.post('/api/auth/login', { email, password });
       return response.data;
     } catch (error: any) {
-      console.error('Login error:', error);
       throw error;
     }
   },

@@ -1024,6 +1024,74 @@ namespace ServerApi.Services
             }
             return results;
         }
+
+        /// <summary>
+        /// เรียก Supabase Auth API เพื่อ sign in ด้วย email/password และรับ session tokens
+        /// </summary>
+        public async Task<SupabaseSession> SignInWithPasswordAsync(string email, string password)
+        {
+            var url = "/auth/v1/token?grant_type=password";
+            var body = new { email, password };
+            var jsonContent = JsonSerializer.Serialize(body);
+            var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+
+            var request = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = content
+            };
+            request.Headers.Add("apikey", _supabaseKey);
+            request.Headers.Add("Authorization", $"Bearer {_supabaseKey}");
+
+            var response = await _httpClient.SendAsync(request);
+            var responseBody = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                string? errorMsg = null;
+                try
+                {
+                    using var doc = JsonDocument.Parse(responseBody);
+                    if (doc.RootElement.TryGetProperty("error_description", out var desc))
+                        errorMsg = desc.GetString();
+                    else if (doc.RootElement.TryGetProperty("msg", out var msg))
+                        errorMsg = msg.GetString();
+                    else if (doc.RootElement.TryGetProperty("error", out var err))
+                        errorMsg = err.GetString();
+                }
+                catch { }
+
+                throw new InvalidOperationException(errorMsg ?? "อีเมลหรือรหัสผ่านไม่ถูกต้อง");
+            }
+
+            using var respDoc = JsonDocument.Parse(responseBody);
+            var root = respDoc.RootElement;
+
+            var session = new SupabaseSession
+            {
+                AccessToken = root.TryGetProperty("access_token", out var at) ? at.GetString() ?? "" : "",
+                RefreshToken = root.TryGetProperty("refresh_token", out var rt) ? rt.GetString() ?? "" : "",
+                ExpiresIn = root.TryGetProperty("expires_in", out var ei) ? ei.GetInt32() : 3600,
+                TokenType = root.TryGetProperty("token_type", out var tt) ? tt.GetString() ?? "bearer" : "bearer"
+            };
+
+            if (root.TryGetProperty("user", out var userProp) && userProp.ValueKind == JsonValueKind.Object)
+            {
+                session.User = new Dictionary<string, object?>();
+                foreach (var prop in userProp.EnumerateObject())
+                    session.User[prop.Name] = ConvertJsonElement(prop.Value);
+            }
+
+            return session;
+        }
+    }
+
+    public class SupabaseSession
+    {
+        public string AccessToken { get; set; } = string.Empty;
+        public string RefreshToken { get; set; } = string.Empty;
+        public int ExpiresIn { get; set; } = 3600;
+        public string TokenType { get; set; } = "bearer";
+        public Dictionary<string, object?>? User { get; set; }
     }
 }
 

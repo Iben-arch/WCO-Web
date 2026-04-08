@@ -73,48 +73,29 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const login = async (email: string, password: string): Promise<User> => {
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password
+      // ยิงผ่าน API แทนที่จะเรียก Supabase โดยตรง — server ทำ ban-check และส่ง session กลับ
+      let sessionData: Awaited<ReturnType<typeof authAPI.login>>;
+      try {
+        sessionData = await authAPI.login(email, password);
+      } catch (apiErr: any) {
+        const serverMsg =
+          apiErr?.response?.data?.error ||
+          apiErr?.response?.data?.message ||
+          apiErr?.message ||
+          'เกิดข้อผิดพลาดในการเข้าสู่ระบบ';
+        throw new Error(serverMsg);
+      }
+
+      // ตั้ง Supabase session จาก tokens ที่ได้จาก server
+      const { data, error } = await supabase.auth.setSession({
+        access_token: sessionData.access_token,
+        refresh_token: sessionData.refresh_token,
       });
 
-      if (error) {
-        let errorMessage = 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ';
-        if (error.message.includes('Invalid login credentials')) {
-          errorMessage = 'อีเมลหรือรหัสผ่านไม่ถูกต้อง';
-        } else if (error.message.includes('Email not confirmed')) {
-          errorMessage = 'กรุณายืนยันอีเมลก่อนเข้าสู่ระบบ';
-        } else {
-          errorMessage = error.message;
-        }
-        throw new Error(errorMessage);
-      }
-
-      if (!data.user) {
-        throw new Error('ไม่พบข้อมูลผู้ใช้');
-      }
-
-      // ตรวจสอบสถานะแบนจาก profiles ก่อนให้เข้าสู่ระบบในแอป
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('id, username, role, is_banned, ban_reason')
-        .eq('id', data.user.id)
-        .single();
-
-      if (profileError) {
-        console.warn('Error loading profile during login:', profileError);
-      }
-
-      if (profileData && (profileData as any).is_banned === true) {
-        // เคลียร์ session ทิ้งไม่ให้ใช้งานต่อ
-        clearSessionCache();
-        await supabase.auth.signOut();
-        throw new Error('บัญชีของคุณถูกแบน ไม่สามารถเข้าสู่ระบบได้');
-      }
+      if (error) throw new Error(error.message);
+      if (!data.user) throw new Error('ไม่พบข้อมูลผู้ใช้');
 
       setCurrentUser(data.user);
-      
-      // โหลด profile ในพื้นหลัง ไม่บล็อกการ navigate (แก้ปัญหา loading ค้าง)
       fetchProfile(data.user.id).catch((err) => console.error('Profile fetch after login:', err));
 
       return data.user;
@@ -122,6 +103,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.error('Login error:', error);
       throw error;
     }
+  };
+
+  const loginWithGoogle = async (): Promise<void> => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+      },
+    });
+    if (error) throw new Error(error.message);
   };
 
   const register = async (email: string, password: string, username: string): Promise<User> => {
@@ -401,6 +392,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     userProfile,
     profile,
     login,
+    loginWithGoogle,
     register,
     logout,
     updateProfile,
