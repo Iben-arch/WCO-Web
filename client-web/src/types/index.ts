@@ -246,6 +246,12 @@ export interface AiScreeningImageResult {
   externalMatchLevel?: string | null;
   /** ความคล้ายทั้งภาพกับตัวอย่างจากเว็บอื่น (CLIP) — ดูองค์ประกอบภาพรวม ไม่ใช่แค่การ์ด */
   externalCompositionSimilarityPct?: number | null;
+  /** URL หน้าเว็บที่พบรูปคล้ายจาก Mercari / Yahoo! Auctions JP / Magi (Lens visual match) */
+  externalMatchLinks?: string[];
+  /** URL ที่ผ่านการยืนยันด้วย dHash ว่าเป็นภาพเดิม (เชื่อถือได้) */
+  dHashConfirmedLinks?: string[];
+  /** % ความคล้ายสูงสุดจาก dHash (0-100) */
+  dHashSimilarityPct?: number | null;
   sourceAnalysisAvailable?: boolean;
   sourceUnavailableReason?: string | null;
   error?: string | null;
@@ -276,6 +282,12 @@ export interface AiScreeningResult {
   manipulationWarningLevel?: AiManipulationWarningLevel | null;
   reasons: string[];
   images: AiScreeningImageResult[];
+  /** รวม URL หน้าเว็บที่พบรูปคล้ายจาก Mercari / Yahoo! Auctions JP / Magi (ทุกรูปในโพสต์) */
+  allExternalMatchLinks?: string[];
+  /** URL ที่ผ่านการยืนยันด้วย dHash ว่าเป็นภาพเดิม (เชื่อถือได้มากที่สุด) */
+  dHashConfirmedLinks?: string[];
+  /** % ความคล้ายสูงสุดจาก dHash ทุกรูปในโพสต์ */
+  maxDHashSimilarityPct?: number | null;
 }
 
 // Auction Bid Types

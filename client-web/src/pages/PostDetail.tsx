@@ -1022,59 +1022,120 @@ const PostDetail: React.FC = () => {
                         <div className="small mb-2">
                           {(() => {
                             const lv = sourceLevelLabel(sourceScreening.sourceWarningLevel);
+                            const totalMatches = sourceScreening.images.reduce((sum, img) => sum + (img.externalMatchCount || 0), 0);
+
+                            // dHash-confirmed = most reliable: thumbnail pixel comparison directly
+                            const dHashLinks = sourceScreening.dHashConfirmedLinks ?? [];
+                            const dHashPct = sourceScreening.maxDHashSimilarityPct;
+                            const hasDHashConfirmed = dHashLinks.length > 0;
+
+                            // All marketplace links found by Lens (less precise, for reference)
+                            const allMarketplaceLinks = sourceScreening.allExternalMatchLinks ?? [];
+                            const hasMarketplaceHits = allMarketplaceLinks.length > 0;
+
+                            // CLIP (semantic) as supplementary
+                            const clipPct = sourceScreening.maxCompositionSimilarityPct;
+
+                            const getDomain = (url: string) => {
+                              try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
+                            };
+
+                            const alertVariant = hasDHashConfirmed ? lv.variant
+                              : hasMarketplaceHits ? 'secondary'
+                              : 'success';
+
                             return (
-                              <Alert variant={lv.variant} className="py-2 mb-2">
-                                <div className="fw-semibold mb-1">แหล่งที่มาภาพ — ระดับเตือน</div>
-                                <Badge
-                                  bg={lv.variant}
-                                  text={lv.variant === 'warning' ? 'dark' : undefined}
-                                  className="me-2 text-wrap text-start"
-                                  style={{ maxWidth: '100%', whiteSpace: 'normal' }}
-                                >
-                                  {lv.text}
-                                </Badge>
-                                {sourceScreening.sourceAnalysisAvailable !== false &&
-                                  sourceScreening.maxCompositionSimilarityPct != null && (
-                                    <div className="mt-2">
-                                      <span className="fw-semibold">
-                                        ความคล้ายทั้งภาพกับรูปบน Mercari / Yahoo! Auctions Japan / Magi:{' '}
-                                      </span>
-                                      <span className="fw-semibold">{sourceScreening.maxCompositionSimilarityPct.toFixed(0)}%</span>
-                                      <span className="text-muted d-block small mt-1">
-                                        เทียบเฉพาะรูปจาก 3 เว็บนี้กับรูปในโพสต์ — ถ้าใกล้ 90% แปลว่าอาจเป็นภาพเดียวกับที่ขายในเว็บเหล่านั้น
-                                      </span>
-                                    </div>
-                                  )}
-                                {sourceScreening.sourceAnalysisAvailable !== false &&
-                                  sourceScreening.maxCompositionSimilarityPct == null && (
-                                    <div className="mt-2 text-muted small">
-                                      {(sourceScreening.totalTargetMarketplaceMatchLinks ?? 0) === 0
-                                        ? 'ไม่พบลิงก์จาก Mercari / Yahoo! Auctions Japan / Magi ในผลค้นหา — จึงยังไม่ได้วัดความคล้ายทั้งภาพกับ 3 เว็บนี้'
-                                        : 'ยังไม่มีค่าความคล้ายทั้งภาพ — ต้องให้บริการ CLIP (clip-worker) ทำงานเพื่อเทียบรูปในโพสต์กับตัวอย่างจาก 3 เว็บ'}
-                                    </div>
-                                  )}
-                                <div className="mt-2">
-                                  <Badge bg={getRiskVariant(sourceScreening.overallRiskPct)} className="me-2">
-                                    ความเสี่ยงแหล่งที่มา (รวม) {sourceScreening.overallRiskPct.toFixed(0)}%
-                                  </Badge>
-                                  {sourceScreening.sourceAnalysisAvailable === false ? (
-                                    <span className="text-danger">
-                                      วิเคราะห์แหล่งอื่นไม่ได้ ({mapSourceUnavailableReason(sourceScreening.sourceUnavailableReason)})
-                                    </span>
-                                  ) : (
-                                    <span className="text-muted">
-                                      ภายนอก {sourceScreening.externalSourceRiskPct.toFixed(0)}% | ซ้ำในเว็บ {sourceScreening.internalDuplicateRiskPct.toFixed(0)}%
-                                    </span>
-                                  )}
+                              <Alert variant={alertVariant} className="py-2 mb-2">
+                                <div className="fw-semibold mb-2" style={{ fontSize: '0.9rem' }}>
+                                  ภาพที่โพสต์ — มีอยู่ในเว็บอื่นไหม?
                                 </div>
-                                <div className="text-muted mt-1">
-                                  provider: {sourceScreening.sourceProviderStatus || '-'} | ลิงก์ Mercari / Yahoo! Auctions / Magi ใน
-                                  ผลค้นหา {sourceScreening.totalTargetMarketplaceMatchLinks ?? sourceScreening.images.reduce((s, i) => s + (i.targetMarketplaceMatchCount ?? 0), 0)} รายการ
-                                  (ผลค้นหาทั้งหมด {sourceScreening.images.reduce((sum, img) => sum + (img.externalMatchCount || 0), 0)} รายการ)
-                                </div>
-                                {sourceScreening.hasStrongExternalMatch && sourceScreening.sourceWarningLevel !== 'danger' && (
-                                  <div className="small mt-2 mb-0">เตือนเพิ่มเติม: พบรูปที่ใกล้เคียงมากในเว็บอื่นจากผลค้นหา</div>
+
+                                {sourceScreening.sourceAnalysisAvailable === false ? (
+                                  <div className="text-danger mb-2">
+                                    วิเคราะห์ไม่ได้: {mapSourceUnavailableReason(sourceScreening.sourceUnavailableReason)}
+                                  </div>
+                                ) : hasDHashConfirmed ? (
+                                  /* dHash confirmed: thumbnail pixels actually match → stolen image */
+                                  <div className="mb-2">
+                                    <div className="fw-semibold text-danger mb-1">
+                                      ✗ พบภาพนี้ในเว็บอื่น
+                                      {dHashPct != null && ` (ความคล้าย ${dHashPct.toFixed(0)}%)`}
+                                    </div>
+                                    <div className="text-muted small mb-2">
+                                      เปรียบเทียบรูปจริงโดยตรง (dHash) ยืนยันว่าภาพตรงกับหน้าเหล่านี้:
+                                    </div>
+                                    <ul className="mb-0" style={{ listStyle: 'none', padding: 0 }}>
+                                      {dHashLinks.map((link, i) => (
+                                        <li key={i} className="mb-1">
+                                          <a href={link} target="_blank" rel="noopener noreferrer"
+                                            className="text-primary" style={{ wordBreak: 'break-all', fontSize: '0.8rem' }}>
+                                            🔗 {getDomain(link)}
+                                          </a>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                ) : hasMarketplaceHits ? (
+                                  /* Lens found marketplace pages but dHash didn't confirm → same card, different photo */
+                                  <div className="mb-2">
+                                    <div className="fw-semibold mb-1" style={{ color: '#6c757d' }}>
+                                      ℹ️ พบการ์ดชนิดนี้ขายในเว็บอื่น แต่ภาพไม่ตรงกัน
+                                    </div>
+                                    <div className="text-muted small">
+                                      Google Lens พบหน้าขายการ์ดนี้ใน Mercari/Yahoo/Magi ({allMarketplaceLinks.length} แหล่ง)
+                                      แต่เมื่อเปรียบเทียบรูป (dHash) พบว่าเป็นภาพคนละภาพ
+                                      — น่าจะถ่ายคนละมุม/พื้นหลัง ไม่ใช่ภาพที่นำมาจากเว็บเหล่านั้น
+                                    </div>
+                                    <details className="mt-2">
+                                      <summary className="text-muted small" style={{ cursor: 'pointer' }}>
+                                        ดูรายการเว็บที่พบการ์ดชนิดนี้ ({allMarketplaceLinks.length} แหล่ง)
+                                      </summary>
+                                      <ul className="mt-1 mb-0" style={{ listStyle: 'none', padding: 0 }}>
+                                        {allMarketplaceLinks.map((link, i) => (
+                                          <li key={i}>
+                                            <a href={link} target="_blank" rel="noopener noreferrer"
+                                              className="text-muted" style={{ wordBreak: 'break-all', fontSize: '0.75rem' }}>
+                                              🔗 {getDomain(link)}
+                                            </a>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </details>
+                                  </div>
+                                ) : (
+                                  <div className="mb-2">
+                                    <span className="fw-semibold text-success">✓ ไม่พบภาพนี้ในเว็บอื่น</span>
+                                  </div>
                                 )}
+
+                                {/* Scores row */}
+                                <div className="text-muted small mt-1 d-flex flex-wrap gap-2">
+                                  {dHashPct != null && (
+                                    <span>dHash: <strong>{dHashPct.toFixed(0)}%</strong>
+                                      {dHashPct >= 88 ? ' ✓ ตรงกันมาก' : dHashPct >= 75 ? ' ~ คล้ายกัน' : ' ✗ ต่างกัน'}
+                                    </span>
+                                  )}
+                                  {clipPct != null && (
+                                    <span>CLIP: <strong>{clipPct.toFixed(0)}%</strong></span>
+                                  )}
+                                </div>
+
+                                {/* Risk badge */}
+                                <div className="mt-2 d-flex align-items-center gap-2 flex-wrap">
+                                  <Badge bg={getRiskVariant(sourceScreening.overallRiskPct)}>
+                                    ความเสี่ยง {sourceScreening.overallRiskPct.toFixed(0)}%
+                                  </Badge>
+                                  <Badge bg={lv.variant} text={lv.variant === 'warning' ? 'dark' : undefined}>
+                                    {lv.text}
+                                  </Badge>
+                                </div>
+
+                                <div className="text-muted mt-1" style={{ fontSize: '0.7rem' }}>
+                                  provider: {sourceScreening.sourceProviderStatus || '-'} |
+                                  visual matches: {totalMatches} |
+                                  Mercari/Yahoo/Magi: {allMarketplaceLinks.length} |
+                                  dHash ยืนยัน: {dHashLinks.length} แหล่ง
+                                </div>
                               </Alert>
                             );
                           })()}

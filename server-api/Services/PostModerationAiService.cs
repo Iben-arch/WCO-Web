@@ -1,4 +1,8 @@
 using System.Text.Json;
+using System.Numerics;
+using System.Runtime.InteropServices;
+using Emgu.CV;
+using Emgu.CV.CvEnum;
 
 namespace ServerApi.Services
 {
@@ -35,6 +39,15 @@ namespace ServerApi.Services
         public string? ManipulationWarningLevel { get; set; }
         public List<string> Reasons { get; set; } = new();
         public List<AiScreeningImageResult> Images { get; set; } = new();
+        /// <summary>รวม URL หน้าเว็บที่พบรูปคล้ายจาก Mercari / Yahoo! Auctions JP / Magi (ทุกรูปในโพสต์)</summary>
+        public List<string> AllExternalMatchLinks { get; set; } = new();
+        /// <summary>
+        /// URL หน้าเว็บที่ผ่านการยืนยันด้วย dHash (perceptual hash) ว่าเป็นภาพเดิม ไม่ใช่แค่การ์ดชนิดเดียวกัน
+        /// เชื่อถือได้มากกว่า AllExternalMatchLinks
+        /// </summary>
+        public List<string> DHashConfirmedLinks { get; set; } = new();
+        /// <summary>ค่าความคล้ายทั้งภาพสูงสุดจาก dHash (0-100%) — ไม่ต้องรอ CLIP worker</summary>
+        public double? MaxDHashSimilarityPct { get; set; }
     }
 
     public class AiScreeningImageResult
@@ -54,6 +67,12 @@ namespace ServerApi.Services
         public int TargetMarketplaceMatchCount { get; set; }
         /// <summary>ความคล้ายทั้งภาพกับรูปบน 3 เว็บนี้เท่านั้น (CLIP)</summary>
         public double? ExternalCompositionSimilarityPct { get; set; }
+        /// <summary>URL หน้าเว็บที่พบรูปคล้ายจาก Mercari / Yahoo! Auctions JP / Magi (Lens visual match)</summary>
+        public List<string> ExternalMatchLinks { get; set; } = new();
+        /// <summary>URL หน้าเว็บที่ผ่านการยืนยันด้วย dHash ว่าภาพตรงกัน (เชื่อถือได้)</summary>
+        public List<string> DHashConfirmedLinks { get; set; } = new();
+        /// <summary>% ความคล้ายสูงสุดจาก dHash เทียบกับ thumbnail ของเว็บที่พบ (0-100)</summary>
+        public double? DHashSimilarityPct { get; set; }
         public bool SourceAnalysisAvailable { get; set; } = true;
         public string? SourceUnavailableReason { get; set; }
         public string? Error { get; set; }
@@ -159,6 +178,24 @@ namespace ServerApi.Services
             if (compValues.Count > 0)
                 result.MaxCompositionSimilarityPct = RoundPct(compValues.Max());
             result.TotalTargetMarketplaceMatchLinks = result.Images.Sum(x => x.TargetMarketplaceMatchCount);
+            result.AllExternalMatchLinks = result.Images
+                .SelectMany(x => x.ExternalMatchLinks)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(15)
+                .ToList();
+            // dHash-confirmed links are the most reliable: only pages where the thumbnail visually matches
+            // the post image (not just "same card type").
+            result.DHashConfirmedLinks = result.Images
+                .SelectMany(x => x.DHashConfirmedLinks)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(15)
+                .ToList();
+            var dHashValues = result.Images
+                .Where(x => x.DHashSimilarityPct.HasValue)
+                .Select(x => x.DHashSimilarityPct!.Value)
+                .ToList();
+            if (dHashValues.Count > 0)
+                result.MaxDHashSimilarityPct = RoundPct(dHashValues.Max());
 
             if (!result.SourceAnalysisAvailable)
             {
@@ -265,17 +302,53 @@ namespace ServerApi.Services
                     try
                     {
                         var external = await _externalReverseImageService.AnalyzeAsync(imageUrl, forceRefresh, cancellationToken).ConfigureAwait(false);
-                        item.ExternalSourceRiskPct = RoundPct(external.riskPct);
-                        item.ExternalProvider = external.provider;
-                        item.ExternalMatchCount = external.matchCount;
-                        item.TargetMarketplaceMatchCount = external.targetMarketplaceMatchCount;
-                        item.ExternalHasOurDomain = external.hasOurDomain;
-                        item.ExternalMatchLevel = external.matchLevel;
-                        item.SourceAnalysisAvailable = external.analysisAvailable;
-                        item.SourceUnavailableReason = external.unavailableReason;
+                        item.ExternalSourceRiskPct = RoundPct(external.RiskPct);
+                        item.ExternalProvider = external.Provider;
+                        item.ExternalMatchCount = external.MatchCount;
+                        item.TargetMarketplaceMatchCount = external.TargetMarketplaceMatchCount;
+                        item.ExternalMatchLinks = external.TargetMarketplacePageLinks;
+                        item.ExternalHasOurDomain = external.HasOurDomain;
+                        item.ExternalMatchLevel = external.MatchLevel;
+                        item.SourceAnalysisAvailable = external.AnalysisAvailable;
+                        item.SourceUnavailableReason = external.UnavailableReason;
+
+                        // dHash comparison: compare post image against each marketplace thumbnail directly.
+                        // This confirms whether the found pages contain the SAME PHOTO or just the same card type.
+                        // Works without the CLIP worker — runs entirely in-process using OpenCV.
+                        if (external.MarketplaceMatchDetails.Count > 0)
+                        {
+                            var (confirmedLinks, bestSimilarityPct) = await ComputeDHashSimilarityAsync(
+                                bytes, external.MarketplaceMatchDetails, cancellationToken).ConfigureAwait(false);
+                            item.DHashConfirmedLinks = confirmedLinks;
+                            item.DHashSimilarityPct = bestSimilarityPct;
+
+                            // Escalate risk when dHash confirms the composition matches.
+                            if (bestSimilarityPct.HasValue)
+                            {
+                                var sim = bestSimilarityPct.Value;
+                                if (sim >= 88)
+                                {
+                                    item.ExternalMatchLevel = "exact_or_near";
+                                    item.ExternalSourceRiskPct = Math.Max(item.ExternalSourceRiskPct, 92d);
+                                }
+                                else if (sim >= 75)
+                                {
+                                    item.ExternalMatchLevel = "near";
+                                    item.ExternalSourceRiskPct = Math.Max(item.ExternalSourceRiskPct, 78d);
+                                }
+                                else
+                                {
+                                    // dHash says images are different — de-escalate Lens risk.
+                                    item.ExternalMatchLevel = "ambiguous";
+                                    item.ExternalSourceRiskPct = Math.Min(item.ExternalSourceRiskPct, 45d);
+                                }
+                            }
+                        }
+
+                        // CLIP composition comparison (if worker available) as supplementary signal.
                         item.ExternalCompositionSimilarityPct = await ComputeExternalCompositionSimilarityAsync(
                             dataUrl,
-                            external.candidateImageUrls,
+                            external.CandidateImageUrls,
                             cancellationToken).ConfigureAwait(false);
 
                         if (item.ExternalCompositionSimilarityPct.HasValue)
@@ -476,11 +549,12 @@ namespace ServerApi.Services
         private static List<string> ExtractImagesFromPost(Dictionary<string, object> post, string mode)
         {
             var urls = new List<string>();
-            var saleType = post.TryGetValue("saleType", out var saleTypeObj) ? saleTypeObj?.ToString() : null;
-            var isIndividualPost = string.Equals(saleType, "individual", StringComparison.OrdinalIgnoreCase);
             var sourceOnlyMode = string.Equals(mode, "source", StringComparison.OrdinalIgnoreCase);
             var manipulationOnlyMode = string.Equals(mode, "manipulation", StringComparison.OrdinalIgnoreCase);
-            var originalOnlyForIndividual = isIndividualPost && (sourceOnlyMode || manipulationOnlyMode);
+            // For source and manipulation checks, always use only the original full images uploaded by the seller.
+            // Per-card crops (individualCards) focus on a single card and cause false positives in reverse image search
+            // because many listings share the same card artwork. We want to match the whole photo composition.
+            var skipIndividualCards = sourceOnlyMode || manipulationOnlyMode;
 
             if (post.TryGetValue("images", out var imagesObj) && imagesObj != null)
             {
@@ -496,9 +570,8 @@ namespace ServerApi.Services
                 }
             }
 
-            // For individual posts, both source/manipulation analysis should use original pre-crop images only.
-            // Avoid using per-card crops from individualCards for these two checks.
-            if (!originalOnlyForIndividual &&
+            // Only include per-card crops in "all" mode (comprehensive scan), never in source/manipulation checks.
+            if (!skipIndividualCards &&
                 post.TryGetValue("individualCards", out var cardsObj) && cardsObj != null)
             {
                 if (cardsObj is List<object> cardsList)
@@ -579,5 +652,90 @@ namespace ServerApi.Services
         }
 
         private static double RoundPct(double value) => Math.Round(Math.Clamp(value, 0, 100), 2);
+
+        // ─── dHash (Difference Hash) using OpenCV ────────────────────────────────────────
+        // Resize to 9×8 grayscale, compare adjacent pixels in each row → 64-bit fingerprint.
+        // Handles JPEG re-encoding, small resizing, and color adjustments well.
+        // Hamming distance 0-10/64 ≈ same photo; >20/64 ≈ different photo.
+
+        private async Task<(List<string> confirmedLinks, double? bestSimilarityPct)> ComputeDHashSimilarityAsync(
+            byte[] postImageBytes,
+            List<(string Link, string ThumbUrl)> marketplaceDetails,
+            CancellationToken cancellationToken)
+        {
+            var confirmedLinks = new List<string>();
+            double? bestSim = null;
+
+            var postHash = ComputeDHash(postImageBytes);
+            if (postHash == 0) return (confirmedLinks, null);
+
+            var httpClient = _httpClientFactory.CreateClient();
+            httpClient.Timeout = TimeSpan.FromSeconds(10);
+
+            // dHash threshold: ≤ 12 out of 64 bits different = same photo (≥ 81% similar).
+            const int ConfirmThreshold = 12;
+
+            foreach (var (link, thumbUrl) in marketplaceDetails.Take(10))
+            {
+                if (string.IsNullOrWhiteSpace(thumbUrl)) continue;
+                try
+                {
+                    var thumbBytes = await httpClient.GetByteArrayAsync(thumbUrl, cancellationToken).ConfigureAwait(false);
+                    var thumbHash = ComputeDHash(thumbBytes);
+                    if (thumbHash == 0) continue;
+
+                    var distance = HammingDistance(postHash, thumbHash);
+                    var simPct = (1.0 - distance / 64.0) * 100.0;
+
+                    if (!bestSim.HasValue || simPct > bestSim.Value)
+                        bestSim = simPct;
+
+                    if (distance <= ConfirmThreshold)
+                        confirmedLinks.Add(link);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "dHash thumbnail download failed: {ThumbUrl}", thumbUrl);
+                }
+            }
+
+            return (confirmedLinks, bestSim.HasValue ? RoundPct(bestSim.Value) : null);
+        }
+
+        private static ulong ComputeDHash(byte[] imageBytes)
+        {
+            try
+            {
+                using var img = new Mat();
+                CvInvoke.Imdecode(imageBytes, ImreadModes.Grayscale, img);
+                if (img.IsEmpty) return 0;
+                using var resized = new Mat();
+                // 9 wide × 8 tall — 8 column comparisons per row = 64 bits total.
+                CvInvoke.Resize(img, resized, new System.Drawing.Size(9, 8), interpolation: Inter.Area);
+
+                int step = resized.Step;
+                var totalBytes = step * 8;
+                var data = new byte[totalBytes];
+                Marshal.Copy(resized.DataPointer, data, 0, totalBytes);
+
+                ulong hash = 0;
+                int bit = 0;
+                for (int row = 0; row < 8; row++)
+                    for (int col = 0; col < 8; col++)
+                    {
+                        if (data[row * step + col] < data[row * step + col + 1])
+                            hash |= (1UL << bit);
+                        bit++;
+                    }
+                return hash;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        private static int HammingDistance(ulong a, ulong b) =>
+            BitOperations.PopCount(a ^ b);
     }
 }
