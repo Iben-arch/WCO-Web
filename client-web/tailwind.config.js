@@ -20,12 +20,9 @@ module.exports = {
     },
   },
   darkMode: "class",
-  corePlugins: {
-    preflight: false,
-  },
   plugins: [daisyui],
   daisyui: {
-    prefix: "d-",
+    prefix: "",
     themes: [
       {
         wcothailand: {

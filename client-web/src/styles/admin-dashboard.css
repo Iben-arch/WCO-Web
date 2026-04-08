@@ -103,6 +103,8 @@
   height: 100%;
   transition: transform var(--transition-base), box-shadow var(--transition-base);
   background: var(--bg-card);
+  text-align: center;
+  overflow: hidden;
 }
 
 .admin-stat-card:hover {
@@ -114,6 +116,33 @@
   padding: var(--spacing-xl) var(--spacing-md);
   text-align: center;
 }
+
+/* Stat card color top-border variants */
+.admin-stat-card--posts    { border-top: 4px solid var(--bright-teal-blue) !important; }
+.admin-stat-card--active   { border-top: 4px solid var(--success) !important; }
+.admin-stat-card--pending  { border-top: 4px solid var(--warning) !important; }
+.admin-stat-card--users    { border-top: 4px solid var(--info) !important; }
+.admin-stat-card--recent   { border-top: 4px solid #a855f7 !important; }
+.admin-stat-card--coverage { border-top: 4px solid var(--brand-tertiary) !important; }
+
+/* Stat icon circle */
+.admin-stat-icon {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto var(--spacing-md);
+  font-size: 1.2rem;
+}
+
+.admin-stat-icon--posts    { background: rgba(0, 184, 217, 0.12); color: var(--bright-teal-blue); }
+.admin-stat-icon--active   { background: rgba(5, 150, 105, 0.12); color: var(--success); }
+.admin-stat-icon--pending  { background: rgba(245, 158, 11, 0.12); color: var(--warning); }
+.admin-stat-icon--users    { background: rgba(14, 165, 233, 0.12); color: var(--info); }
+.admin-stat-icon--recent   { background: rgba(168, 85, 247, 0.12); color: #a855f7; }
+.admin-stat-icon--coverage { background: rgba(237, 148, 57, 0.12); color: var(--brand-tertiary); }
 
 .admin-stat-value {
   font-size: var(--text-3xl);
@@ -129,7 +158,7 @@
 
 .admin-stat-label {
   color: var(--text-secondary);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   font-weight: 500;
   margin: 0;
 }
@@ -179,29 +208,6 @@
 }
 
 /* Access denied & loading */
-.admin-denied-card {
-  max-width: 28rem;
-  margin: 0 auto;
-  padding: var(--spacing-2xl);
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-md);
-  text-align: center;
-}
-
-.admin-denied-icon {
-  width: 4rem;
-  height: 4rem;
-  margin: 0 auto var(--spacing-lg);
-  border-radius: var(--radius-full);
-  background: var(--danger-alpha-10);
-  color: var(--danger);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.75rem;
-}
 
 .admin-loading-wrap {
   min-height: 50vh;
@@ -213,16 +219,16 @@
 }
 
 .admin-loading-spinner {
-  width: 2.5rem;
-  height: 2.5rem;
-  border-width: 0.2em;
-  color: var(--primary);
+  color: var(--primary) !important;
+  width: 3rem !important;
+  height: 3rem !important;
 }
 
 .admin-loading-text {
   margin-top: var(--spacing-md);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   color: var(--text-muted);
+  font-weight: 500;
 }
 
 /* Modal */
@@ -266,8 +272,18 @@
 }
 
 .admin-pagination-row {
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--border-light);
   padding-top: var(--spacing-md);
+}
+
+.admin-pagination-info {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.admin-pagination-total {
+  color: var(--text-muted);
+  font-size: var(--text-xs, 0.75rem);
 }
 
 .btn-admin-big-action {
@@ -278,10 +294,22 @@
 }
 
 .admin-bulk-row {
-  border: 1px dashed rgba(255, 255, 255, 0.18);
+  border: 1px dashed var(--border-light);
   border-radius: var(--radius-lg);
   padding: var(--spacing-md);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--bg-secondary);
+}
+
+.admin-bulk-counter {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.85rem;
+  border-radius: var(--radius-full);
+  background: rgba(0, 184, 217, 0.1);
+  color: var(--primary-dark);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  border: 1px solid rgba(0, 184, 217, 0.25);
 }
 
 /* Table preview */
@@ -302,8 +330,8 @@
   height: 42px;
   object-fit: cover;
   border-radius: var(--radius-md);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-light);
+  background: var(--bg-secondary);
 }
 
 .admin-post-text {
@@ -326,8 +354,8 @@
 
 .admin-post-desc-snippet {
   margin-top: 0.35rem;
-  color: rgba(255, 255, 255, 0.82);
-  font-size: 0.9rem;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -343,14 +371,15 @@
   margin-bottom: var(--spacing-sm);
   padding: var(--spacing-md);
   border-radius: var(--radius-lg);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
 }
 
 .admin-modal-preview-card {
   padding: var(--spacing-md);
   border-radius: var(--radius-lg);
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
 }
 
 .admin-modal-preview-images {
@@ -364,8 +393,8 @@
   height: 70px;
   object-fit: cover;
   border-radius: var(--radius-md);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-light);
+  background: var(--bg-secondary);
 }
 
 .admin-modal-preview-head {
@@ -383,7 +412,8 @@
 .admin-modal-preview-desc {
   margin-top: var(--spacing-sm);
   white-space: pre-wrap;
-  color: rgba(255, 255, 255, 0.88);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
   max-height: 7.5rem;
   overflow: auto;
   padding-right: 0.25rem;
@@ -399,6 +429,61 @@
 .admin-modal-metric-label {
   display: inline-block;
   min-width: 7.5rem;
-  color: rgba(255, 255, 255, 0.75);
-  font-weight: 700;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+
+/* Checkbox styling for pending table */
+.admin-section-card input[type="checkbox"] {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--primary);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+/* Access denied card improvements */
+.admin-denied-card {
+  max-width: 28rem;
+  margin: 0 auto;
+  padding: var(--spacing-2xl);
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-top: 4px solid var(--danger);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  text-align: center;
+}
+
+.admin-denied-icon {
+  width: 4.5rem;
+  height: 4.5rem;
+  margin: 0 auto var(--spacing-lg);
+  border-radius: var(--radius-full);
+  background: rgba(220, 38, 38, 0.1);
+  color: var(--danger);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+}
+
+/* Empty state for tables */
+.admin-table-empty {
+  text-align: center;
+  padding: var(--spacing-2xl) var(--spacing-xl);
+  color: var(--text-muted);
+}
+
+.admin-table-empty i {
+  font-size: 2.5rem;
+  margin-bottom: var(--spacing-md);
+  display: block;
+  opacity: 0.4;
+}
+
+/* Section header icon gap */
+.admin-section-header i {
+  opacity: 0.9;
 }

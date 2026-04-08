@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { Row, Col, Card, Form, Modal, Button, Badge, Spinner } from 'react-bootstrap';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../config/supabase';
@@ -16,6 +15,7 @@ interface ProfileFormData {
   phone: string; // เบอร์โทรศัพท์
   address: string; // ที่อยู่
   photoURL: string; // รูปโปรไฟล์
+  sellerContactNote: string; // ช่องทางติดต่อผู้ขาย
 }
 
 interface PasswordData {
@@ -33,6 +33,37 @@ type ActiveTab = 'personal-info' | 'security' | 'my-posts' | 'liked' | 'auctions
 interface ProfileProps {
   initialTab?: ActiveTab;
 }
+
+const cx = (...classes: Array<string | false | null | undefined>) => classes.filter(Boolean).join(' ');
+
+const Badge: React.FC<{ bg?: string; className?: string; children: React.ReactNode }> = ({ bg, className, children }) => {
+  const b = bg === 'success' ? 'badge-success' : bg === 'warning' ? 'badge-warning' : bg === 'danger' ? 'badge-error' : bg === 'info' ? 'badge-info' : bg === 'secondary' ? 'badge-neutral' : '';
+  return <span className={cx('badge badge-sm', b, className)}>{children}</span>;
+};
+const Spinner: React.FC<{ size?: string; className?: string }> = ({ size, className }) => <span className={cx('loading loading-spinner', size === 'sm' ? 'loading-sm' : 'loading-md', className)} />;
+
+type ModalType = React.FC<any> & { Header: React.FC<any>; Title: React.FC<any>; Body: React.FC<any>; Footer: React.FC<any> };
+const Modal = (({ show, onHide, children }: any) => {
+  if (!show) return null;
+  const withClose = React.Children.map(children, (child) =>
+    React.isValidElement(child) ? React.cloneElement(child as React.ReactElement<any>, { __onHide: onHide }) : child
+  );
+  return (
+    <div className="fixed inset-0 z-[9999] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onHide}>
+      <div className="bg-base-100 rounded-2xl w-full max-w-lg shadow-2xl" onClick={(e) => e.stopPropagation()}>{withClose}</div>
+    </div>
+  );
+}) as ModalType;
+const ModalHeader: React.FC<any> = ({ children, closeButton, __onHide }) => (
+  <div className="px-6 py-4 border-b border-base-300 flex items-center justify-between">
+    <div className="font-bold text-lg">{children}</div>
+    {closeButton ? <button type="button" className="btn btn-ghost btn-sm btn-circle" onClick={__onHide}>✕</button> : null}
+  </div>
+);
+const ModalTitle: React.FC<any> = ({ children }) => <>{children}</>;
+const ModalBody: React.FC<any> = ({ children }) => <div className="px-6 py-4">{children}</div>;
+const ModalFooter: React.FC<any> = ({ children }) => <div className="px-6 py-4 border-t border-base-300 flex justify-end gap-2">{children}</div>;
+Object.assign(Modal, { Header: ModalHeader, Title: ModalTitle, Body: ModalBody, Footer: ModalFooter });
 
 const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
   const { userProfile, profile, updateProfile, currentUser, refreshProfileFromApi } = useAuth();
@@ -64,7 +95,8 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
     displayName: '',
     phone: '',
     address: '',
-    photoURL: ''
+    photoURL: '',
+    sellerContactNote: ''
   });
   const [loading, setLoading] = useState<boolean>(false);
   const [likedItems, setLikedItems] = useState<LikedPost[]>([]);
@@ -80,7 +112,8 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
     displayName: '',
     phone: '',
     address: '',
-    photoURL: ''
+    photoURL: '',
+    sellerContactNote: ''
   });
   const [showPasswordModal, setShowPasswordModal] = useState<boolean>(false);
   const [showCurrentPassword, setShowCurrentPassword] = useState<boolean>(false);
@@ -114,14 +147,15 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
         displayName: userProfile.displayName || '',
         phone: userProfile.phone || '',
         address: userProfile.address || '',
-        photoURL: userProfile.photoURL || ''
+        photoURL: userProfile.photoURL || '',
+        sellerContactNote: (profile?.seller_contact_note as string) || (userProfile.seller_contact_note as string) || ''
       };
       setFormData(newFormData);
       if (!isEditMode) {
         setOriginalFormData(newFormData);
       }
     }
-  }, [userProfile, isEditMode]);
+  }, [userProfile, profile, isEditMode]);
 
   // โหลดข้อมูลเฉพาะแท็บที่เลือก (lazy load)
   useEffect(() => {
@@ -264,6 +298,9 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
       }
       if (formData.photoURL !== originalFormData.photoURL) {
         updateData.profileImage = formData.photoURL;
+      }
+      if (formData.sellerContactNote !== originalFormData.sellerContactNote) {
+        updateData.seller_contact_note = formData.sellerContactNote;
       }
 
       // ถ้ามีการเปลี่ยนแปลง ให้อัปเดต
@@ -472,7 +509,6 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
   };
 
   const renderPersonalInfo = (): JSX.Element => {
-    // Get the best available display name
     const getDisplayName = (): string => {
       if (formData.displayName) return formData.displayName;
       if (userProfile?.displayName) return userProfile.displayName;
@@ -480,449 +516,377 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
       return 'ผู้ใช้';
     };
 
+    const isSeller = canSellCards(profile?.role ?? userProfile?.role);
+    const avatarSrc = previewImage || formData.photoURL || userProfile?.photoURL;
+
     return (
-      <>
-        {/* Profile Header */}
-        <div className="profile-header mb-4">
-          <div className="d-flex align-items-center flex-wrap">
-            <label 
-              htmlFor="profile-image-upload" 
-              className="profile-image-container me-4"
-              style={{ cursor: 'pointer' }}
-              title="คลิกเพื่ออัปโหลดรูปโปรไฟล์"
-            >
-              {previewImage || formData.photoURL || userProfile?.photoURL ? (
-                <>
-                  <img
-                    src={previewImage || formData.photoURL || userProfile?.photoURL}
-                    alt="Profile"
-                    className="profile-image"
-                  />
-                  {loading && (
-                    <div className="upload-overlay">
-                      <div className="upload-progress">
-                        <div className="spinner-border text-light mb-2" role="status">
-                          <span className="visually-hidden">กำลังอัปโหลด...</span>
-                        </div>
-                        <div className="progress" style={{ width: '100px' }}>
-                          <div 
-                            className="progress-bar" 
-                            role="progressbar" 
-                            style={{ width: `${uploadProgress}%` }}
-                            aria-valuenow={uploadProgress} 
-                            aria-valuemin={0} 
-                            aria-valuemax={100}
-                          >
-                            {uploadProgress}%
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+      <div className="space-y-4">
+        {/* Profile Hero Card */}
+        <div className="rounded-2xl bg-base-100 border border-base-300 shadow-sm overflow-hidden">
+          {/* Banner */}
+          <div className="h-24 bg-gradient-to-r from-primary/20 via-secondary/20 to-accent/20" />
+
+          <div className="px-6 pb-6">
+            {/* Avatar + Info Row */}
+            <div className="flex flex-wrap items-end gap-4 -mt-10 mb-4">
+              {/* Avatar upload */}
+              <label
+                htmlFor="profile-image-upload"
+                className="relative cursor-pointer shrink-0 group"
+                title="คลิกเพื่ออัปโหลดรูปโปรไฟล์"
+              >
+                <div className="w-20 h-20 rounded-2xl border-4 border-base-100 shadow-md overflow-hidden bg-base-200 flex items-center justify-center">
+                  {avatarSrc ? (
+                    <img src={avatarSrc} alt="Profile" className="w-full h-full object-cover" />
+                  ) : (
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" className="text-base-content/40" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
+                    </svg>
                   )}
-                </>
-              ) : (
-                <div className="profile-image-placeholder">
-                  <div className="profile-placeholder-content">
-                    <div className="profile-placeholder-icon">
-                      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 12C14.7614 12 17 9.76142 17 7C17 4.23858 14.7614 2 12 2C9.23858 2 7 4.23858 7 7C7 9.76142 9.23858 12 12 12Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M20.59 22C20.59 18.13 16.74 15 12 15C7.26 15 3.41 18.13 3.41 22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </div>
-                    <div className="profile-placeholder-text">Profile</div>
-                  </div>
                   {loading && (
-                    <div className="upload-overlay">
-                      <div className="upload-progress">
-                        <div className="spinner-border text-light mb-2" role="status">
-                          <span className="visually-hidden">กำลังอัปโหลด...</span>
-                        </div>
-                        <div className="progress" style={{ width: '100px' }}>
-                          <div 
-                            className="progress-bar" 
-                            role="progressbar" 
-                            style={{ width: `${uploadProgress}%` }}
-                            aria-valuenow={uploadProgress} 
-                            aria-valuemin={0} 
-                            aria-valuemax={100}
-                          >
-                            {uploadProgress}%
-                          </div>
-                        </div>
-                      </div>
+                    <div className="absolute inset-0 bg-black/50 rounded-2xl flex items-center justify-center">
+                      <Spinner size="sm" className="text-white" />
                     </div>
                   )}
                 </div>
-              )}
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleProfileImageUpload}
-                className="d-none"
-                id="profile-image-upload"
-                disabled={loading}
-              />
-            </label>
-            <div className="flex-grow-1">
-              <h4 className="profile-name mb-2">
-                {getDisplayName()}
-              </h4>
-              <p className="text-muted mb-3" style={{ fontSize: '0.9375rem' }}>
-                <span style={{ marginRight: '0.5rem' }}>📅</span>
-                เป็นสมาชิกเมื่อ {formatDate(userProfile?.createdAt)}
-              </p>
-              <div className="upload-section">
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleProfileImageUpload}
-                  className="d-none"
-                  id="profile-image-upload-btn"
-                  disabled={loading}
-                />
-                <label htmlFor="profile-image-upload-btn" className={`upload-btn ${loading ? 'disabled' : ''}`}>
-                  {loading ? (
-                    <>
-                      <span className="spinner-border spinner-border-sm me-2" role="status" />
-                      กำลังอัปโหลด...
-                    </>
-                  ) : (
-                    <>
-                      📤 อัปโหลดรูปโปรไฟล์
-                    </>
+                {/* Camera overlay on hover */}
+                <div className="absolute inset-0 rounded-2xl bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-white" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>
+                  </svg>
+                </div>
+                <input type="file" accept="image/*" onChange={handleProfileImageUpload} className="hidden" id="profile-image-upload" disabled={loading} />
+              </label>
+
+              <div className="flex-1 min-w-0 pb-1">
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                  <h2 className="text-xl font-bold text-base-content truncate">{getDisplayName()}</h2>
+                  {isSeller && (
+                    <span className="badge badge-primary badge-sm font-medium">ผู้ขาย</span>
                   )}
-                </label>
-                <small className="d-block text-muted mt-2" style={{ fontSize: '0.8125rem' }}>
-                  รองรับไฟล์ JPG, PNG ขนาดไม่เกิน 5MB
-                </small>
+                </div>
+                <p className="text-sm text-base-content/50">
+                  <span className="mr-1">📅</span>
+                  เป็นสมาชิกเมื่อ {formatDate(userProfile?.createdAt)}
+                </p>
               </div>
+
+              <label htmlFor="profile-image-upload" className={cx('btn btn-sm btn-outline gap-2 shrink-0', loading ? 'btn-disabled' : '')}>
+                {loading ? (
+                  <><Spinner size="sm" /> กำลังอัปโหลด...</>
+                ) : (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    อัปโหลดรูป
+                  </>
+                )}
+              </label>
             </div>
+
+            {loading && uploadProgress > 0 && (
+              <div className="mb-4">
+                <progress className="progress progress-primary w-full h-1.5" value={uploadProgress} max="100" />
+                <p className="text-xs text-base-content/50 mt-1 text-right">{uploadProgress}%</p>
+              </div>
+            )}
+
+            <p className="text-xs text-base-content/40">รองรับไฟล์ JPG, PNG ขนาดไม่เกิน 5MB</p>
           </div>
         </div>
 
-      {/* Personal Information Section */}
-      <Card className={`mb-4 profile-info-card ${isEditMode ? 'profile-edit-mode' : ''}`}>
-        <Card.Header className={`profile-card-header ${isEditMode ? 'edit-mode-active' : ''}`}>
-          <div className="d-flex justify-content-between align-items-center flex-wrap gap-3">
-            <div className="d-flex align-items-center gap-2">
-              <div className="profile-section-icon">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M20 21V19C20 17.9391 19.5786 16.9217 18.8284 16.1716C18.0783 15.4214 17.0609 15 16 15H8C6.93913 15 5.92172 15.4214 5.17157 16.1716C4.42143 16.9217 4 17.9391 4 19V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M12 11C14.2091 11 16 9.20914 16 7C16 4.79086 14.2091 3 12 3C9.79086 3 8 4.79086 8 7C8 9.20914 9.79086 11 12 11Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        {/* Personal Information Card */}
+        <div className={cx('rounded-2xl bg-base-100 border shadow-sm overflow-hidden', isEditMode ? 'border-primary/40' : 'border-base-300')}>
+          <div className="px-6 py-4 border-b border-base-300 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
                 </svg>
               </div>
               <div>
-                <h5 className="mb-0 profile-section-title">ข้อมูลส่วนตัว</h5>
-                {isEditMode && (
-                  <small className="text-primary d-block mt-1" style={{ fontSize: '0.75rem', fontWeight: 500 }}>
-                    <span className="edit-mode-badge">โหมดแก้ไข</span>
-                  </small>
-                )}
+                <h3 className="font-semibold text-base-content">ข้อมูลส่วนตัว</h3>
+                {isEditMode && <p className="text-xs text-primary mt-0.5">โหมดแก้ไข</p>}
               </div>
             </div>
-            {!isEditMode ? (
-              <button
-                className="btn btn-edit-profile"
-                onClick={handleEditModeToggle}
-                disabled={loading}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: '0.5rem' }}>
-                  <path d="M11 4H4C3.46957 4 2.96086 4.21071 2.58579 4.58579C2.21071 4.96086 2 5.46957 2 6V20C2 20.5304 2.21071 21.0391 2.58579 21.4142C2.96086 21.7893 3.46957 22 4 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M18.5 2.5C18.8978 2.10218 19.4374 1.87868 20 1.87868C20.5626 1.87868 21.1022 2.10218 21.5 2.5C21.8978 2.89782 22.1213 3.43739 22.1213 4C22.1213 4.56261 21.8978 5.10218 21.5 5.5L12 15L8 16L9 12L18.5 2.5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                แก้ไขโปรไฟล์
-              </button>
-            ) : (
-              <div className="d-flex gap-2">
-                <button
-                  className="btn btn-cancel-edit"
-                  onClick={handleEditModeToggle}
-                  disabled={loading}
-                >
-                  ยกเลิก
+
+            <div className="flex gap-2">
+              {!isEditMode ? (
+                <button className="btn btn-primary btn-sm gap-2" onClick={handleEditModeToggle} disabled={loading}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                  แก้ไขโปรไฟล์
                 </button>
-                <button
-                  className="btn btn-save-profile"
-                  onClick={handleSaveAll}
-                  disabled={loading}
-                >
-                  {loading ? (
-                    <>
-                      <span className="spinner-border spinner-border-sm me-2" role="status" />
-                      กำลังบันทึก...
-                    </>
-                  ) : (
-                    <>
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: '0.5rem' }}>
-                        <path d="M19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H16L21 8V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M17 21V13H7V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M7 3V8H15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                      บันทึก
-                    </>
-                  )}
-                </button>
-              </div>
-            )}
+              ) : (
+                <>
+                  <button className="btn btn-ghost btn-sm" onClick={handleEditModeToggle} disabled={loading}>ยกเลิก</button>
+                  <button className="btn btn-primary btn-sm gap-2" onClick={handleSaveAll} disabled={loading}>
+                    {loading ? (
+                      <><Spinner size="sm" /> กำลังบันทึก...</>
+                    ) : (
+                      <>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+                        </svg>
+                        บันทึก
+                      </>
+                    )}
+                  </button>
+                </>
+              )}
+            </div>
           </div>
-        </Card.Header>
-        <Card.Body className="profile-card-body">
-          <div className="profile-field">
-            <label className="profile-field-label">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: '0.5rem', verticalAlign: 'middle' }}>
-                <path d="M20 21V19C20 17.9391 19.5786 16.9217 18.8284 16.1716C18.0783 15.4214 17.0609 15 16 15H8C6.93913 15 5.92172 15.4214 5.17157 16.1716C4.42143 16.9217 4 17.9391 4 19V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M12 11C14.2091 11 16 9.20914 16 7C16 4.79086 14.2091 3 12 3C9.79086 3 8 4.79086 8 7C8 9.20914 9.79086 11 12 11Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              ชื่อที่ใช้แสดง
-            </label>
-            <div className="profile-field-input-group">
+
+          <div className="p-6 space-y-5">
+            {/* Display Name */}
+            <div className="form-control">
+              <label className="label pb-1">
+                <span className="label-text font-medium flex items-center gap-2">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-base-content/60">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                  </svg>
+                  ชื่อที่ใช้แสดง
+                </span>
+              </label>
               <input
                 type="text"
-                className="profile-field-input"
+                className={cx('input input-bordered w-full', !isEditMode && 'bg-base-200/50 cursor-default')}
                 value={formData.displayName}
-                onChange={(e) => setFormData({...formData, displayName: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, displayName: e.target.value })}
                 placeholder="กรอกชื่อ - นามสกุล"
                 disabled={!isEditMode}
                 readOnly={!isEditMode}
               />
             </div>
-          </div>
 
-          <div className="profile-field">
-            <label className="profile-field-label">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: '0.5rem', verticalAlign: 'middle' }}>
-                <path d="M22 16.92V19.92C22 20.52 21.52 21 20.92 21C9.4 21 0 11.6 0 0.08C0 -0.52 0.48 -1 1.08 -1H4.08C4.68 -1 5.16 -0.52 5.16 0.08C5.16 1.08 5.24 2.08 5.4 3.04C5.52 3.36 5.44 3.72 5.2 3.96L3.24 5.92C4.56 8.76 7.24 11.44 10.08 12.76L12.04 10.8C12.28 10.56 12.64 10.48 12.96 10.6C13.92 10.76 14.92 10.84 15.92 10.84C16.52 10.84 17 11.32 17 11.92V14.92C17 15.52 16.52 16 15.92 16Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              หมายเลขโทรศัพท์มือถือ
-            </label>
-            <div className="profile-field-input-group">
+            {/* Phone */}
+            <div className="form-control">
+              <label className="label pb-1">
+                <span className="label-text font-medium flex items-center gap-2">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-base-content/60">
+                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.92 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+                  </svg>
+                  หมายเลขโทรศัพท์
+                </span>
+              </label>
               <input
                 type="tel"
-                className="profile-field-input"
+                className={cx('input input-bordered w-full', !isEditMode && 'bg-base-200/50 cursor-default')}
                 value={formData.phone}
-                onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                placeholder="กรอกหมายเลขโทรศัพท์มือถือ"
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                placeholder="กรอกหมายเลขโทรศัพท์"
                 disabled={!isEditMode}
                 readOnly={!isEditMode}
               />
             </div>
-          </div>
 
-          <div className="profile-field">
-            <label className="profile-field-label">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: '0.5rem', verticalAlign: 'middle' }}>
-                <path d="M4 4H20C21.1 4 22 4.9 22 6V18C22 19.1 21.1 20 20 20H4C2.9 20 2 19.1 2 18V6C2 4.9 2.9 4 4 4Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M22 6L12 13L2 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              อีเมล
-            </label>
-            <div className="profile-field-input-group profile-field-disabled">
+            {/* Email (read-only) */}
+            <div className="form-control">
+              <label className="label pb-1">
+                <span className="label-text font-medium flex items-center gap-2">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-base-content/60">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
+                  </svg>
+                  อีเมล
+                </span>
+                <span className="label-text-alt flex items-center gap-1 text-base-content/40">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                  </svg>
+                  ไม่สามารถแก้ไขได้
+                </span>
+              </label>
               <input
                 type="email"
-                className="profile-field-input"
+                className="input input-bordered w-full bg-base-200/50 cursor-default"
                 value={currentUser?.email || ''}
                 disabled
-                placeholder="อีเมล"
               />
-              <span className="profile-field-lock-icon">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M19 11H5C3.89543 11 3 11.8954 3 13V20C3 21.1046 3.89543 22 5 22H19C20.1046 22 21 21.1046 21 20V13C21 11.8954 20.1046 11 19 11Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M7 11V7C7 5.67392 7.52678 4.40215 8.46447 3.46447C9.40215 2.52678 10.6739 2 12 2C13.3261 2 14.5979 2.52678 15.5355 3.46447C16.4732 4.40215 17 5.67392 17 7V11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </span>
             </div>
-            <small className="profile-field-hint">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: '0.25rem', verticalAlign: 'middle' }}>
-                <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M12 16V12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M12 8H12.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              อีเมลไม่สามารถแก้ไขได้
-            </small>
-          </div>
 
-          <div className="profile-field">
-            <label className="profile-field-label">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: '0.5rem', verticalAlign: 'middle' }}>
-                <path d="M21 10C21 17 12 23 12 23C12 23 3 17 3 10C3 7.61305 3.94821 5.32387 5.63604 3.63604C7.32387 1.94821 9.61305 1 12 1C14.3869 1 16.6761 1.94821 18.364 3.63604C20.0518 5.32387 21 7.61305 21 10Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M12 13C13.6569 13 15 11.6569 15 10C15 8.34315 13.6569 7 12 7C10.3431 7 9 8.34315 9 10C9 11.6569 10.3431 13 12 13Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              ที่อยู่
-            </label>
-            <div className="profile-field-input-group">
+            {/* Address */}
+            <div className="form-control">
+              <label className="label pb-1">
+                <span className="label-text font-medium flex items-center gap-2">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-base-content/60">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+                  </svg>
+                  ที่อยู่
+                </span>
+              </label>
               <textarea
-                className="profile-field-input"
+                className={cx('textarea textarea-bordered w-full resize-none', !isEditMode && 'bg-base-200/50 cursor-default')}
                 value={formData.address}
-                onChange={(e) => setFormData({...formData, address: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                 placeholder="กรอกที่อยู่"
                 disabled={!isEditMode}
                 readOnly={!isEditMode}
-                rows={4}
+                rows={3}
               />
             </div>
+
+            {/* Seller contact note */}
+            {isSeller && (
+              <div className="form-control">
+                <label className="label pb-1">
+                  <span className="label-text font-medium flex items-center gap-2">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-base-content/60">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    ช่องทางติดต่อผู้ขาย
+                  </span>
+                  <span className="label-text-alt text-base-content/40">แสดงบนหน้าโพสต์</span>
+                </label>
+                <textarea
+                  className={cx('textarea textarea-bordered w-full resize-none', !isEditMode && 'bg-base-200/50 cursor-default')}
+                  value={formData.sellerContactNote}
+                  onChange={(e) => setFormData({ ...formData, sellerContactNote: e.target.value })}
+                  placeholder="เช่น Line: @xxxx, Facebook: ..., เบอร์ติดต่อ..."
+                  disabled={!isEditMode}
+                  readOnly={!isEditMode}
+                  rows={3}
+                />
+              </div>
+            )}
           </div>
-        </Card.Body>
-      </Card>
-      </>
+        </div>
+      </div>
     );
   };
 
   const renderSecurityInfo = (): JSX.Element => (
-    <Card className="profile-info-card mb-4">
-      <Card.Header className="profile-card-header">
-        <div className="d-flex align-items-center gap-2">
-          <div className="profile-section-icon">
-            <i className="fas fa-shield-alt" aria-hidden />
-          </div>
-          <h5 className="mb-0 profile-section-title">ข้อมูลความปลอดภัย</h5>
+    <div className="rounded-2xl bg-base-100 border border-base-300 shadow-sm overflow-hidden">
+      <div className="px-6 py-4 border-b border-base-300 flex items-center gap-3">
+        <div className="w-9 h-9 rounded-xl bg-warning/10 flex items-center justify-center text-warning">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
         </div>
-      </Card.Header>
-      <Card.Body>
-        <div className="profile-field">
-          <label className="profile-field-label">รหัสผ่าน</label>
-          <div className="profile-field-input-group">
-            <input
-              type="password"
-              className="profile-field-input"
-              value="••••••••••"
-              disabled
-              placeholder="รหัสผ่าน"
-            />
-            <button
-              className="profile-field-edit-btn"
-              onClick={() => setShowPasswordModal(true)}
-              title="เปลี่ยนรหัสผ่าน"
-            >
-              🔑
-            </button>
+        <h3 className="font-semibold text-base-content">ข้อมูลความปลอดภัย</h3>
+      </div>
+
+      <div className="p-6">
+        <div className="flex items-center justify-between p-4 rounded-xl bg-base-200/50 border border-base-300">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-base-100 flex items-center justify-center shadow-sm">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-base-content/60">
+                <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+            </div>
+            <div>
+              <p className="font-medium text-sm text-base-content">รหัสผ่าน</p>
+              <p className="text-xs text-base-content/50 mt-0.5 tracking-widest">••••••••••</p>
+            </div>
           </div>
-          <small className="text-muted" style={{ fontSize: '0.8125rem', marginTop: '0.5rem', display: 'block' }}>
-            คลิกปุ่ม 🔑 เพื่อเปลี่ยนรหัสผ่าน
-          </small>
+          <button className="btn btn-sm btn-outline gap-2" onClick={() => setShowPasswordModal(true)}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+            เปลี่ยนรหัสผ่าน
+          </button>
         </div>
-      </Card.Body>
-    </Card>
+      </div>
+    </div>
   );
 
   const renderLikedItems = (): JSX.Element => (
-      <Card className="profile-info-card mb-4">
-        <Card.Header className="profile-card-header">
-          <div className="d-flex align-items-center gap-2">
-            <div className="profile-section-icon">
-              <i className="fas fa-heart" aria-hidden />
-            </div>
-            <h5 className="mb-0 profile-section-title">รายการที่ถูกใจ</h5>
-          </div>
-        </Card.Header>
-      <Card.Body>
+    <div className="rounded-2xl bg-base-100 border border-base-300 shadow-sm overflow-hidden">
+      <div className="px-6 py-4 border-b border-base-300 flex items-center gap-3">
+        <div className="w-9 h-9 rounded-xl bg-error/10 flex items-center justify-center text-error">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+          </svg>
+        </div>
+        <div>
+          <h3 className="font-semibold text-base-content">รายการที่ถูกใจ</h3>
+          {likedItems.length > 0 && <p className="text-xs text-base-content/50">{likedItems.length} รายการ</p>}
+        </div>
+      </div>
+
+      <div className="p-6">
         {likedItems.length === 0 ? (
-          <div className="profile-empty-state">
-            <div className="profile-empty-state-icon">❤️</div>
-            <h5 className="profile-empty-state-title">ยังไม่มีรายการที่ถูกใจ</h5>
-            <p className="profile-empty-state-description">เริ่มต้นกดถูกใจการ์ดที่คุณสนใจ</p>
+          <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <div className="text-5xl">❤️</div>
+            <h4 className="font-semibold text-base-content/70">ยังไม่มีรายการที่ถูกใจ</h4>
+            <p className="text-sm text-base-content/40">เริ่มต้นกดถูกใจการ์ดที่คุณสนใจ</p>
           </div>
         ) : (
-          <Row>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {likedItems.map((item) => (
-              <Col key={item.id} md={6} lg={4} className="mb-4">
-                <Card 
-                  className="trading-card"
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => navigate(`/post/${item.id}`)}
-                >
-                  <div style={{ height: '200px', overflow: 'hidden' }}>
-                    {item.images && item.images.length > 0 ? (
-                      <Card.Img
-                        variant="top"
-                        src={item.images[0]}
-                        style={{ height: '100%', objectFit: 'cover' }}
-                      />
-                    ) : (
-                      <div className="d-flex align-items-center justify-content-center bg-light" style={{ height: '100%' }}>
-                        <span className="text-muted">ไม่มีรูปภาพ</span>
-                      </div>
-                    )}
+              <div
+                key={item.id}
+                className="rounded-xl border border-base-300 overflow-hidden hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer bg-base-100"
+                onClick={() => navigate(`/post/${item.id}`)}
+              >
+                <div className="h-44 overflow-hidden bg-base-200">
+                  {item.images && item.images.length > 0 ? (
+                    <img src={item.images[0]} alt={item.title} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-base-content/30 text-sm">ไม่มีรูปภาพ</div>
+                  )}
+                </div>
+                <div className="p-3">
+                  <p className="font-semibold text-sm text-base-content line-clamp-1 mb-2">{item.title}</p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-primary font-bold text-sm">
+                      {item.postType === 'auction' ? `เริ่มต้น ${formatPrice(item.startingBid || item.currentBid)}` : formatPrice(item.price)}
+                    </span>
+                    <span className="badge badge-ghost badge-sm">{item.category}</span>
                   </div>
-                  <Card.Body>
-                    <Card.Title className="h6">{item.title}</Card.Title>
-                    <div className="d-flex justify-content-between align-items-center">
-                      <span className="price-highlight">
-                        {item.postType === 'auction' 
-                          ? `เริ่มต้น ${formatPrice(item.startingBid || item.currentBid)}`
-                          : formatPrice(item.price)
-                        }
-                      </span>
-                      <span className="category-badge">{item.category}</span>
-                    </div>
-                    <div className="d-flex justify-content-between align-items-center mt-2">
-                      <small className="text-muted">
-                        ถูกใจเมื่อ {formatDate(item.likedAt)}
-                      </small>
-                    </div>
-                  </Card.Body>
-                </Card>
-              </Col>
+                  <p className="text-xs text-base-content/40 mt-2">ถูกใจเมื่อ {formatDate(item.likedAt)}</p>
+                </div>
+              </div>
             ))}
-          </Row>
+          </div>
         )}
-      </Card.Body>
-    </Card>
+      </div>
+    </div>
   );
 
   const renderAuctions = (): JSX.Element => (
-      <Card className="profile-info-card mb-4">
-        <Card.Header className="profile-card-header">
-          <div className="d-flex align-items-center gap-2">
-            <div className="profile-section-icon">
-              <i className="fas fa-gavel" aria-hidden />
-            </div>
-            <h5 className="mb-0 profile-section-title">การประมูลของฉัน</h5>
-          </div>
-        </Card.Header>
-      <Card.Body>
-        {auctions.length === 0 ? (
-          <div className="profile-empty-state">
-            <div className="profile-empty-state-icon">🔨</div>
-            <h5 className="profile-empty-state-title">ยังไม่มีการประมูล</h5>
-            <p className="profile-empty-state-description">เริ่มต้นสร้างการประมูลการ์ดของคุณ</p>
-          </div>
-        ) : (
-          <div className="profile-empty-state">
-            <div className="profile-empty-state-icon">⏳</div>
-            <h5 className="profile-empty-state-title">ฟีเจอร์การประมูล</h5>
-            <p className="profile-empty-state-description">จะเปิดใช้งานเร็วๆ นี้</p>
-          </div>
-        )}
-      </Card.Body>
-    </Card>
+    <div className="rounded-2xl bg-base-100 border border-base-300 shadow-sm overflow-hidden">
+      <div className="px-6 py-4 border-b border-base-300 flex items-center gap-3">
+        <div className="w-9 h-9 rounded-xl bg-secondary/10 flex items-center justify-center text-secondary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 12l-8.5 8.5c-.83.83-2.17.83-3 0 0 0 0 0 0 0a2.12 2.12 0 0 1 0-3L12 9"/>
+            <path d="M17.64 15L22 10.64"/><path d="M20.91 11.7l-1.25-1.25L22 8l-1-1-1.45 2.25L17.3 7.91l-1.25 1.25"/>
+            <path d="M15 12l-3-3"/>
+          </svg>
+        </div>
+        <h3 className="font-semibold text-base-content">การประมูลของฉัน</h3>
+      </div>
+      <div className="p-6">
+        <div className="flex flex-col items-center justify-center py-16 gap-3">
+          <div className="text-5xl">{auctions.length === 0 ? '🔨' : '⏳'}</div>
+          <h4 className="font-semibold text-base-content/70">{auctions.length === 0 ? 'ยังไม่มีการประมูล' : 'ฟีเจอร์การประมูล'}</h4>
+          <p className="text-sm text-base-content/40">{auctions.length === 0 ? 'เริ่มต้นสร้างการประมูลการ์ดของคุณ' : 'จะเปิดใช้งานเร็วๆ นี้'}</p>
+        </div>
+      </div>
+    </div>
   );
 
   const renderWatchlist = (): JSX.Element => (
-      <Card className="profile-info-card mb-4">
-        <Card.Header className="profile-card-header">
-          <div className="d-flex align-items-center gap-2">
-            <div className="profile-section-icon">
-              <i className="fas fa-eye" aria-hidden />
-            </div>
-            <h5 className="mb-0 profile-section-title">รายการตั้งรับ</h5>
-          </div>
-        </Card.Header>
-      <Card.Body>
-        {watchlist.length === 0 ? (
-          <div className="profile-empty-state">
-            <div className="profile-empty-state-icon">👀</div>
-            <h5 className="profile-empty-state-title">ยังไม่มีรายการตั้งรับ</h5>
-            <p className="profile-empty-state-description">เพิ่มการ์ดที่คุณสนใจลงในรายการตั้งรับ</p>
-          </div>
-        ) : (
-          <div className="profile-empty-state">
-            <div className="profile-empty-state-icon">⏳</div>
-            <h5 className="profile-empty-state-title">ฟีเจอร์รายการตั้งรับ</h5>
-            <p className="profile-empty-state-description">จะเปิดใช้งานเร็วๆ นี้</p>
-          </div>
-        )}
-      </Card.Body>
-    </Card>
+    <div className="rounded-2xl bg-base-100 border border-base-300 shadow-sm overflow-hidden">
+      <div className="px-6 py-4 border-b border-base-300 flex items-center gap-3">
+        <div className="w-9 h-9 rounded-xl bg-info/10 flex items-center justify-center text-info">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+          </svg>
+        </div>
+        <h3 className="font-semibold text-base-content">รายการตั้งรับ</h3>
+      </div>
+      <div className="p-6">
+        <div className="flex flex-col items-center justify-center py-16 gap-3">
+          <div className="text-5xl">{watchlist.length === 0 ? '👀' : '⏳'}</div>
+          <h4 className="font-semibold text-base-content/70">{watchlist.length === 0 ? 'ยังไม่มีรายการตั้งรับ' : 'ฟีเจอร์รายการตั้งรับ'}</h4>
+          <p className="text-sm text-base-content/40">{watchlist.length === 0 ? 'เพิ่มการ์ดที่คุณสนใจลงในรายการตั้งรับ' : 'จะเปิดใช้งานเร็วๆ นี้'}</p>
+        </div>
+      </div>
+    </div>
   );
 
   const renderOrders = (): JSX.Element => {
@@ -948,206 +912,194 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
     const renderOrderItemRow = (it: OrderItemDto, idx: number, showPrice: boolean) => {
       const { title, cardImage, isIndividualCard } = getOrderItemDisplay(it);
       return (
-        <li key={it.id || idx} className="d-flex align-items-center gap-2 mb-2">
+        <li key={it.id || idx} className="flex items-center gap-2">
           {cardImage && (
-            <img
-              src={cardImage}
-              alt=""
-              style={{ width: 40, height: 56, objectFit: 'cover', borderRadius: 4 }}
-            />
+            <img src={cardImage} alt="" className="w-9 h-12 object-cover rounded-md shrink-0" />
           )}
-          <span>
+          <span className="text-sm text-base-content/80">
             {title}
-            {isIndividualCard && <Badge bg="secondary" className="ms-1">แยกใบ</Badge>}
-            {' '}x{it.quantity}
-            {showPrice && <> — {formatPrice(Number(it.unitPrice))}</>}
+            {isIndividualCard && <Badge bg="secondary" className="ml-1">แยกใบ</Badge>}
+            {' '}×{it.quantity}
+            {showPrice && <span className="text-base-content/60"> — {formatPrice(Number(it.unitPrice))}</span>}
           </span>
         </li>
       );
     };
 
+    const statusBadge = (status: string) => {
+      if (status === 'sold') return <span className="badge badge-success badge-sm">ขายแล้ว</span>;
+      if (status === 'shipped') return <span className="badge badge-info badge-sm">จัดส่งแล้ว</span>;
+      return <span className="badge badge-warning badge-sm">รอจัดส่ง</span>;
+    };
+
     return (
-      <>
-        <Card className="profile-info-card mb-4">
-          <Card.Header className="profile-card-header">
-            <div className="d-flex align-items-center gap-2">
-              <div className="profile-section-icon">
-                <i className="fas fa-shopping-bag" aria-hidden />
-              </div>
-              <h5 className="mb-0 profile-section-title">รายการที่ซื้อ</h5>
+      <div className="space-y-4">
+        {/* Buyer Orders */}
+        <div className="rounded-2xl bg-base-100 border border-base-300 shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-base-300 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-success/10 flex items-center justify-center text-success">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/>
+              </svg>
             </div>
-          </Card.Header>
-          <Card.Body>
+            <div>
+              <h3 className="font-semibold text-base-content">รายการที่ซื้อ</h3>
+              {orders.length > 0 && <p className="text-xs text-base-content/50">{orders.length} คำสั่งซื้อ</p>}
+            </div>
+          </div>
+
+          <div className="p-6">
             {ordersLoading ? (
-              <div className="d-flex justify-content-center py-4">
-                <Spinner animation="border" />
-              </div>
+              <div className="flex justify-center py-12"><Spinner /></div>
             ) : orders.length === 0 ? (
-              <div className="profile-empty-state">
-                <div className="profile-empty-state-icon">📋</div>
-                <h5 className="profile-empty-state-title">ยังไม่มีคำสั่งซื้อ</h5>
-                <p className="profile-empty-state-description">เมื่อคุณสั่งซื้อจากตะกร้า คำสั่งซื้อจะแสดงที่นี่</p>
+              <div className="flex flex-col items-center justify-center py-16 gap-3">
+                <div className="text-5xl">📋</div>
+                <h4 className="font-semibold text-base-content/70">ยังไม่มีคำสั่งซื้อ</h4>
+                <p className="text-sm text-base-content/40">เมื่อคุณสั่งซื้อจากตะกร้า คำสั่งซื้อจะแสดงที่นี่</p>
               </div>
             ) : (
-              <div className="d-flex flex-column gap-3">
+              <div className="space-y-3">
                 {orders.map((order) => (
-                  <Card key={order.id} className="border">
-                    <Card.Body>
-                      <div className="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
-                        <div>
-                          <span className="me-2">
-                            <Badge bg={order.status === 'sold' ? 'success' : order.status === 'shipped' ? 'info' : 'warning'}>
-                              {order.status === 'pending_shipment' ? 'รอจัดส่ง' : order.status === 'shipped' ? 'จัดส่งแล้ว' : 'ขายแล้ว'}
-                            </Badge>
-                          </span>
-                          <span className="text-muted small">ผู้ขาย: {order.sellerName || '-'}</span>
-                        </div>
-                        <div className="text-end">
-                          <strong>{formatPrice(Number(order.totalAmount))}</strong>
-                          <div className="small text-muted">{formatOrderDate(order.createdAt)}</div>
-                        </div>
+                  <div key={order.id} className="rounded-xl border border-base-300 overflow-hidden">
+                    <div className="px-4 py-3 bg-base-200/50 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        {statusBadge(order.status)}
+                        <span className="text-xs text-base-content/50">ผู้ขาย: {order.sellerName || '-'}</span>
                       </div>
-                      <ul className="list-unstyled small mb-2">
+                      <div className="text-right">
+                        <p className="font-bold text-sm text-base-content">{formatPrice(Number(order.totalAmount))}</p>
+                        <p className="text-xs text-base-content/40">{formatOrderDate(order.createdAt)}</p>
+                      </div>
+                    </div>
+                    <div className="px-4 py-3">
+                      <ul className="space-y-2 mb-3">
                         {order.items?.map((it, idx) => renderOrderItemRow(it, idx, true))}
                       </ul>
-                      {order.status === 'shipped' && (
-                        <Button
-                          size="sm"
-                          className="btn-tcg-primary me-2"
-                          onClick={async () => {
-                            const result = await ordersAPI.confirmReceived(order.id);
-                            if (result.success) {
-                              toast.success(result.message);
-                              fetchOrders();
-                            } else {
-                              toast.error(result.error);
-                            }
-                          }}
-                        >
-                          ✅ ได้รับของแล้ว
-                        </Button>
-                      )}
-                      {(order.status === 'shipped' || order.status === 'sold') && order.receiptUrl && (
-                        <Button
-                          size="sm"
-                          variant="outline-primary"
-                          className="me-2"
-                          onClick={() => window.open(order.receiptUrl!, '_blank')}
-                        >
-                          📄 ดูใบเสร็จ
-                        </Button>
-                      )}
-                    </Card.Body>
-                  </Card>
+                      <div className="flex flex-wrap gap-2">
+                        {order.status === 'shipped' && (
+                          <button
+                            className="btn btn-success btn-sm gap-1"
+                            onClick={async () => {
+                              const result = await ordersAPI.confirmReceived(order.id);
+                              if (result.success) { toast.success(result.message); fetchOrders(); }
+                              else toast.error(result.error);
+                            }}
+                          >
+                            ✅ ได้รับของแล้ว
+                          </button>
+                        )}
+                        {(order.status === 'shipped' || order.status === 'sold') && order.receiptUrl && (
+                          <button className="btn btn-outline btn-sm gap-1" onClick={() => window.open(order.receiptUrl!, '_blank')}>
+                            📄 ดูใบเสร็จ
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
-          </Card.Body>
-        </Card>
+          </div>
+        </div>
 
-        <Card className="profile-info-card">
-          <Card.Header className="profile-card-header">
-            <div className="d-flex align-items-center gap-2">
-              <div className="profile-section-icon">
-                <i className="fas fa-truck" aria-hidden />
-              </div>
-              <h5 className="mb-0 profile-section-title">รายการที่ต้องจัดส่ง (ผู้ขาย)</h5>
+        {/* Seller Orders */}
+        <div className="rounded-2xl bg-base-100 border border-base-300 shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-base-300 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+              </svg>
             </div>
-          </Card.Header>
-          <Card.Body>
+            <div>
+              <h3 className="font-semibold text-base-content">รายการที่ต้องจัดส่ง</h3>
+              {sellerOrders.length > 0 && <p className="text-xs text-base-content/50">{sellerOrders.length} คำสั่ง</p>}
+            </div>
+          </div>
+
+          <div className="p-6">
             {sellerOrdersLoading ? (
-              <div className="d-flex justify-content-center py-4">
-                <Spinner animation="border" />
-              </div>
+              <div className="flex justify-center py-12"><Spinner /></div>
             ) : sellerOrders.length === 0 ? (
-              <div className="profile-empty-state">
-                <div className="profile-empty-state-icon">📤</div>
-                <h5 className="profile-empty-state-title">ไม่มีคำสั่งที่ต้องจัดส่ง</h5>
-                <p className="profile-empty-state-description">เมื่อมีลูกค้าสั่งซื้อสินค้าของคุณ จะแสดงที่นี่</p>
+              <div className="flex flex-col items-center justify-center py-16 gap-3">
+                <div className="text-5xl">📤</div>
+                <h4 className="font-semibold text-base-content/70">ไม่มีคำสั่งที่ต้องจัดส่ง</h4>
+                <p className="text-sm text-base-content/40">เมื่อมีลูกค้าสั่งซื้อสินค้าของคุณ จะแสดงที่นี่</p>
               </div>
             ) : (
-              <div className="d-flex flex-column gap-3">
+              <div className="space-y-3">
                 {sellerOrders.map((order) => (
-                  <Card key={order.id} className="border">
-                    <Card.Body>
-                      <div className="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
-                        <div>
-                          <span className="me-2">
-                            <Badge bg={order.status === 'sold' ? 'success' : order.status === 'shipped' ? 'info' : 'warning'}>
-                              {order.status === 'pending_shipment' ? 'รอจัดส่ง' : order.status === 'shipped' ? 'จัดส่งแล้ว' : 'ขายแล้ว'}
-                            </Badge>
-                          </span>
-                          <span className="text-muted small">ยอดรวม: {formatPrice(Number(order.totalAmount))}</span>
-                        </div>
-                        <div className="text-end small text-muted">{formatOrderDate(order.createdAt)}</div>
+                  <div key={order.id} className="rounded-xl border border-base-300 overflow-hidden">
+                    <div className="px-4 py-3 bg-base-200/50 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        {statusBadge(order.status)}
+                        <span className="text-xs text-base-content/50">{formatOrderDate(order.createdAt)}</span>
                       </div>
+                      <p className="font-bold text-sm text-base-content">{formatPrice(Number(order.totalAmount))}</p>
+                    </div>
+                    <div className="px-4 py-3 space-y-2">
                       {order.buyerName != null && (
-                        <p className="small mb-1"><strong>ผู้ซื้อ:</strong> {order.buyerName || '-'}</p>
+                        <p className="text-sm"><span className="font-medium text-base-content/70">ผู้ซื้อ:</span> {order.buyerName || '-'}</p>
                       )}
-                      {order.shippingAddress != null && order.shippingAddress !== '' && (
-                        <p className="small text-muted mb-2">
-                          <strong>ที่อยู่จัดส่ง:</strong><br />
+                      {order.shippingAddress && (
+                        <p className="text-sm text-base-content/60">
+                          <span className="font-medium text-base-content/70">ที่อยู่จัดส่ง:</span><br />
                           <span style={{ whiteSpace: 'pre-wrap' }}>{order.shippingAddress}</span>
                         </p>
                       )}
-                      {order.shippingPhone != null && order.shippingPhone !== '' && (
-                        <p className="small text-muted mb-2">
-                          <strong>เบอร์โทร:</strong> {order.shippingPhone}
-                        </p>
+                      {order.shippingPhone && (
+                        <p className="text-sm text-base-content/60"><span className="font-medium text-base-content/70">เบอร์โทร:</span> {order.shippingPhone}</p>
                       )}
-                      <ul className="list-unstyled small mb-2">
+                      <ul className="space-y-2 pt-1 border-t border-base-300">
                         {order.items?.map((it, idx) => renderOrderItemRow(it, idx, false))}
                       </ul>
-                      {order.status === 'pending_shipment' && (
-                        <Button
-                          size="sm"
-                          className="btn-tcg-primary"
-                          onClick={() => {
-                            setConfirmShipmentOrderId(order.id);
-                            setReceiptFile(null);
-                            setShowReceiptModal(true);
-                          }}
-                        >
-                          ยืนยันการส่ง (แนบใบเสร็จ)
-                        </Button>
-                      )}
-                      {(order.status === 'shipped' || order.status === 'sold') && order.receiptUrl && (
-                        <Button
-                          size="sm"
-                          variant="outline-secondary"
-                          onClick={() => window.open(order.receiptUrl!, '_blank')}
-                        >
-                          ดูใบเสร็จ
-                        </Button>
-                      )}
-                    </Card.Body>
-                  </Card>
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {order.status === 'pending_shipment' && (
+                          <button
+                            className="btn btn-primary btn-sm gap-1"
+                            onClick={() => { setConfirmShipmentOrderId(order.id); setReceiptFile(null); setShowReceiptModal(true); }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                            ยืนยันการส่ง (แนบใบเสร็จ)
+                          </button>
+                        )}
+                        {(order.status === 'shipped' || order.status === 'sold') && order.receiptUrl && (
+                          <button className="btn btn-outline btn-sm" onClick={() => window.open(order.receiptUrl!, '_blank')}>
+                            📄 ดูใบเสร็จ
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
-          </Card.Body>
-        </Card>
+          </div>
+        </div>
 
-        <Modal show={showReceiptModal} onHide={() => { setShowReceiptModal(false); setConfirmShipmentOrderId(null); setReceiptFile(null); }} centered>
+        {/* Receipt Upload Modal */}
+        <Modal show={showReceiptModal} onHide={() => { setShowReceiptModal(false); setConfirmShipmentOrderId(null); setReceiptFile(null); }}>
           <Modal.Header closeButton>
             <Modal.Title>ยืนยันการส่ง — แนบใบเสร็จ</Modal.Title>
           </Modal.Header>
           <Modal.Body>
-            <Form.Group className="mb-3">
-              <Form.Label>เลือกรูปใบเสร็จ</Form.Label>
-              <Form.Control
+            <div className="form-control">
+              <label className="label"><span className="label-text font-medium">เลือกรูปใบเสร็จ</span></label>
+              <input
                 type="file"
                 accept="image/*"
+                className="file-input file-input-bordered w-full"
                 onChange={(e) => setReceiptFile((e.target as HTMLInputElement).files?.[0] || null)}
               />
-            </Form.Group>
+            </div>
           </Modal.Body>
           <Modal.Footer>
-            <Button variant="secondary" onClick={() => { setShowReceiptModal(false); setConfirmShipmentOrderId(null); setReceiptFile(null); }}>
+            <button className="btn btn-ghost btn-sm" onClick={() => { setShowReceiptModal(false); setConfirmShipmentOrderId(null); setReceiptFile(null); }}>
               ยกเลิก
-            </Button>
-            <Button
-              className="btn-tcg-primary"
+            </button>
+            <button
+              className="btn btn-primary btn-sm gap-2"
               disabled={!receiptFile || !confirmShipmentOrderId || confirmShipmentLoading}
               onClick={async () => {
                 if (!receiptFile || !confirmShipmentOrderId || !currentUser) return;
@@ -1176,263 +1128,165 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
                 }
               }}
             >
-              {confirmShipmentLoading ? (
-                <>
-                  <Spinner size="sm" className="me-2" />
-                  กำลังอัปโหลด...
-                </>
-              ) : (
-                'ยืนยันการส่ง'
-              )}
-            </Button>
+              {confirmShipmentLoading ? (<><Spinner size="sm" /> กำลังอัปโหลด...</>) : 'ยืนยันการส่ง'}
+            </button>
           </Modal.Footer>
         </Modal>
-      </>
+      </div>
     );
   };
 
-  const renderMyPosts = (): JSX.Element => (
-      <Card className="profile-info-card">
-        <Card.Header className="profile-card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-          <div className="d-flex align-items-center gap-2">
-            <div className="profile-section-icon">
-              <i className="fas fa-clipboard-list" aria-hidden />
+  const renderMyPosts = (): JSX.Element => {
+    const getPostStatusBadge = (post: Post) => {
+      if (post.status === 'active') return <span className="badge badge-success badge-sm">เปิดขาย</span>;
+      if (post.status === 'pending') {
+        const label = post.postType === 'auction' && post.auctionStatus === 'won_pending_payment' ? 'รอการชำระเงิน' : 'รออนุมัติ';
+        return <span className="badge badge-warning badge-sm">{label}</span>;
+      }
+      if (post.status === 'sold') return <span className="badge badge-info badge-sm">ขายแล้ว</span>;
+      if (post.status === 'rejected') return <span className="badge badge-error badge-sm">ถูกปฏิเสธ</span>;
+      if (post.status === 'inactive') return <span className="badge badge-neutral badge-sm">ปิดการขาย</span>;
+      return <span className="badge badge-ghost badge-sm">ไม่ทราบสถานะ</span>;
+    };
+
+    return (
+      <div className="rounded-2xl bg-base-100 border border-base-300 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-base-300 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-accent/10 flex items-center justify-center text-accent">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+              </svg>
             </div>
-            <h5 className="mb-0 profile-section-title">รายการของฉัน</h5>
+            <div>
+              <h3 className="font-semibold text-base-content">รายการของฉัน</h3>
+              {myPosts.length > 0 && <p className="text-xs text-base-content/50">{myPosts.length} โพสต์</p>}
+            </div>
           </div>
-          <Button
-            variant="primary"
-            size="sm"
-            className="btn-tcg-primary"
-            onClick={() => navigate('/create-post')}
-          >
-            + สร้างโพส
-          </Button>
-        </Card.Header>
-      <Card.Body>
-        {myPosts.length === 0 ? (
-          <div className="profile-empty-state">
-            <div className="profile-empty-state-icon">📝</div>
-            <h5 className="profile-empty-state-title">ยังไม่มีโพสต์</h5>
-            <p className="profile-empty-state-description">เริ่มต้นสร้างโพสต์การ์ดของคุณ</p>
-          </div>
-        ) : (
-          <Row>
-            {myPosts.map((post) => (
-              <Col key={post.id} md={6} lg={4} className="mb-4">
-                <Card 
-                  className="trading-card"
-                  style={{ cursor: 'pointer' }}
+          <button className="btn btn-primary btn-sm gap-2" onClick={() => navigate('/create-post')}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            สร้างโพส
+          </button>
+        </div>
+
+        <div className="p-6">
+          {myPosts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <div className="text-5xl">📝</div>
+              <h4 className="font-semibold text-base-content/70">ยังไม่มีโพสต์</h4>
+              <p className="text-sm text-base-content/40 mb-2">เริ่มต้นสร้างโพสต์การ์ดของคุณ</p>
+              <button className="btn btn-primary btn-sm" onClick={() => navigate('/create-post')}>+ สร้างโพสแรก</button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {myPosts.map((post) => (
+                <div
+                  key={post.id}
+                  className="rounded-xl border border-base-300 overflow-hidden hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer bg-base-100"
                   onClick={() => navigate(`/post/${post.id}`)}
                 >
-                  <div style={{ height: '200px', overflow: 'hidden' }}>
+                  <div className="h-44 overflow-hidden bg-base-200">
                     {post.images && post.images.length > 0 ? (
-                      <Card.Img
-                        variant="top"
-                        src={post.images[0]}
-                        style={{ height: '100%', objectFit: 'cover' }}
-                      />
+                      <img src={post.images[0]} alt={post.title} className="w-full h-full object-cover" />
                     ) : (
-                      <div className="d-flex align-items-center justify-content-center bg-light" style={{ height: '100%' }}>
-                        <span className="text-muted">ไม่มีรูปภาพ</span>
-                      </div>
+                      <div className="w-full h-full flex items-center justify-center text-base-content/30 text-sm">ไม่มีรูปภาพ</div>
                     )}
                   </div>
-                  <Card.Body>
-                    <Card.Title className="h6">{post.title}</Card.Title>
-                    <div className="d-flex justify-content-between align-items-center mb-2">
-                      <span className="price-highlight">
-                        {post.postType === 'auction' 
-                          ? `เริ่มต้น ${formatPrice(post.startingBid)}` 
-                          : formatPrice(post.price)
-                        }
+                  <div className="p-3">
+                    <p className="font-semibold text-sm text-base-content line-clamp-1 mb-2">{post.title}</p>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-primary font-bold text-sm">
+                        {post.postType === 'auction' ? `เริ่มต้น ${formatPrice(post.startingBid)}` : formatPrice(post.price)}
                       </span>
-                      <span className="category-badge">{post.category}</span>
+                      <span className="badge badge-ghost badge-sm">{post.category}</span>
                     </div>
-                    <div className="d-flex justify-content-between align-items-center">
-                      <small className="text-muted">
-                        สถานะ:{' '}
-                        <span
-                          className={`badge ${
-                            post.status === 'active'
-                              ? 'bg-success'
-                              : post.status === 'pending'
-                                ? 'bg-warning'
-                                : post.status === 'sold'
-                                  ? 'bg-info'
-                                  : post.status === 'rejected'
-                                    ? 'bg-danger'
-                                    : post.status === 'inactive'
-                                      ? 'bg-secondary'
-                                      : 'bg-secondary'
-                          }`}
-                        >
-                          {post.status === 'active'
-                            ? 'เปิดขาย'
-                            : post.status === 'pending'
-                              ? post.postType === 'auction' && post.auctionStatus === 'won_pending_payment'
-                                ? 'รอการชำระเงิน'
-                                : 'รออนุมัติ'
-                              : post.status === 'sold'
-                                ? 'ขายแล้ว'
-                                : post.status === 'rejected'
-                                  ? 'ถูกปฏิเสธ'
-                                  : post.status === 'inactive'
-                                    ? 'ปิดการขาย'
-                                    : 'ไม่ทราบสถานะ'}
-                        </span>
-                      </small>
-                      <small className="text-muted">
-                        {formatDate(post.createdAt)}
-                      </small>
+                    <div className="flex items-center justify-between">
+                      {getPostStatusBadge(post)}
+                      <p className="text-xs text-base-content/40">{formatDate(post.createdAt)}</p>
                     </div>
-                  </Card.Body>
-                </Card>
-              </Col>
-            ))}
-          </Row>
-        )}
-      </Card.Body>
-    </Card>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const EyeIcon = ({ open }: { open: boolean }) => open ? (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+      <line x1="1" y1="1" x2="23" y2="23"/>
+    </svg>
+  ) : (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+    </svg>
   );
 
   return (
-    <div className="profile-page-wrapper">
-      <div className="profile-container">
-        <Row className="g-0 h-100">
+    <div className="min-h-screen bg-base-200/40">
+      <div className="max-w-7xl mx-auto px-3 md:px-6 py-6">
+        <div className="grid grid-cols-12 gap-4 md:gap-6">
           {/* Sidebar */}
-          <Col xs={12} md={4} lg={3} className="sidebar-column">
-            <ProfileSidebar activeTab={activeTab} onTabChange={(tabId: string) => setActiveTab(tabId as ActiveTab)} />
-          </Col>
-          
+          <div className="col-span-12 md:col-span-4 lg:col-span-3">
+            <div className="sticky top-4">
+              <ProfileSidebar activeTab={activeTab} onTabChange={(tabId: string) => setActiveTab(tabId as ActiveTab)} />
+            </div>
+          </div>
+
           {/* Main Content */}
-          <Col xs={12} md={8} lg={9} className="main-content-column">
-            <div className="main-content">
+          <div className="col-span-12 md:col-span-8 lg:col-span-9">
+            <div className="space-y-4">
               {renderContent()}
             </div>
-          </Col>
-        </Row>
+          </div>
+        </div>
       </div>
 
       {/* Password Update Modal */}
-      <Modal show={showPasswordModal} onHide={() => setShowPasswordModal(false)} centered>
+      <Modal show={showPasswordModal} onHide={() => setShowPasswordModal(false)}>
         <Modal.Header closeButton>
           <Modal.Title>เปลี่ยนรหัสผ่าน</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          <Form onSubmit={handlePasswordUpdate}>
-            <Form.Group className="mb-3">
-              <Form.Label>รหัสผ่านปัจจุบัน</Form.Label>
-              <div className="password-input-with-toggle">
-                <Form.Control
-                  type={showCurrentPassword ? 'text' : 'password'}
-                  name="currentPassword"
-                  value={passwordData.currentPassword}
-                  onChange={handlePasswordChange}
-                  required
-                  className="form-control-sakura"
-                />
-                <button
-                  type="button"
-                  className="password-toggle-btn password-toggle-btn--modal"
-                  onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                  title={showCurrentPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
-                  aria-label={showCurrentPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
-                >
-                  {showCurrentPassword ? (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-                      <line x1="1" y1="1" x2="23" y2="23" />
-                    </svg>
-                  ) : (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                      <circle cx="12" cy="12" r="3" />
-                    </svg>
-                  )}
-                </button>
+          <form onSubmit={handlePasswordUpdate} className="space-y-4">
+            {[
+              { label: 'รหัสผ่านปัจจุบัน', name: 'currentPassword' as const, show: showCurrentPassword, toggle: () => setShowCurrentPassword(p => !p) },
+              { label: 'รหัสผ่านใหม่', name: 'newPassword' as const, show: showNewPassword, toggle: () => setShowNewPassword(p => !p) },
+              { label: 'ยืนยันรหัสผ่านใหม่', name: 'confirmPassword' as const, show: showConfirmNewPassword, toggle: () => setShowConfirmNewPassword(p => !p) },
+            ].map(({ label, name, show, toggle }) => (
+              <div key={name} className="form-control">
+                <label className="label pb-1"><span className="label-text font-medium">{label}</span></label>
+                <div className="relative">
+                  <input
+                    type={show ? 'text' : 'password'}
+                    name={name}
+                    value={passwordData[name]}
+                    onChange={handlePasswordChange}
+                    required
+                    className="input input-bordered w-full pr-12"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-base-content/40 hover:text-base-content transition-colors"
+                    onClick={toggle}
+                  >
+                    <EyeIcon open={show} />
+                  </button>
+                </div>
               </div>
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label>รหัสผ่านใหม่</Form.Label>
-              <div className="password-input-with-toggle">
-                <Form.Control
-                  type={showNewPassword ? 'text' : 'password'}
-                  name="newPassword"
-                  value={passwordData.newPassword}
-                  onChange={handlePasswordChange}
-                  required
-                  className="form-control-sakura"
-                />
-                <button
-                  type="button"
-                  className="password-toggle-btn password-toggle-btn--modal"
-                  onClick={() => setShowNewPassword(!showNewPassword)}
-                  title={showNewPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
-                  aria-label={showNewPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
-                >
-                  {showNewPassword ? (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-                      <line x1="1" y1="1" x2="23" y2="23" />
-                    </svg>
-                  ) : (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                      <circle cx="12" cy="12" r="3" />
-                    </svg>
-                  )}
-                </button>
-              </div>
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label>ยืนยันรหัสผ่านใหม่</Form.Label>
-              <div className="password-input-with-toggle">
-                <Form.Control
-                  type={showConfirmNewPassword ? 'text' : 'password'}
-                  name="confirmPassword"
-                  value={passwordData.confirmPassword}
-                  onChange={handlePasswordChange}
-                  required
-                  className="form-control-sakura"
-                />
-                <button
-                  type="button"
-                  className="password-toggle-btn password-toggle-btn--modal"
-                  onClick={() => setShowConfirmNewPassword(!showConfirmNewPassword)}
-                  title={showConfirmNewPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
-                  aria-label={showConfirmNewPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
-                >
-                  {showConfirmNewPassword ? (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-                      <line x1="1" y1="1" x2="23" y2="23" />
-                    </svg>
-                  ) : (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                      <circle cx="12" cy="12" r="3" />
-                    </svg>
-                  )}
-                </button>
-              </div>
-            </Form.Group>
-            <div className="d-flex gap-2">
-              <Button type="submit" className="btn-tcg-primary" disabled={loading}>
-                {loading ? (
-                  <>
-                    <span className="spinner-border spinner-border-sm me-2" />
-                    กำลังอัปเดต...
-                  </>
-                ) : (
-                  'อัปเดตรหัสผ่าน'
-                )}
-              </Button>
-              <Button className="btn-tcg-outline" onClick={() => setShowPasswordModal(false)}>
-                ยกเลิก
-              </Button>
+            ))}
+            <div className="flex gap-2 pt-2">
+              <button type="submit" className="btn btn-primary btn-sm flex-1 gap-2" disabled={loading}>
+                {loading ? <><Spinner size="sm" /> กำลังอัปเดต...</> : 'อัปเดตรหัสผ่าน'}
+              </button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowPasswordModal(false)}>ยกเลิก</button>
             </div>
-          </Form>
+          </form>
         </Modal.Body>
       </Modal>
 

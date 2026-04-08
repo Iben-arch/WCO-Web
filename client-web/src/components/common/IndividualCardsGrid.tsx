@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Alert, Spinner, Button } from 'react-bootstrap';
 import IndividualCard from './IndividualCard';
-import { useAuth } from '../../contexts/AuthContext';
 import { useCart } from '../../contexts/CartContext';
 import { Post, IndividualCardItem, CardForCart } from '../../types';
 import axios from '../../utils/axiosInterceptor';
@@ -18,10 +16,8 @@ interface IndividualCardsGridProps {
 }
 
 const IndividualCardsGrid: React.FC<IndividualCardsGridProps> = ({ post, onCardProcessed, readOnly = false, isAuctionIndividual = false, onOpenBidModal, placingBid = false }) => {
-  const { currentUser } = useAuth();
   const { addToCart, removeFromCart, isInCart } = useCart();
   const [cards, setCards] = useState<IndividualCardItem[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
   const [processing, setProcessing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [cardBids, setCardBids] = useState<Record<string, number>>({});
@@ -146,33 +142,35 @@ const IndividualCardsGrid: React.FC<IndividualCardsGridProps> = ({ post, onCardP
   if (post.postType !== 'sale' && post.postType !== 'auction') return null;
 
   return (
-    <Container className="individual-cards-section">
-      <header className="individual-cards-section-header">
-        <h2 className="individual-cards-section-title">
-          การ์ดแต่ละใบ
-        </h2>
-        <p className="individual-cards-section-desc">
+    <section className="card bg-base-100 border border-base-300 shadow-sm mt-4">
+      <header className="card-body pb-4 border-b border-base-300">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h2 className="text-xl font-bold m-0">การ์ดแต่ละใบ</h2>
+          <div className="badge badge-primary badge-outline">
+            {cards.length} ใบ
+          </div>
+        </div>
+        <p className="text-sm text-base-content/70 mt-2 mb-0">
           {isAuctionIndividual ? 'ประมูลแต่ละใบ เมื่อชนะใบนั้นจะเข้าตะกร้า' : readOnly ? 'การ์ดที่รวมอยู่ในรายการประมูล' : 'เลือกการ์ดที่ต้องการซื้อได้จากรายการด้านล่าง'}
         </p>
       </header>
 
-      {cards.length === 0 && !processing && !loading && !readOnly && (
-        <div className="individual-cards-empty">
-          <div className="individual-cards-empty-card">
-            <div className="individual-cards-empty-icon-wrap">
-              <i className="fas fa-images individual-cards-empty-icon" aria-hidden />
+      {cards.length === 0 && !processing && !readOnly && (
+        <div className="card-body">
+          <div className="rounded-2xl border border-dashed border-base-300 bg-base-200/60 p-8 text-center">
+            <div className="mx-auto mb-3 inline-flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <i className="fas fa-images text-xl" aria-hidden />
             </div>
-            <h3 className="individual-cards-empty-title">ยังไม่มีการ์ดแต่ละใบ</h3>
-            <p className="individual-cards-empty-desc">กดปุ่มด้านล่างเพื่อประมวลผลภาพและแยกการ์ดแต่ละใบ</p>
-            <Button
-              variant="primary"
+            <h3 className="text-lg font-semibold">ยังไม่มีการ์ดแต่ละใบ</h3>
+            <p className="text-sm text-base-content/70 mb-4">กดปุ่มด้านล่างเพื่อประมวลผลภาพและแยกการ์ดแต่ละใบ</p>
+            <button
+              className="btn btn-primary"
               onClick={processPostImages}
               disabled={processing}
-              className="individual-cards-empty-btn"
             >
               {processing ? (
                 <>
-                  <Spinner as="span" animation="border" size="sm" className="me-2" />
+                  <span className="loading loading-spinner loading-sm me-2" />
                   กำลังประมวลผล...
                 </>
               ) : (
@@ -181,46 +179,46 @@ const IndividualCardsGrid: React.FC<IndividualCardsGridProps> = ({ post, onCardP
                   ประมวลผลการ์ดอัตโนมัติ
                 </>
               )}
-            </Button>
+            </button>
           </div>
         </div>
       )}
 
       {processing && (
-        <div className="individual-cards-processing">
-          <div className="individual-cards-processing-card">
-            <div className="individual-cards-processing-spinner-wrap">
-              <Spinner animation="border" variant="primary" className="individual-cards-processing-spinner" />
+        <div className="card-body">
+          <div className="rounded-xl border border-base-300 bg-base-200 p-6 text-center">
+            <div className="mb-3">
+              <span className="loading loading-spinner loading-lg text-primary" />
             </div>
-            <h3 className="individual-cards-processing-title">กำลังประมวลผลภาพ...</h3>
-            <p className="individual-cards-processing-desc">ระบบกำลังใช้ AI ในการแยกการ์ดแต่ละใบจากภาพ</p>
+            <h3 className="text-lg font-semibold">กำลังประมวลผลภาพ...</h3>
+            <p className="text-sm text-base-content/70">ระบบกำลังใช้ AI ในการแยกการ์ดแต่ละใบจากภาพ</p>
           </div>
         </div>
       )}
 
       {error && (
-        <div className="individual-cards-error">
-          <div className="individual-cards-error-card">
-            <span className="individual-cards-error-icon" aria-hidden>
+        <div className="card-body pt-0">
+          <div className="alert alert-error">
+            <span className="text-lg" aria-hidden>
               <i className="fas fa-exclamation-triangle" />
             </span>
-            <p className="individual-cards-error-text">{error}</p>
-            <Button
-              variant="outline-danger"
-              size="sm"
+            <div className="flex-1">
+              <p className="font-medium">{error}</p>
+            </div>
+            <button
+              className="btn btn-sm btn-outline btn-error"
               onClick={processPostImages}
               disabled={processing}
-              className="individual-cards-error-retry"
             >
               ลองใหม่
-            </Button>
+            </button>
           </div>
         </div>
       )}
 
       {cards.length > 0 && (
-        <div className="individual-cards-grid-wrap">
-          <div className="individual-cards-grid">
+        <div className="card-body pt-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {cards.map((card) => (
               <IndividualCard
                 key={card.id}
@@ -229,7 +227,7 @@ const IndividualCardsGrid: React.FC<IndividualCardsGridProps> = ({ post, onCardP
                 onAddToCart={handleAddToCart}
                 onRemoveFromCart={handleRemoveFromCart}
                 isInCart={isInCart(post.id, card.id)}
-                isAddingToCart={loading}
+                isAddingToCart={false}
                 readOnly={readOnly && !isAuctionIndividual}
                 isAuctionCard={isAuctionIndividual}
                 cardCurrentBid={cardBids[card.id]}
@@ -244,7 +242,7 @@ const IndividualCardsGrid: React.FC<IndividualCardsGridProps> = ({ post, onCardP
           </div>
         </div>
       )}
-    </Container>
+    </section>
   );
 };
 

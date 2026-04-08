@@ -1,9 +1,9 @@
 import React, { Component, ReactNode, ErrorInfo } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
-import 'bootstrap/dist/css/bootstrap.min.css';
 import 'react-toastify/dist/ReactToastify.css';
 import './styles/tailwind.css';
+import './styles/daisy-bridge.css';
 
 import { AuthProvider } from './contexts/AuthContext';
 import { CartProvider } from './contexts/CartContext';
@@ -49,8 +49,8 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   render(): ReactNode {
     if (this.state.hasError) {
       return (
-        <div className="container py-5">
-          <div className="alert alert-danger">
+        <div className="container py-8">
+          <div className="alert alert-danger shadow-sm">
             <h4>เกิดข้อผิดพลาด</h4>
             <p>กรุณารีเฟรชหน้าเว็บหรือติดต่อผู้ดูแลระบบ</p>
             <button 
@@ -74,9 +74,9 @@ const App: React.FC = () => {
       <AuthProvider>
         <CartProvider>
           <Router>
-            <div className="App min-vh-100">
+            <div className="App min-h-screen bg-base-200 text-base-content" data-theme="wcothailand">
               <Navbar />
-              <main className="min-vh-100">
+              <main className="min-h-screen">
                 <Routes>
                       <Route path="/" element={<Home />} />
                       <Route path="/login" element={<Login />} />

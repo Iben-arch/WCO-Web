@@ -1,11 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Alert, Spinner } from 'react-bootstrap';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
 import axios from '../utils/axiosInterceptor';
-import { toast } from 'react-toastify';
-import { PrimaryActionButton, SecondaryActionButton } from '../components/common/ButtonComponents';
-import '../styles/seller-profile.css';
 import { Seller, Post, FirestoreTimestamp } from '../types';
 
 type PostFilter = 'all' | 'active' | 'sold';
@@ -13,7 +8,6 @@ type PostFilter = 'all' | 'active' | 'sold';
 const SellerProfile: React.FC = () => {
   const { sellerId } = useParams<{ sellerId: string }>();
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
   const [seller, setSeller] = useState<Seller | null>(null);
   const [sellerPosts, setSellerPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -38,7 +32,6 @@ const SellerProfile: React.FC = () => {
         axios.get(`/api/auth/seller/${sellerId}`),
         axios.get(`/api/posts/seller/${sellerId}`)
       ]);
-
       setSeller(sellerResponse.data);
       setSellerPosts(postsResponse.data.posts || []);
     } catch (err: unknown) {
@@ -58,15 +51,10 @@ const SellerProfile: React.FC = () => {
   });
 
   const formatPrice = (price: number | undefined): string => {
-    if (!price || isNaN(price) || price === null || price === undefined) {
-      return 'ราคาไม่ระบุ';
-    }
+    if (!price || isNaN(price)) return 'ราคาไม่ระบุ';
     const numPrice = parseFloat(price.toString());
     if (isNaN(numPrice) || numPrice <= 0) return 'ราคาไม่ระบุ';
-    return new Intl.NumberFormat('th-TH', {
-      style: 'currency',
-      currency: 'THB'
-    }).format(numPrice);
+    return new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' }).format(numPrice);
   };
 
   const formatDate = (dateString: Date | FirestoreTimestamp | string | undefined): string => {
@@ -79,49 +67,38 @@ const SellerProfile: React.FC = () => {
         date = new Date(dateString);
       }
       if (isNaN(date.getTime())) return 'วันที่ไม่ระบุ';
-      return date.toLocaleDateString('th-TH', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      });
+      return date.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' });
     } catch {
       return 'วันที่ไม่ระบุ';
     }
   };
 
-  const handleStartChat = (): void => {
-    toast.info('ระบบแชทถูกปิดใช้งานแล้ว');
-  };
-
   if (loading) {
     return (
-      <div className="seller-profile-loading" aria-live="polite" aria-busy="true">
-        <Spinner animation="border" variant="primary" className="seller-profile-loading-spinner" />
-        <p className="seller-profile-loading-text">กำลังโหลดข้อมูลผู้ขาย...</p>
+      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4 bg-base-200/40">
+        <span className="loading loading-spinner loading-lg text-primary" />
+        <p className="text-base-content/50 text-sm">กำลังโหลดข้อมูลผู้ขาย...</p>
       </div>
     );
   }
 
   if (error || !seller) {
     return (
-      <div className="seller-profile-error">
-        <Container>
-          <div className="seller-profile-error-card">
-            <div className="seller-profile-error-icon" aria-hidden>
-              <i className="fas fa-user-slash" />
-            </div>
-            <h5 className="seller-profile-error-title">ไม่พบข้อมูลผู้ขาย</h5>
-            <p className="seller-profile-error-desc">{error || 'ผู้ขายนี้อาจถูกลบหรือไม่พบในระบบ'}</p>
-            <div className="seller-profile-error-actions">
-              <PrimaryActionButton as={Link as any} to="/" size="sm" icon={<i className="fas fa-home" />}>
-                กลับหน้าแรก
-              </PrimaryActionButton>
-              <SecondaryActionButton type="button" size="sm" onClick={() => window.history.back()} icon={<i className="fas fa-arrow-left" />}>
-                กลับ
-              </SecondaryActionButton>
-            </div>
+      <div className="min-h-[60vh] flex items-center justify-center bg-base-200/40 p-4">
+        <div className="card bg-base-100 border border-base-300 shadow-md w-full max-w-sm text-center p-8">
+          <div className="w-16 h-16 rounded-full bg-error/10 flex items-center justify-center mx-auto mb-4">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-error">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+              <line x1="18" y1="6" x2="6" y2="18"/>
+            </svg>
           </div>
-        </Container>
+          <h3 className="font-bold text-lg text-base-content mb-2">ไม่พบข้อมูลผู้ขาย</h3>
+          <p className="text-sm text-base-content/50 mb-6">{error || 'ผู้ขายนี้อาจถูกลบหรือไม่พบในระบบ'}</p>
+          <div className="flex gap-2 justify-center">
+            <Link to="/" className="btn btn-primary btn-sm">กลับหน้าแรก</Link>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => window.history.back()}>ย้อนกลับ</button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -129,151 +106,194 @@ const SellerProfile: React.FC = () => {
   const activeCount = sellerPosts.filter((p) => p.status === 'active').length;
   const soldCount = sellerPosts.filter((p) => p.status === 'sold').length;
 
+  const tabs: { key: PostFilter; label: string; count: number }[] = [
+    { key: 'all', label: 'ทั้งหมด', count: sellerPosts.length },
+    { key: 'active', label: 'กำลังขาย', count: activeCount },
+    { key: 'sold', label: 'ขายแล้ว', count: soldCount },
+  ];
+
   return (
-    <div className="seller-profile-container">
-      {/* Mercari-style: Simple white header with seller info */}
-      <div className="seller-mercari-header">
-        <Container>
-          <div className="seller-mercari-breadcrumb">
-            <Link to="/">หน้าแรก</Link>
-            <span className="mx-1">›</span>
-            <span>ประวัติผู้ขาย</span>
-          </div>
-          <div className="seller-mercari-info">
-            <div className="seller-mercari-avatar-wrap">
+    <div className="min-h-screen bg-base-200/40 pb-10">
+      {/* Hero Header */}
+      <div className="bg-base-100 border-b border-base-300 shadow-sm">
+        <div className="max-w-6xl mx-auto px-4 pt-4 pb-0">
+          {/* Breadcrumb */}
+          <nav className="flex items-center gap-1.5 text-xs text-base-content/40 mb-4">
+            <Link to="/" className="hover:text-primary transition-colors">หน้าแรก</Link>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+            <span className="text-base-content/60">ประวัติผู้ขาย</span>
+          </nav>
+
+          {/* Seller Info */}
+          <div className="flex flex-wrap items-start gap-5 pb-6">
+            {/* Avatar */}
+            <div className="shrink-0">
               {seller.profileImage ? (
                 <img
                   src={seller.profileImage}
                   alt={seller.displayName}
-                  className="seller-mercari-avatar"
+                  className="w-20 h-20 rounded-2xl object-cover border-2 border-base-300 shadow-md"
                 />
               ) : (
-                <div className="seller-mercari-avatar-placeholder" aria-hidden>
-                  <i className="fas fa-user" />
+                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center border-2 border-base-300 shadow-md">
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-primary/60">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                  </svg>
                 </div>
               )}
             </div>
-            <div className="seller-mercari-details">
-              <h2 className="seller-mercari-name">{seller.displayName}</h2>
-              <p className="seller-mercari-meta">เป็นสมาชิกเมื่อ {formatDate(seller.createdAt)}</p>
-              <div className="seller-mercari-stats">
-                <span className="seller-mercari-stat"><strong>{sellerPosts.length}</strong> โพสต์</span>
-                <span className="seller-mercari-stat"><strong>{activeCount}</strong> กำลังขาย</span>
-                <span className="seller-mercari-stat"><strong>{soldCount}</strong> ขายแล้ว</span>
+
+            {/* Details */}
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2 mb-1">
+                <h1 className="text-xl font-bold text-base-content">{seller.displayName}</h1>
+                <span className="badge badge-primary badge-sm">ผู้ขาย</span>
               </div>
-              {seller.phone && (
-                <div className="seller-mercari-contact">
-                  <span className="seller-mercari-contact-label"><i className="fas fa-phone me-1" aria-hidden />โทร:</span>
-                  <span className="seller-mercari-contact-value">{seller.phone}</span>
+              <p className="text-xs text-base-content/40 mb-3 flex items-center gap-1">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                </svg>
+                เป็นสมาชิกเมื่อ {formatDate(seller.createdAt)}
+              </p>
+
+              {/* Stats */}
+              <div className="flex flex-wrap gap-3 mb-3">
+                {[
+                  { label: 'โพสต์ทั้งหมด', value: sellerPosts.length, color: 'text-primary' },
+                  { label: 'กำลังขาย', value: activeCount, color: 'text-success' },
+                  { label: 'ขายแล้ว', value: soldCount, color: 'text-base-content/50' },
+                ].map(({ label, value, color }) => (
+                  <div key={label} className="flex flex-col items-center px-4 py-2 rounded-xl bg-base-200/70 min-w-[72px]">
+                    <span className={`text-lg font-bold ${color}`}>{value}</span>
+                    <span className="text-xs text-base-content/50 mt-0.5">{label}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Contact note */}
+              {seller.sellerContactNote && (
+                <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-primary/5 border border-primary/15 max-w-lg">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary mt-0.5 shrink-0">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                  </svg>
+                  <div>
+                    <p className="text-xs text-base-content/50 font-medium mb-0.5">ช่องทางติดต่อ</p>
+                    <p className="text-sm text-base-content font-medium">{seller.sellerContactNote}</p>
+                  </div>
                 </div>
-              )}
-              {currentUser && String(currentUser.id) !== String(sellerId) && (
-                <button type="button" className="seller-mercari-chat-btn" onClick={handleStartChat} aria-label="เริ่มแชท">
-                  <i className="fas fa-comment-dots me-1" aria-hidden />เริ่มแชท
-                </button>
               )}
             </div>
           </div>
-        </Container>
-      </div>
 
-      <div className="seller-mercari-title">
-        <Container>
-          <h1 className="seller-mercari-title-text"><i className="fas fa-store me-2" aria-hidden />สินค้าที่ {seller.displayName} ขาย</h1>
-        </Container>
-      </div>
-
-      {/* Filter tabs */}
-      {sellerPosts.length > 0 && (
-        <div className="seller-mercari-tabs">
-          <Container>
-            <div className="seller-mercari-tabs-inner" role="tablist" aria-label="กรองรายการโพสต์">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={postFilter === 'all'}
-                aria-label={`ทั้งหมด ${sellerPosts.length} รายการ`}
-                className={`seller-mercari-tab ${postFilter === 'all' ? 'active' : ''}`}
-                onClick={() => setPostFilter('all')}
-              >
-                <i className="fas fa-th-large me-1" aria-hidden />ทั้งหมด ({sellerPosts.length})
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={postFilter === 'active'}
-                aria-label={`กำลังขาย ${activeCount} รายการ`}
-                className={`seller-mercari-tab ${postFilter === 'active' ? 'active' : ''}`}
-                onClick={() => setPostFilter('active')}
-              >
-                <i className="fas fa-tag me-1" aria-hidden />กำลังขาย ({activeCount})
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={postFilter === 'sold'}
-                aria-label={`ขายแล้ว ${soldCount} รายการ`}
-                className={`seller-mercari-tab ${postFilter === 'sold' ? 'active' : ''}`}
-                onClick={() => setPostFilter('sold')}
-              >
-                <i className="fas fa-check-circle me-1" aria-hidden />ขายแล้ว ({soldCount})
-              </button>
-            </div>
-          </Container>
-        </div>
-      )}
-
-      {/* Product grid */}
-      <div className="seller-mercari-content">
-        <Container>
-          {filteredPosts.length === 0 ? (
-            <div className="seller-mercari-empty">
-              <div className="seller-mercari-empty-icon" aria-hidden>
-                <i className="fas fa-shopping-bag" />
-              </div>
-              <h3>{sellerPosts.length === 0 ? 'ยังไม่มีโพสต์' : 'ไม่พบรายการที่ตรงกับตัวกรอง'}</h3>
-              <p>{sellerPosts.length === 0 ? 'ผู้ขายยังไม่ได้โพสต์สินค้าใดๆ' : 'ลองเลือกตัวกรองอื่น'}</p>
-            </div>
-          ) : (
-            <div className="seller-mercari-grid">
-              {filteredPosts.map((post) => (
-                <div
-                  key={post.id}
-                  className="seller-mercari-card"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => navigate(`/post/${post.id}`)}
-                  onKeyDown={(e) => e.key === 'Enter' && navigate(`/post/${post.id}`)}
+          {/* Filter tabs */}
+          {sellerPosts.length > 0 && (
+            <div className="flex gap-1 -mb-px" role="tablist">
+              {tabs.map(({ key, label, count }) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={postFilter === key}
+                  className={[
+                    'px-4 py-2.5 text-sm font-medium border-b-2 transition-all duration-150 flex items-center gap-1.5 rounded-t-lg',
+                    postFilter === key
+                      ? 'border-primary text-primary bg-primary/5'
+                      : 'border-transparent text-base-content/50 hover:text-base-content hover:bg-base-200/60',
+                  ].join(' ')}
+                  onClick={() => setPostFilter(key)}
                 >
-                  <div className="seller-mercari-card-image">
-                    {post.images && post.images.length > 0 ? (
-                      <img src={post.images[0]} alt={post.title} />
-                    ) : (
-                      <div className="seller-mercari-card-image-placeholder" aria-hidden><i className="fas fa-image" /></div>
-                    )}
-                  </div>
-                  <div className="seller-mercari-card-body">
-                    <div className="seller-mercari-card-price">
-                      {post.postType === 'auction'
-                        ? formatPrice(post.startingBid)
-                        : formatPrice(post.price)}
-                      {post.postType === 'auction' && (
-                        <span className="seller-mercari-status active"><i className="fas fa-gavel me-1" aria-hidden />ประมูล</span>
-                      )}
-                      {post.status === 'sold' && (
-                        <span className="seller-mercari-status sold"><i className="fas fa-check me-1" aria-hidden />ขายแล้ว</span>
-                      )}
-                    </div>
-                    <p className="seller-mercari-card-title">{post.title}</p>
-                    <div className="seller-mercari-card-meta">
-                      {post.category} · {formatDate(post.createdAt)}
-                    </div>
-                  </div>
-                </div>
+                  {label}
+                  <span className={[
+                    'badge badge-sm',
+                    postFilter === key ? 'badge-primary' : 'badge-ghost',
+                  ].join(' ')}>
+                    {count}
+                  </span>
+                </button>
               ))}
             </div>
           )}
-        </Container>
+        </div>
+      </div>
+
+      {/* Product Grid */}
+      <div className="max-w-6xl mx-auto px-4 pt-6">
+        {/* Section title */}
+        <div className="flex items-center gap-2 mb-4">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+          <h2 className="font-semibold text-base-content text-sm">
+            สินค้าที่ {seller.displayName} ขาย
+          </h2>
+          {filteredPosts.length > 0 && (
+            <span className="text-xs text-base-content/40">· {filteredPosts.length} รายการ</span>
+          )}
+        </div>
+
+        {filteredPosts.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 rounded-2xl border-2 border-dashed border-base-300 bg-base-100">
+            <div className="text-5xl mb-4 opacity-40">🛍️</div>
+            <h3 className="font-semibold text-base-content/60 mb-1">
+              {sellerPosts.length === 0 ? 'ยังไม่มีโพสต์' : 'ไม่พบรายการที่ตรงกับตัวกรอง'}
+            </h3>
+            <p className="text-sm text-base-content/40">
+              {sellerPosts.length === 0 ? 'ผู้ขายยังไม่ได้โพสต์สินค้าใดๆ' : 'ลองเลือกตัวกรองอื่น'}
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
+            {filteredPosts.map((post) => (
+              <div
+                key={post.id}
+                role="button"
+                tabIndex={0}
+                className="rounded-xl border border-base-300 bg-base-100 overflow-hidden cursor-pointer hover:shadow-lg hover:-translate-y-1 transition-all duration-200 group"
+                onClick={() => navigate(`/post/${post.id}`)}
+                onKeyDown={(e) => e.key === 'Enter' && navigate(`/post/${post.id}`)}
+              >
+                {/* Image */}
+                <div className="aspect-square overflow-hidden bg-base-200 relative">
+                  {post.images && post.images.length > 0 ? (
+                    <img
+                      src={post.images[0]}
+                      alt={post.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-base-200 to-base-300">
+                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-base-content/20">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                      </svg>
+                    </div>
+                  )}
+                  {/* Status overlay badge */}
+                  {post.status === 'sold' && (
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                      <span className="badge badge-neutral badge-sm font-semibold">ขายแล้ว</span>
+                    </div>
+                  )}
+                  {post.postType === 'auction' && post.status !== 'sold' && (
+                    <div className="absolute top-1.5 left-1.5">
+                      <span className="badge badge-secondary badge-sm font-semibold">ประมูล</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Body */}
+                <div className="p-2.5">
+                  <p className="text-primary font-bold text-sm mb-1 truncate">
+                    {post.postType === 'auction' ? formatPrice(post.startingBid) : formatPrice(post.price)}
+                  </p>
+                  <p className="text-xs text-base-content/80 leading-snug line-clamp-2 mb-1.5">{post.title}</p>
+                  <p className="text-xs text-base-content/40">{post.category} · {formatDate(post.createdAt)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

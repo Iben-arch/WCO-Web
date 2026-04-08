@@ -1,5 +1,4 @@
 import React, { useState, useEffect, FormEvent, ChangeEvent } from 'react';
-import { Container, Row, Col, Card, Form, Button, Spinner, Alert, Modal } from 'react-bootstrap';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { postsAPI, authAPI } from '../api/api';
 import { toast } from 'react-toastify';
@@ -36,6 +35,7 @@ const categories: Category[] = [
   'gundam card game',
   'อื่นๆ'
 ];
+const MOBILE_CATEGORY_LIMIT = 8;
 
 const Home: React.FC = () => {
   const { currentUser, profile, userProfile } = useAuth();
@@ -64,6 +64,25 @@ const Home: React.FC = () => {
 
   const sellRole = profile?.role ?? userProfile?.role;
   const userCanSell = canSellCards(sellRole);
+  const mobileTopCategories = (() => {
+    const categoryInterestScores = getCategoryInterestScores(currentUser?.id);
+    const categoriesWithScores = categories
+      .map((cat, index) => ({
+        cat,
+        index,
+        score: categoryInterestScores[cat] ?? 0
+      }))
+      .filter((item) => item.score > 0)
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return a.index - b.index;
+      })
+      .slice(0, MOBILE_CATEGORY_LIMIT)
+      .map((item) => item.cat);
+
+    if (categoriesWithScores.length > 0) return categoriesWithScores;
+    return categories.slice(0, MOBILE_CATEGORY_LIMIT);
+  })();
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
@@ -115,7 +134,8 @@ const Home: React.FC = () => {
       const isPersonalizedHome =
         !category &&
         !searchTerm &&
-        currentPage === 1;
+        currentPage === 1 &&
+        sortBy === 'newest';
 
       // ถ้าเป็นหน้าแรกแบบไม่กรอง: ดึงมามากขึ้นแล้วจัดอันดับตามความสนใจ
       const fetchLimit = isPersonalizedHome ? 36 : 12;
@@ -426,13 +446,11 @@ const Home: React.FC = () => {
 
   if (loading && posts.length === 0) {
     return (
-      <Container className="py-5">
-        <div className="d-flex justify-content-center">
-          <Spinner animation="border" role="status">
-            <span className="visually-hidden">Loading...</span>
-          </Spinner>
+      <div className="container py-5">
+        <div className="flex justify-center">
+          <span className="loading loading-spinner loading-lg" aria-label="Loading..." />
         </div>
-      </Container>
+      </div>
     );
   }
 
@@ -440,18 +458,18 @@ const Home: React.FC = () => {
     <div className="marketplace-container">
       {/* Hero — ข้อความสั้น ตรงไปตรงมา ไม่ใช่สโลแกนบริษัท */}
       <section className="hero-banner-section" aria-label="แนะนำเว็บ">
-        <Container>
+        <div className="container">
           <div className="hero-banner-content">
             <h1 className="hero-banner-title">เลือกการ์ดที่ชอบ จากคนขายที่เชื่อถือได้</h1>
             <p className="hero-banner-subtitle">WCO Thailand — ตลาดการ์ดเกมที่ใหญ่ที่สุดในไทย</p>
           </div>
-        </Container>
+        </div>
       </section>
 
-      <Container className="py-4 home-main-container">
-        <Row className="g-4">
+      <div className="container py-4 home-main-container">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
           {/* Sidebar - Categories */}
-          <Col lg={3} md={4} className="d-none d-md-block">
+          <div className="hidden md:block md:col-span-4 lg:col-span-3">
             <div className="category-sidebar">
               <div className="sidebar-header">
                 <h3>หมวดหมู่ทั้งหมด</h3>
@@ -515,17 +533,17 @@ const Home: React.FC = () => {
                 </ul>
               </div>
             </div>
-          </Col>
+          </div>
 
           {/* Main Content Area */}
-          <Col lg={9} md={8}>
+          <div className="md:col-span-8 lg:col-span-9">
             {/* Search Bar */}
             <div className="main-search-section">
-              <Form onSubmit={handleSearch}>
-                <Row className="g-2">
-                  <Col md={9}>
+              <form onSubmit={handleSearch}>
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
+                  <div className="md:col-span-9">
                     <div className="search-input-wrapper">
-                      <Form.Control
+                      <input
                         type="text"
                         placeholder="คุณกำลังมองหาอะไรอยู่?"
                         value={searchTerm}
@@ -555,9 +573,9 @@ const Home: React.FC = () => {
                         </svg>
                       </button>
                     </div>
-                  </Col>
-                  <Col md={3}>
-                    <Form.Select 
+                  </div>
+                  <div className="md:col-span-3">
+                    <select 
                       value={sortBy} 
                       onChange={(e: ChangeEvent<HTMLSelectElement>) => {
                         setImageSearchMode(false);
@@ -568,15 +586,15 @@ const Home: React.FC = () => {
                       <option value="newest">ใหม่ล่าสุด</option>
                       <option value="priceAsc">ราคาต่ำ → สูง</option>
                       <option value="priceDesc">ราคาสูง → ต่ำ</option>
-                    </Form.Select>
-                  </Col>
-                </Row>
-              </Form>
+                    </select>
+                  </div>
+                </div>
+              </form>
 
               {/* Mobile Category Filter */}
               <div className="mobile-category-filter d-md-none mt-3">
                 <div className="mobile-category-scroll">
-                  {categories.map(cat => (
+                  {mobileTopCategories.map(cat => (
                     <button
                       key={cat}
                       className={`mobile-category-pill ${category === cat ? 'active' : ''}`}
@@ -594,11 +612,7 @@ const Home: React.FC = () => {
               </div>
             </div>
 
-      {error && (
-        <Alert variant="danger" className="mb-4">
-          {error}
-        </Alert>
-      )}
+      {error && <div className="alert alert-error mb-4">{error}</div>}
 
       {posts.length === 0 && !loading ? (
         <div className="empty-state">
@@ -629,16 +643,16 @@ const Home: React.FC = () => {
             <h3 className="product-grid-title">สินค้าทั้งหมด</h3>
             <span className="product-count">({posts.length} รายการ)</span>
           </div>
-          <Row className="g-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {posts.map((post) => (
-              <Col key={post.id} lg={4} md={4} sm={6} xs={12}>
+              <div key={post.id}>
                 <div className="card-wrapper">
-                  <Card className={`h-100 modern-card ${post.status === 'sold' ? 'sold-card' : ''}`}>
+                  <article className={`h-100 modern-card ${post.status === 'sold' ? 'sold-card' : ''}`}>
                     <div className="card-image-container">
                   {post.images && post.images.length > 0 ? (
-                    <Card.Img
-                      variant="top"
+                    <img
                       src={post.images[0]}
+                      alt={post.title}
                           className="card-image"
                     />
                   ) : (
@@ -663,20 +677,20 @@ const Home: React.FC = () => {
                       </div>
                 </div>
                     
-                    <Card.Body className="card-content">
+                    <div className="card-content">
                       <div className="card-header">
-                        <Card.Title className="card-title">{post.title}</Card.Title>
+                        <h3 className="card-title">{post.title}</h3>
                         <div className="category-tag">
                           {post.category}
                         </div>
                       </div>
                       
-                      <Card.Text className="card-description">
+                      <p className="card-description">
                         {post.description.length > 100 
                           ? `${post.description.substring(0, 100)}...` 
                           : post.description
                         }
-                      </Card.Text>
+                      </p>
                       
                       <div className="card-footer">
                         <div className="price-section">
@@ -837,12 +851,12 @@ const Home: React.FC = () => {
                           )}
                         </div>
                   </div>
-                </Card.Body>
-              </Card>
                 </div>
-            </Col>
+              </article>
+                </div>
+            </div>
           ))}
-        </Row>
+        </div>
         </div>
       )}
 
@@ -854,9 +868,9 @@ const Home: React.FC = () => {
           </div>
         </div>
       )}
-          </Col>
-        </Row>
-      </Container>
+          </div>
+        </div>
+      </div>
 
       {/* Image Search Modal */}
       {showImageSearchModal && (
@@ -963,28 +977,29 @@ const Home: React.FC = () => {
         onHide={() => setShowSellerApplicationModal(false)}
       />
 
-      <Modal show={showLoginModal} onHide={() => setShowLoginModal(false)} centered>
-        <Modal.Header closeButton>
-          <Modal.Title>กรุณาเข้าสู่ระบบ</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          กรุณาเข้าสู่ระบบก่อนทำรายการนี้
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowLoginModal(false)}>
-            ปิด
-          </Button>
-          <Button
-            variant="primary"
-            onClick={() => {
-              setShowLoginModal(false);
-              window.location.href = '/login';
-            }}
-          >
-            ไปที่หน้าเข้าสู่ระบบ
-          </Button>
-        </Modal.Footer>
-      </Modal>
+      {showLoginModal && (
+        <div className="fixed inset-0 z-[9999] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowLoginModal(false)}>
+          <div className="card bg-base-100 w-full max-w-sm shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="card-body">
+              <h3 className="card-title">กรุณาเข้าสู่ระบบ</h3>
+              <p>กรุณาเข้าสู่ระบบก่อนทำรายการนี้</p>
+              <div className="card-actions justify-end">
+                <button type="button" className="btn btn-ghost" onClick={() => setShowLoginModal(false)}>ปิด</button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => {
+                    setShowLoginModal(false);
+                    window.location.href = '/login';
+                  }}
+                >
+                  ไปที่หน้าเข้าสู่ระบบ
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

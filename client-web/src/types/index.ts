@@ -15,6 +15,7 @@ export interface Profile {
   bank_name?: string | null;
   bank_account_number?: string | null;
   seller_registered_at?: string | null;
+  seller_contact_note?: string | null;
   created_at: string;
   updated_at?: string;
 }
@@ -205,6 +206,7 @@ export interface Seller {
   email?: string;
   profileImage?: string;
   phone?: string;
+  sellerContactNote?: string;
   createdAt?: Date | FirestoreTimestamp | string;
   [key: string]: any;
 }

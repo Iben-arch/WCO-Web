@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Container, Row, Col, Card, Table, Button, Badge, Modal, Form } from 'react-bootstrap';
 import { useAuth } from '../contexts/AuthContext';
 import axios from '../utils/axiosInterceptor';
 import { toast } from 'react-toastify';
@@ -21,6 +20,91 @@ interface AdminUser extends UserProfile {
 interface AdminPost extends Post {
   // AdminPost uses the same PostStatus type which now includes 'pending' and 'rejected'
 }
+
+const cx = (...classes: Array<string | false | null | undefined>) => classes.filter(Boolean).join(' ');
+
+const Container: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (
+  <div className={cx('container', className)}>{children}</div>
+);
+const Row: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (
+  <div className={cx('grid grid-cols-12 gap-4', className)}>{children}</div>
+);
+const Col: React.FC<{ children: React.ReactNode; className?: string; md?: number; lg?: number }> = ({ children, className, md, lg }) => {
+  const lgMap: Record<number, string> = { 1: 'lg:col-span-1', 2: 'lg:col-span-2', 3: 'lg:col-span-3', 4: 'lg:col-span-4', 5: 'lg:col-span-5', 6: 'lg:col-span-6', 7: 'lg:col-span-7', 8: 'lg:col-span-8', 9: 'lg:col-span-9', 10: 'lg:col-span-10', 11: 'lg:col-span-11', 12: 'lg:col-span-12' };
+  const mdMap: Record<number, string> = { 1: 'md:col-span-1', 2: 'md:col-span-2', 3: 'md:col-span-3', 4: 'md:col-span-4', 5: 'md:col-span-5', 6: 'md:col-span-6', 7: 'md:col-span-7', 8: 'md:col-span-8', 9: 'md:col-span-9', 10: 'md:col-span-10', 11: 'md:col-span-11', 12: 'md:col-span-12' };
+  return <div className={cx('col-span-12', md ? mdMap[md] : '', lg ? lgMap[lg] : '', className)}>{children}</div>;
+};
+
+const CardRoot: React.FC<any> = ({ className, children }) => <div className={cx('card bg-base-100 border border-base-300 shadow-sm', className)}>{children}</div>;
+const CardBody: React.FC<any> = ({ className, children }) => <div className={cx('card-body', className)}>{children}</div>;
+const CardHeader: React.FC<any> = ({ className, children }) => <div className={cx('px-6 py-4 border-b border-base-300 font-semibold', className)}>{children}</div>;
+const Card = Object.assign(CardRoot, { Body: CardBody, Header: CardHeader });
+
+const Table: React.FC<any> = ({ className, children }) => (
+  <div className="overflow-x-auto"><table className={cx('table table-zebra', className)}>{children}</table></div>
+);
+
+const Button: React.FC<any> = ({ variant, size, className, children, ...props }) => {
+  const v = variant === 'primary' ? 'btn-primary'
+    : variant === 'secondary' ? 'btn-secondary'
+    : variant === 'success' ? 'btn-success'
+    : variant === 'warning' ? 'btn-warning'
+    : variant === 'danger' ? 'btn-error'
+    : variant === 'outline-primary' ? 'btn-outline btn-primary'
+    : variant === 'outline-secondary' ? 'btn-outline'
+    : variant === 'outline-danger' ? 'btn-outline btn-error'
+    : '';
+  const s = size === 'sm' ? 'btn-sm' : size === 'lg' ? 'btn-lg' : '';
+  return <button className={cx('btn', v, s, className)} {...props}>{children}</button>;
+};
+
+const Badge: React.FC<any> = ({ bg, className, children }) => {
+  const b = bg === 'success' ? 'badge-success'
+    : bg === 'warning' ? 'badge-warning'
+    : bg === 'danger' ? 'badge-error'
+    : bg === 'secondary' ? 'badge-neutral'
+    : bg === 'info' ? 'badge-info'
+    : bg === 'dark' ? 'badge-neutral'
+    : '';
+  return <span className={cx('badge', b, className)}>{children}</span>;
+};
+
+const FormGroup: React.FC<any> = ({ children, className }) => <div className={className}>{children}</div>;
+const FormLabel: React.FC<any> = ({ children }) => <label className="label-text font-medium">{children}</label>;
+const FormControl: React.FC<any> = ({ as, className, ...props }) => {
+  if (as === 'textarea') return <textarea className={cx('textarea textarea-bordered w-full', className)} {...props} />;
+  return <input className={cx('input input-bordered w-full', className)} {...props} />;
+};
+const FormSelect: React.FC<any> = ({ className, ...props }) => <select className={cx('select select-bordered', className)} {...props} />;
+const Form = { Group: FormGroup, Label: FormLabel, Control: FormControl, Select: FormSelect };
+
+type ModalType = React.FC<any> & {
+  Header: React.FC<any>;
+  Title: React.FC<any>;
+  Body: React.FC<any>;
+  Footer: React.FC<any>;
+};
+const Modal = (({ show, onHide, children, className }) => {
+  if (!show) return null;
+  const withClose = React.Children.map(children, (child) =>
+    React.isValidElement(child) ? React.cloneElement(child as React.ReactElement<any>, { __onHide: onHide }) : child
+  );
+  return (
+    <div className={cx('fixed inset-0 z-[9999] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4', className)} onClick={onHide}>
+      <div className="card bg-base-100 w-full max-w-3xl shadow-2xl" onClick={(e) => e.stopPropagation()}>{withClose}</div>
+    </div>
+  );
+}) as ModalType;
+const ModalHeader: React.FC<any> = ({ children, closeButton, __onHide }) => (
+  <div className="px-6 py-4 border-b border-base-300 flex items-center justify-between">
+    <div className="font-bold text-lg">{children}</div>
+    {closeButton ? <button type="button" className="btn btn-ghost btn-sm btn-circle" onClick={__onHide}>✕</button> : null}
+  </div>
+);
+const ModalTitle: React.FC<any> = ({ children }) => <>{children}</>;
+const ModalBody: React.FC<any> = ({ children }) => <div className="px-6 py-4">{children}</div>;
+const ModalFooter: React.FC<any> = ({ children }) => <div className="px-6 py-4 border-t border-base-300 flex justify-end gap-2">{children}</div>;
+Object.assign(Modal, { Header: ModalHeader, Title: ModalTitle, Body: ModalBody, Footer: ModalFooter });
 
 const AdminDashboard: React.FC = () => {
   const { userProfile } = useAuth();
@@ -299,9 +383,9 @@ const AdminDashboard: React.FC = () => {
       <div className="admin-dashboard-page">
         <Container className="py-5">
           <div className="admin-denied-card">
-            <div className="admin-denied-icon" aria-hidden><i className="fas fa-lock" /></div>
+            <div className="admin-denied-icon" aria-hidden><i className="fas fa-shield-alt" /></div>
             <h5 className="mb-2">ไม่มีสิทธิ์เข้าถึง</h5>
-            <p className="text-muted mb-0">คุณไม่มีสิทธิ์เข้าถึงหน้านี้</p>
+            <p className="text-muted mb-0">คุณไม่มีสิทธิ์เข้าถึงหน้านี้ กรุณาติดต่อผู้ดูแลระบบ</p>
           </div>
         </Container>
       </div>
@@ -312,10 +396,8 @@ const AdminDashboard: React.FC = () => {
     return (
       <div className="admin-dashboard-page">
         <div className="admin-loading-wrap" aria-live="polite" aria-busy="true">
-          <div className="spinner-border admin-loading-spinner" role="status">
-            <span className="visually-hidden">กำลังโหลด...</span>
-          </div>
-          <p className="admin-loading-text">กำลังโหลดแดชบอร์ด...</p>
+          <span className="loading loading-spinner loading-lg admin-loading-spinner" role="status" aria-label="กำลังโหลด" />
+          <p className="admin-loading-text">กำลังโหลดข้อมูล...</p>
         </div>
       </div>
     );
@@ -327,9 +409,10 @@ const AdminDashboard: React.FC = () => {
         <header className="admin-dashboard-header">
           <div className="admin-dashboard-header-inner">
             <h2>
+              <span className="admin-dashboard-header-icon"><i className="fas fa-shield-alt" aria-hidden /></span>
               แดชบอร์ดแอดมิน
             </h2>
-            <p className="admin-dashboard-header-desc">จัดการระบบและผู้ใช้งาน</p>
+            <p className="admin-dashboard-header-desc">จัดการระบบ โพสต์ และผู้ใช้งาน</p>
           </div>
         </header>
 
@@ -375,61 +458,82 @@ const AdminDashboard: React.FC = () => {
         {activeTab === 'dashboard' && stats && (
           <Row className="mb-4">
             <Col md={6} lg={3} className="mb-4">
-              <Card className="admin-stat-card text-center">
+              <Card className="admin-stat-card admin-stat-card--posts">
                 <Card.Body>
+                  <div className="admin-stat-icon admin-stat-icon--posts">
+                    <i className="fas fa-newspaper" aria-hidden />
+                  </div>
                   <h3 className="admin-stat-value admin-stat-value--posts">{stats.totalPosts}</h3>
                   <p className="admin-stat-label">โพสต์ทั้งหมด</p>
                 </Card.Body>
               </Card>
             </Col>
             <Col md={6} lg={3} className="mb-4">
-              <Card className="admin-stat-card text-center">
+              <Card className="admin-stat-card admin-stat-card--active">
                 <Card.Body>
+                  <div className="admin-stat-icon admin-stat-icon--active">
+                    <i className="fas fa-check-circle" aria-hidden />
+                  </div>
                   <h3 className="admin-stat-value admin-stat-value--active">{stats.activePosts}</h3>
                   <p className="admin-stat-label">โพสต์ที่เผยแพร่</p>
                 </Card.Body>
               </Card>
             </Col>
             <Col md={6} lg={3} className="mb-4">
-              <Card className="admin-stat-card text-center">
+              <Card className="admin-stat-card admin-stat-card--pending">
                 <Card.Body>
+                  <div className="admin-stat-icon admin-stat-icon--pending">
+                    <i className="fas fa-clock" aria-hidden />
+                  </div>
                   <h3 className="admin-stat-value admin-stat-value--recent">{stats.pendingPosts ?? 0}</h3>
-                  <p className="admin-stat-label">โพสต์ที่รออนุมัติ</p>
+                  <p className="admin-stat-label">โพสต์รออนุมัติ</p>
                 </Card.Body>
               </Card>
             </Col>
             <Col md={6} lg={3} className="mb-4">
-              <Card className="admin-stat-card text-center">
+              <Card className="admin-stat-card admin-stat-card--users">
                 <Card.Body>
+                  <div className="admin-stat-icon admin-stat-icon--users">
+                    <i className="fas fa-users" aria-hidden />
+                  </div>
                   <h3 className="admin-stat-value admin-stat-value--users">{stats.totalUsers}</h3>
                   <p className="admin-stat-label">ผู้ใช้ทั้งหมด</p>
                 </Card.Body>
               </Card>
             </Col>
             <Col md={6} lg={3} className="mb-4">
-              <Card className="admin-stat-card text-center">
+              <Card className="admin-stat-card admin-stat-card--active">
                 <Card.Body>
+                  <div className="admin-stat-icon admin-stat-icon--active">
+                    <i className="fas fa-user-check" aria-hidden />
+                  </div>
                   <h3 className="admin-stat-value admin-stat-value--active">{stats.activeUsers ?? 0}</h3>
                   <p className="admin-stat-label">ผู้ใช้ที่ไม่ถูกแบน</p>
                 </Card.Body>
               </Card>
             </Col>
             <Col md={6} lg={3} className="mb-4">
-              <Card className="admin-stat-card text-center">
+              <Card className="admin-stat-card admin-stat-card--recent">
                 <Card.Body>
+                  <div className="admin-stat-icon admin-stat-icon--recent">
+                    <i className="fas fa-bolt" aria-hidden />
+                  </div>
                   <h3 className="admin-stat-value admin-stat-value--recent">{stats.recentPosts}</h3>
                   <p className="admin-stat-label">โพสต์ใหม่ (7 วัน)</p>
                 </Card.Body>
               </Card>
             </Col>
             <Col md={6} lg={3} className="mb-4">
-              <Card className="admin-stat-card text-center">
+              <Card className="admin-stat-card admin-stat-card--coverage">
                 <Card.Body>
+                  <div className="admin-stat-icon admin-stat-icon--coverage">
+                    <i className="fas fa-brain" aria-hidden />
+                  </div>
                   <h3 className="admin-stat-value admin-stat-value--recent">
                     {stats.embeddingCoverage?.activeEmbeddingCoveragePct?.toFixed(0) ?? '0'}%
                   </h3>
                   <p className="admin-stat-label">
-                    embedding active: {stats.embeddingCoverage?.activePostsWithEmbeddings ?? 0}/{stats.activePosts}
+                    AI Embeddings: {stats.embeddingCoverage?.activePostsWithEmbeddings ?? 0}/{stats.activePosts}
                   </p>
                 </Card.Body>
               </Card>
@@ -603,11 +707,12 @@ const AdminDashboard: React.FC = () => {
                   disabled={postsPagination.page <= 1}
                   onClick={() => setPostsPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
                 >
-                  ก่อนหน้า
+                  <i className="fas fa-chevron-left me-2" aria-hidden />ก่อนหน้า
                 </Button>
 
-                <span>
-                  หน้า {postsPagination.totalPages === 0 ? 0 : postsPagination.page} / {postsPagination.totalPages}
+                <span className="admin-pagination-info">
+                  หน้า <strong>{postsPagination.totalPages === 0 ? 0 : postsPagination.page}</strong> / <strong>{postsPagination.totalPages}</strong>
+                  <span className="admin-pagination-total"> ({postsPagination.total} รายการ)</span>
                 </span>
 
                 <Button
@@ -616,7 +721,7 @@ const AdminDashboard: React.FC = () => {
                   disabled={postsPagination.totalPages === 0 || postsPagination.page >= postsPagination.totalPages}
                   onClick={() => setPostsPagination(prev => ({ ...prev, page: prev.page + 1 }))}
                 >
-                  ถัดไป
+                  ถัดไป<i className="fas fa-chevron-right ms-2" aria-hidden />
                 </Button>
               </div>
           </Card.Body>
@@ -661,8 +766,9 @@ const AdminDashboard: React.FC = () => {
               </div>
 
               <div className="admin-bulk-row d-flex flex-wrap gap-2 align-items-center mb-3">
-                <span className="text-muted">
-                  เลือกได้ครั้งละหน้าจอ: {selectedPendingIds.length} โพสต์
+                <span className="admin-bulk-counter">
+                  <i className="fas fa-check-square" aria-hidden style={{ marginRight: '0.4rem' }} />
+                  เลือกแล้ว <strong style={{ marginLeft: '0.25rem', marginRight: '0.25rem' }}>{selectedPendingIds.length}</strong> โพสต์
                 </span>
                 <div className="ms-auto d-flex flex-wrap gap-2">
                   <Button
@@ -808,11 +914,12 @@ const AdminDashboard: React.FC = () => {
                   disabled={pendingPagination.page <= 1}
                   onClick={() => setPendingPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
                 >
-                  ก่อนหน้า
+                  <i className="fas fa-chevron-left me-2" aria-hidden />ก่อนหน้า
                 </Button>
 
-                <span>
-                  หน้า {pendingPagination.totalPages === 0 ? 0 : pendingPagination.page} / {pendingPagination.totalPages}
+                <span className="admin-pagination-info">
+                  หน้า <strong>{pendingPagination.totalPages === 0 ? 0 : pendingPagination.page}</strong> / <strong>{pendingPagination.totalPages}</strong>
+                  <span className="admin-pagination-total"> ({pendingPagination.total} รายการ)</span>
                 </span>
 
                 <Button
@@ -821,7 +928,7 @@ const AdminDashboard: React.FC = () => {
                   disabled={pendingPagination.totalPages === 0 || pendingPagination.page >= pendingPagination.totalPages}
                   onClick={() => setPendingPagination(prev => ({ ...prev, page: prev.page + 1 }))}
                 >
-                  ถัดไป
+                  ถัดไป<i className="fas fa-chevron-right ms-2" aria-hidden />
                 </Button>
               </div>
             </Card.Body>
@@ -975,11 +1082,12 @@ const AdminDashboard: React.FC = () => {
                 disabled={usersPagination.page <= 1}
                 onClick={() => setUsersPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
               >
-                ก่อนหน้า
+                <i className="fas fa-chevron-left me-2" aria-hidden />ก่อนหน้า
               </Button>
 
-              <span>
-                หน้า {usersPagination.totalPages === 0 ? 0 : usersPagination.page} / {usersPagination.totalPages}
+              <span className="admin-pagination-info">
+                หน้า <strong>{usersPagination.totalPages === 0 ? 0 : usersPagination.page}</strong> / <strong>{usersPagination.totalPages}</strong>
+                <span className="admin-pagination-total"> ({usersPagination.total} รายการ)</span>
               </span>
 
               <Button
@@ -988,7 +1096,7 @@ const AdminDashboard: React.FC = () => {
                 disabled={usersPagination.totalPages === 0 || usersPagination.page >= usersPagination.totalPages}
                 onClick={() => setUsersPagination(prev => ({ ...prev, page: prev.page + 1 }))}
               >
-                ถัดไป
+                ถัดไป<i className="fas fa-chevron-right ms-2" aria-hidden />
               </Button>
             </div>
           </Card.Body>

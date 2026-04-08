@@ -107,7 +107,12 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+// CRA dev server proxies to http://localhost:5000.
+// Keep HTTP in Development to avoid 307 redirect to HTTPS that can break local API calls.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 app.UseCors("AllowAll");
 
 // Add default route that redirects to Swagger in development

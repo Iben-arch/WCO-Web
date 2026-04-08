@@ -1,6 +1,5 @@
 import React, { useState, FormEvent, ChangeEvent } from 'react';
-import { Container, Row, Col, Form, Button, Alert } from 'react-bootstrap';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { supabase } from '../config/supabase';
 
 const ForgotPassword: React.FC = () => {
@@ -9,7 +8,6 @@ const ForgotPassword: React.FC = () => {
   const [success, setSuccess] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
-  const navigate = useNavigate();
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
@@ -51,36 +49,32 @@ const ForgotPassword: React.FC = () => {
   };
 
   return (
-    <div className="auth-page-container">
-      <Container>
-        <Row className="justify-content-center align-items-center min-vh-100 py-5">
-          <Col md={8} lg={6} xl={5}>
-            {/* Logo/Brand Section */}
-            <div className="auth-logo-section text-center mb-5">
-              <Link to="/" className="auth-logo-link">
-                <h1 className="auth-brand-title">🎴 WCO Thailand</h1>
-                <p className="auth-brand-tagline">
-                  เรามุ่งมั่นที่จะผลักดันวงการการ์ดเกมประเทศไทยให้เติบโตและพัฒนาไปข้างหน้าอย่างก้าวกระโดด
-                </p>
-              </Link>
-            </div>
+    <div className="min-h-screen bg-base-200 flex items-center justify-center p-5">
+      <div className="w-full max-w-md">
+        <div className="text-center mb-8">
+          <Link to="/" className="inline-flex flex-col items-center gap-2 no-underline">
+            <span className="text-6xl leading-none">🎴</span>
+            <h1 className="m-0 text-3xl font-extrabold text-primary">WCO Thailand</h1>
+            <p className="m-0 text-sm text-base-content/60 max-w-xs">
+              เรามุ่งมั่นที่จะผลักดันวงการการ์ดเกมประเทศไทย
+            </p>
+          </Link>
+        </div>
 
-            {/* Auth Card */}
-            <div className="auth-form-card">
-              <div className="auth-form-header">
-                <h2 className="auth-form-title">ลืมรหัสผ่าน</h2>
-                <p className="auth-form-subtitle">กรุณากรอกอีเมลเพื่อรับลิงก์รีเซ็ตรหัสผ่าน</p>
-              </div>
+        <div className="card bg-base-100 border border-base-300 shadow-xl">
+          <div className="card-body p-8">
+            <h2 className="text-center text-2xl font-bold mb-1">ลืมรหัสผ่าน</h2>
+            <p className="text-center text-sm text-base-content/60 mb-6">กรุณากรอกอีเมลเพื่อรับลิงก์รีเซ็ตรหัสผ่าน</p>
 
               {error && (
-                <Alert variant="danger" className="auth-alert">
+              <div className="alert alert-error mb-4">
                   <div className="alert-icon">⚠️</div>
                   <div className="alert-message">{error}</div>
-                </Alert>
+              </div>
               )}
 
               {success ? (
-                <Alert variant="success" className="auth-alert">
+              <div className="alert alert-success mb-4">
                   <div className="alert-icon">✅</div>
                   <div className="alert-message">
                     <strong>ส่งอีเมลสำเร็จ!</strong><br />
@@ -88,24 +82,24 @@ const ForgotPassword: React.FC = () => {
                     <br />
                     <small>หากไม่พบอีเมล กรุณาตรวจสอบในโฟลเดอร์ Spam</small>
                   </div>
-                </Alert>
+              </div>
               ) : (
-                <Form onSubmit={handleSubmit} className="auth-form">
-                  <div className="form-group-modern">
-                    <label htmlFor="email" className="form-label-modern">
-                      อีเมล
-                    </label>
-                    <div className={`input-wrapper ${focusedField === 'email' || email ? 'focused' : ''}`}>
-                      <span className="input-icon">
+              <form onSubmit={handleSubmit}>
+                <div className="form-control mb-5">
+                  <label htmlFor="email" className="label pb-2">
+                    <span className="label-text font-semibold">อีเมล</span>
+                  </label>
+                  <div className={`relative ${focusedField === 'email' || email ? 'focused' : ''}`}>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/40">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                           <path d="M4 4H20C21.1 4 22 4.9 22 6V18C22 19.1 21.1 20 20 20H4C2.9 20 2 19.1 2 18V6C2 4.9 2.9 4 4 4Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                           <path d="L22 6L12 13L2 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                       </span>
-                      <Form.Control
+                    <input
                         id="email"
                         type="email"
-                        className="form-input-modern"
+                        className="input input-bordered w-full pl-11"
                         placeholder="กรอกอีเมลของคุณ"
                         value={email}
                         onChange={(e: ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
@@ -115,17 +109,17 @@ const ForgotPassword: React.FC = () => {
                         autoComplete="email"
                         disabled={loading}
                       />
-                    </div>
                   </div>
+                </div>
 
-                  <Button
+                <button
                     type="submit"
-                    className="auth-submit-btn btn-tcg-primary btn-tcg-lg w-100"
+                  className="btn btn-primary w-full h-12"
                     disabled={loading}
                   >
                     {loading ? (
                       <>
-                        <span className="spinner-border spinner-border-sm me-2" role="status"></span>
+                      <span className="loading loading-spinner loading-sm me-2" />
                         กำลังส่งอีเมล...
                       </>
                     ) : (
@@ -134,33 +128,28 @@ const ForgotPassword: React.FC = () => {
                         <span className="btn-text">ส่งลิงก์รีเซ็ตรหัสผ่าน</span>
                       </>
                     )}
-                  </Button>
-                </Form>
+                </button>
+              </form>
               )}
 
-              <div className="auth-divider">
-                <span>หรือ</span>
-              </div>
+            <div className="divider my-6">หรือ</div>
 
-              <div className="auth-footer">
-                <p className="auth-footer-text">
+            <div className="text-center">
+              <p className="text-sm text-base-content/70">
                   จำรหัสผ่านได้แล้ว?{' '}
-                  <Link to="/login" className="auth-footer-link">
+                <Link to="/login" className="link link-primary font-bold no-underline">
                     เข้าสู่ระบบ
                   </Link>
                 </p>
-              </div>
             </div>
-
-            {/* Additional Links */}
-            <div className="auth-bottom-links text-center mt-4">
-              <Link to="/" className="back-home-link">
+          </div>
+        </div>
+        <div className="text-center mt-6">
+          <Link to="/" className="link link-hover text-base-content/60 no-underline">
                 ← กลับไปหน้าแรก
               </Link>
-            </div>
-          </Col>
-        </Row>
-      </Container>
+        </div>
+      </div>
     </div>
   );
 };

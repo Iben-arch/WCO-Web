@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Card, Button, Alert, Spinner, Badge, Modal, Form } from 'react-bootstrap';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
@@ -12,6 +11,57 @@ import { Post, Message, AuctionBid, DetectedCard, FirestoreTimestamp, Individual
 import { recordCategoryInterest } from '../utils/categoryInterest';
 import { supabase } from '../config/supabase';
 import { canSellCards } from '../utils/roles';
+
+const cx = (...classes: Array<string | false | null | undefined>) => classes.filter(Boolean).join(' ');
+
+const Container: React.FC<{ children: React.ReactNode; fluid?: boolean; className?: string }> = ({ children, fluid, className }) => (
+  <div className={cx(fluid ? 'w-full' : 'container', className)}>{children}</div>
+);
+
+const Row: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (
+  <div className={cx('grid grid-cols-12 gap-4', className)}>{children}</div>
+);
+
+const Col: React.FC<{ children: React.ReactNode; className?: string; lg?: number; md?: number; sm?: number; xs?: number }> = ({ children, className, lg, md, sm, xs }) => {
+  const mapLg: Record<number, string> = { 1: 'lg:col-span-1', 2: 'lg:col-span-2', 3: 'lg:col-span-3', 4: 'lg:col-span-4', 5: 'lg:col-span-5', 6: 'lg:col-span-6', 7: 'lg:col-span-7', 8: 'lg:col-span-8', 9: 'lg:col-span-9', 10: 'lg:col-span-10', 11: 'lg:col-span-11', 12: 'lg:col-span-12' };
+  const mapMd: Record<number, string> = { 1: 'md:col-span-1', 2: 'md:col-span-2', 3: 'md:col-span-3', 4: 'md:col-span-4', 5: 'md:col-span-5', 6: 'md:col-span-6', 7: 'md:col-span-7', 8: 'md:col-span-8', 9: 'md:col-span-9', 10: 'md:col-span-10', 11: 'md:col-span-11', 12: 'md:col-span-12' };
+  const mapSm: Record<number, string> = { 1: 'sm:col-span-1', 2: 'sm:col-span-2', 3: 'sm:col-span-3', 4: 'sm:col-span-4', 5: 'sm:col-span-5', 6: 'sm:col-span-6', 7: 'sm:col-span-7', 8: 'sm:col-span-8', 9: 'sm:col-span-9', 10: 'sm:col-span-10', 11: 'sm:col-span-11', 12: 'sm:col-span-12' };
+  const mapXs: Record<number, string> = { 1: 'col-span-1', 2: 'col-span-2', 3: 'col-span-3', 4: 'col-span-4', 5: 'col-span-5', 6: 'col-span-6', 7: 'col-span-7', 8: 'col-span-8', 9: 'col-span-9', 10: 'col-span-10', 11: 'col-span-11', 12: 'col-span-12' };
+  const widthClass = (lg && mapLg[lg]) || (md && mapMd[md]) || (sm && mapSm[sm]) || (xs && mapXs[xs]) || 'col-span-12';
+  return <div className={cx('col-span-12', widthClass, className)}>{children}</div>;
+};
+
+const Button: React.FC<any> = ({ as, to, variant, size, className, children, ...props }) => {
+  const base = cx(
+    'btn',
+    size === 'sm' ? 'btn-sm' : size === 'lg' ? 'btn-lg' : '',
+    variant === 'primary' ? 'btn-primary' : '',
+    variant === 'secondary' ? 'btn-secondary' : '',
+    variant === 'success' ? 'btn-success' : '',
+    variant === 'danger' ? 'btn-error' : '',
+    variant === 'warning' ? 'btn-warning' : '',
+    variant === 'info' ? 'btn-info' : '',
+    variant === 'outline-secondary' ? 'btn-outline' : '',
+    variant === 'outline-primary' ? 'btn-outline btn-primary' : '',
+    variant === 'outline-danger' ? 'btn-outline btn-error' : '',
+    variant === 'link' ? 'btn-link' : '',
+    className
+  );
+  if (as) {
+    const AsComp = as;
+    return <AsComp to={to} className={base} {...props}>{children}</AsComp>;
+  }
+  return <button className={base} {...props}>{children}</button>;
+};
+
+const Alert: React.FC<any> = ({ variant, className, children, ...props }) => (
+  <div className={cx('alert', variant === 'danger' ? 'alert-error' : '', variant === 'warning' ? 'alert-warning' : '', variant === 'info' ? 'alert-info' : '', variant === 'success' ? 'alert-success' : '', className)} {...props}>
+    <span>{children}</span>
+  </div>
+);
+
+const Spinner: React.FC<any> = ({ className }) => <span className={cx('loading loading-spinner loading-sm', className)} />;
+const Badge: React.FC<any> = ({ className, children }) => <span className={cx('badge', className)}>{children}</span>;
 
 const PostDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -46,6 +96,7 @@ const PostDetail: React.FC = () => {
   const [manipulationScreening, setManipulationScreening] = useState<AiScreeningResult | null>(null);
   const [sourceAnalyzing, setSourceAnalyzing] = useState<boolean>(false);
   const [manipulationAnalyzing, setManipulationAnalyzing] = useState<boolean>(false);
+  const [sellerContactNote, setSellerContactNote] = useState<string>('');
 
   const [similarPosts, setSimilarPosts] = useState<Post[]>([]);
   const [loadingSimilar, setLoadingSimilar] = useState<boolean>(false);
@@ -77,6 +128,25 @@ const PostDetail: React.FC = () => {
         .finally(() => setLoadingSimilar(false));
     }
   }, [post?.id]);
+
+  useEffect(() => {
+    const fetchSellerContactNote = async () => {
+      if (!post?.sellerId) {
+        setSellerContactNote('');
+        return;
+      }
+      try {
+        const response = await axios.get(`/api/auth/seller/${post.sellerId}`);
+        const note = response?.data?.sellerContactNote;
+        setSellerContactNote(typeof note === 'string' ? note.trim() : '');
+      } catch (err) {
+        console.error('Error fetching seller contact note:', err);
+        setSellerContactNote('');
+      }
+    };
+
+    fetchSellerContactNote();
+  }, [post?.sellerId]);
 
   useEffect(() => {
     if (post?.postType === 'auction') {
@@ -159,10 +229,6 @@ const PostDetail: React.FC = () => {
     } finally {
       setLoadingBids(false);
     }
-  };
-
-  const handleStartChat = (): void => {
-    toast.info('ระบบแชทถูกปิดใช้งานแล้ว');
   };
 
   const handleSendMessage = async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
@@ -585,7 +651,7 @@ const PostDetail: React.FC = () => {
     return (
       <div className="post-detail-loading">
         <div className="loading-container">
-          <Spinner animation="border" variant="primary" />
+          <span className="loading loading-spinner post-detail-spinner" role="status" aria-label="กำลังโหลด" />
           <p className="mt-3 text-muted">กำลังโหลดรายละเอียดโพสต์...</p>
         </div>
       </div>
@@ -596,18 +662,16 @@ const PostDetail: React.FC = () => {
     return (
       <div className="post-detail-error">
         <Container>
-          <div className="error-container">
-            <Alert variant="danger" className="error-alert">
-              <div className="error-icon">❌</div>
-              <h4>ไม่พบโพสต์ที่ต้องการ</h4>
-              <p>{error || 'โพสต์นี้อาจถูกลบหรือไม่พบในระบบ'}</p>
-            </Alert>
-            <div className="error-actions">
-              <Button as={Link as any} to="/" variant="primary" size="lg">
-                🏠 กลับหน้าแรก
+          <div className="pd-error-card">
+            <div className="pd-error-icon"><i className="fas fa-search" aria-hidden /></div>
+            <h4 className="pd-error-title">ไม่พบโพสต์ที่ต้องการ</h4>
+            <p className="pd-error-desc">{error || 'โพสต์นี้อาจถูกลบหรือไม่พบในระบบ'}</p>
+            <div className="pd-error-actions">
+              <Button as={Link as any} to="/" variant="primary">
+                <i className="fas fa-home me-2" aria-hidden />กลับหน้าแรก
               </Button>
-              <Button variant="outline-secondary" size="lg" onClick={() => window.history.back()}>
-                ← กลับ
+              <Button variant="outline-secondary" onClick={() => window.history.back()}>
+                <i className="fas fa-arrow-left me-2" aria-hidden />กลับ
               </Button>
             </div>
           </div>
@@ -744,11 +808,12 @@ const PostDetail: React.FC = () => {
                       src={post.images[currentImageIndex]}
                       alt={`${post.title} ${currentImageIndex + 1}`}
                     />
-                    <span className="mercari-zoom-hint">🔍 คลิกดูภาพขยาย</span>
+                    <span className="mercari-zoom-hint"><i className="fas fa-search-plus" aria-hidden style={{ marginRight: '0.3rem' }} />คลิกดูภาพขยาย</span>
                     {post.images.length > 1 && (
                       <>
                         <button type="button" className="image-nav-btn prev-btn" onClick={(e) => { e.stopPropagation(); prevImage(); }} aria-label="รูปก่อนหน้า">‹</button>
                         <button type="button" className="image-nav-btn next-btn" onClick={(e) => { e.stopPropagation(); nextImage(); }} aria-label="รูปถัดไป">›</button>
+                        <span className="mercari-image-counter">{currentImageIndex + 1} / {post.images.length}</span>
                       </>
                     )}
                   </div>
@@ -799,7 +864,7 @@ const PostDetail: React.FC = () => {
               </div>
 
               <div className="mercari-description-block">
-                <h6>รายละเอียดสินค้า</h6>
+                <h6><i className="fas fa-align-left me-2" aria-hidden style={{ opacity: 0.6 }} />รายละเอียดสินค้า</h6>
                 <div className="content">
                   {post.description ? post.description : 'ไม่มีรายละเอียดเพิ่มเติม'}
                 </div>
@@ -813,7 +878,7 @@ const PostDetail: React.FC = () => {
               {/* Auction Bids - show on left below description */}
               {post.postType === 'auction' && post.bidCount > 0 && (
                 <div className="mercari-description-block">
-                  <h6>รายการผู้ประมูล</h6>
+                  <h6><i className="fas fa-gavel me-2" aria-hidden style={{ opacity: 0.6 }} />รายการผู้ประมูล</h6>
                   <Button
                     variant="outline-primary"
                     size="sm"
@@ -941,9 +1006,11 @@ const PostDetail: React.FC = () => {
 
                 <div className="mercari-actions-block">
                   {isAdminViewer && (
-                    <div className="mb-3 p-2 border rounded">
-                      <div className="fw-semibold mb-2">เครื่องมือแอดมิน (AI)</div>
-                      <div className="d-flex flex-wrap gap-2 mb-2">
+                    <div className="pd-admin-tools mb-3">
+                      <div className="pd-admin-tools-header">
+                        <i className="fas fa-shield-alt me-2" aria-hidden />เครื่องมือแอดมิน (AI)
+                      </div>
+                      <div className="d-flex flex-wrap gap-2 mb-2" style={{ padding: '0.75rem 0.9rem 0' }}>
                         <Button size="sm" variant="outline-secondary" onClick={analyzeSource} disabled={sourceAnalyzing}>
                           {sourceAnalyzing ? 'กำลังวิเคราะห์...' : 'วิเคราะห์ภาพจากแหล่งอื่น'}
                         </Button>
@@ -1042,9 +1109,15 @@ const PostDetail: React.FC = () => {
                     </div>
                   )}
                   {!currentUser ? (
-                    <Alert variant="info" className="mb-0 small">
-                      <Link to="/login">เข้าสู่ระบบ</Link> เพื่อซื้อหรือติดต่อผู้ขาย
-                    </Alert>
+                    <div className="pd-contact-note">
+                      <div className="pd-contact-note-header">
+                        <i className="fas fa-lock" aria-hidden />
+                        ต้องเข้าสู่ระบบ
+                      </div>
+                      <div className="pd-contact-note-body">
+                        <Link to="/login">เข้าสู่ระบบ</Link> เพื่อซื้อและดูช่องทางติดต่อผู้ขาย
+                      </div>
+                    </div>
                   ) : isOwner ? (
                     <>
                       {isOwnerSeller && isAuctionReleased && (
@@ -1103,13 +1176,15 @@ const PostDetail: React.FC = () => {
                     <>
                       {!isSold ? (
                         <>
-                          <button
-                            type="button"
-                            className="btn-mercari-primary"
-                            onClick={handleStartChat}
-                          >
-                            ติดต่อผู้ขาย
-                          </button>
+                          <div className="pd-contact-note">
+                            <div className="pd-contact-note-header">
+                              <i className="fas fa-comment-dots" aria-hidden />
+                              ช่องทางติดต่อผู้ขาย
+                            </div>
+                            <div className="pd-contact-note-body">
+                              {sellerContactNote || <span style={{ opacity: 0.6 }}>ผู้ขายยังไม่ได้แนบช่องทางติดต่อ</span>}
+                            </div>
+                          </div>
                           {isPostActive && (
                             <button
                               type="button"
@@ -1200,15 +1275,18 @@ const PostDetail: React.FC = () => {
                 </div>
 
                 <div className="mercari-seller-block">
-                  <div className="mercari-seller-avatar">👤</div>
+                  <div className="mercari-seller-avatar">
+                    <i className="fas fa-user" aria-hidden />
+                  </div>
                   <div className="mercari-seller-info">
+                    <div className="mercari-seller-label">ผู้ขาย</div>
                     <div className="mercari-seller-name">{post.sellerName}</div>
                     <button
                       type="button"
                       className="btn btn-link p-0 mercari-seller-link"
                       onClick={() => navigate(`/seller/${post.sellerId}`)}
                     >
-                      ดูประวัติผู้ขาย
+                      <i className="fas fa-store me-1" aria-hidden />ดูร้านค้า
                     </button>
                   </div>
                 </div>
@@ -1219,14 +1297,16 @@ const PostDetail: React.FC = () => {
           {/* Related posts: CLIP similarity + same category (API แยกจากค้นหาด้วยรูป) */}
           {(loadingSimilar || similarPosts.length > 0) && (
             <div className="similar-cards-section mt-5 pt-4 border-top">
-              <h5 className="similar-cards-title mb-3">
-                <span className="similar-cards-icon">✨</span> โพสที่เกี่ยวข้อง
-              </h5>
-              <p className="text-muted small mb-3">ภาพคล้ายหรือหมวดเดียวกัน</p>
+              <div className="pd-similar-header mb-3">
+                <h5 className="similar-cards-title mb-1">
+                  <i className="fas fa-magic similar-cards-icon" aria-hidden /> โพสต์ที่เกี่ยวข้อง
+                </h5>
+                <p className="text-muted small mb-0">ค้นจากภาพคล้ายและหมวดเดียวกัน</p>
+              </div>
               {loadingSimilar ? (
-                <div className="d-flex justify-content-center py-4">
-                  <Spinner animation="border" size="sm" variant="secondary" />
-                  <span className="ms-2 text-muted">กำลังโหลด...</span>
+                <div className="d-flex align-items-center py-4" style={{ gap: '0.6rem' }}>
+                  <span className="loading loading-spinner loading-sm" style={{ color: 'var(--primary)' }} />
+                  <span className="text-muted" style={{ fontSize: '0.875rem' }}>กำลังโหลด...</span>
                 </div>
               ) : (
                 <div className="similar-cards-scroll">
@@ -1383,56 +1463,71 @@ const PostDetail: React.FC = () => {
         )}
 
         {/* Resubmit Approval Modal */}
-        <Modal
-          show={showResubmitModal}
-          onHide={() => {
-            // revoke object urls to avoid memory leak
-            resubmitImagePreviews.forEach((u) => URL.revokeObjectURL(u));
-            setResubmitImages([]);
-            setResubmitImagePreviews([]);
-            setShowResubmitModal(false);
-          }}
-          centered
-        >
-          <Modal.Header closeButton>
-            <Modal.Title>📝 แก้ไข & ยื่นขออนุมัติใหม่</Modal.Title>
-          </Modal.Header>
-          <Modal.Body>
+        {showResubmitModal && (
+          <div
+            className="fixed inset-0 z-[9999] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => {
+              resubmitImagePreviews.forEach((u) => URL.revokeObjectURL(u));
+              setResubmitImages([]);
+              setResubmitImagePreviews([]);
+              setShowResubmitModal(false);
+            }}
+          >
+            <div className="card bg-base-100 w-full max-w-2xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="px-6 py-4 border-b border-base-300 flex items-center justify-between">
+                <h3 className="font-bold text-lg m-0">📝 แก้ไข & ยื่นขออนุมัติใหม่</h3>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm btn-circle"
+                  onClick={() => {
+                    resubmitImagePreviews.forEach((u) => URL.revokeObjectURL(u));
+                    setResubmitImages([]);
+                    setResubmitImagePreviews([]);
+                    setShowResubmitModal(false);
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="px-6 py-4">
             <Alert variant="warning">
               โพสต์นี้ถูกปฏิเสธแล้ว คุณสามารถแก้ไขรายละเอียดและยื่นขออนุมัติใหม่ได้
             </Alert>
 
-            <Form.Group className="mb-3">
-              <Form.Label>ชื่อโพสต์</Form.Label>
-              <Form.Control
+            <div className="mb-3">
+              <label className="label-text font-medium">ชื่อโพสต์</label>
+              <input
+                className="input input-bordered w-full"
                 type="text"
                 value={resubmitForm.title}
                 onChange={(e) => setResubmitForm((prev) => ({ ...prev, title: e.target.value }))}
               />
-            </Form.Group>
+            </div>
 
-            <Form.Group className="mb-3">
-              <Form.Label>คำอธิบาย</Form.Label>
-              <Form.Control
-                as="textarea"
+            <div className="mb-3">
+              <label className="label-text font-medium">คำอธิบาย</label>
+              <textarea
+                className="textarea textarea-bordered w-full"
                 rows={4}
                 value={resubmitForm.description}
                 onChange={(e) => setResubmitForm((prev) => ({ ...prev, description: e.target.value }))}
               />
-            </Form.Group>
+            </div>
 
-            <Form.Group className="mb-3">
-              <Form.Label>หมวดหมู่</Form.Label>
-              <Form.Control
+            <div className="mb-3">
+              <label className="label-text font-medium">หมวดหมู่</label>
+              <input
+                className="input input-bordered w-full"
                 type="text"
                 value={resubmitForm.category}
                 onChange={(e) => setResubmitForm((prev) => ({ ...prev, category: e.target.value }))}
               />
-            </Form.Group>
+            </div>
 
-            <Form.Group className="mb-3">
-              <Form.Label>รูปภาพใหม่ (ไม่เลือก = ใช้รูปเดิม)</Form.Label>
-              <Form.Control
+            <div className="mb-3">
+              <label className="label-text font-medium">รูปภาพใหม่ (ไม่เลือก = ใช้รูปเดิม)</label>
+              <input
+                className="file-input file-input-bordered w-full"
                 type="file"
                 multiple
                 accept="image/*"
@@ -1447,9 +1542,9 @@ const PostDetail: React.FC = () => {
                   setResubmitImagePreviews(sliced.map((f) => URL.createObjectURL(f)));
                 }}
               />
-              <Form.Text className="text-muted">
+              <small className="text-base-content/60">
                 เลือกได้สูงสุด 5 รูป
-              </Form.Text>
+              </small>
 
               {resubmitImagePreviews.length > 0 ? (
                 <div className="d-flex flex-wrap gap-2 mt-2">
@@ -1489,12 +1584,13 @@ const PostDetail: React.FC = () => {
                   </div>
                 )
               )}
-            </Form.Group>
+            </div>
 
             {post?.postType === 'sale' && post.saleType === 'deck' && (
-              <Form.Group className="mb-1">
-                <Form.Label>ราคา</Form.Label>
-                <Form.Control
+              <div className="mb-1">
+                <label className="label-text font-medium">ราคา</label>
+                <input
+                  className="input input-bordered w-full"
                   type="number"
                   min="0"
                   step="0.01"
@@ -1502,7 +1598,7 @@ const PostDetail: React.FC = () => {
                   onChange={(e) => setResubmitForm((prev) => ({ ...prev, price: e.target.value }))}
                   placeholder="กรอกตัวเลข"
                 />
-              </Form.Group>
+              </div>
             )}
 
             {post?.postType === 'sale' && post.saleType === 'individual' && (
@@ -1616,7 +1712,8 @@ const PostDetail: React.FC = () => {
                           <div className="d-flex gap-2 flex-wrap">
                             <div style={{ minWidth: 120 }}>
                               <div className="small text-muted">จำนวน</div>
-                              <Form.Control
+                              <input
+                                className="input input-bordered w-full"
                                 type="number"
                                 min={1}
                                 step={1}
@@ -1633,7 +1730,8 @@ const PostDetail: React.FC = () => {
                             </div>
                             <div style={{ minWidth: 160 }}>
                               <div className="small text-muted">ราคา/ใบ (บาท)</div>
-                              <Form.Control
+                              <input
+                                className="input input-bordered w-full"
                                 type="number"
                                 min={0}
                                 step={0.01}
@@ -1673,8 +1771,8 @@ const PostDetail: React.FC = () => {
                 ตอนนี้หน้าฟอร์มนี้รองรับการแก้ไขเฉพาะชื่อ/คำอธิบาย/หมวดหมู่ (การแก้ราคาการประมูลยังไม่รวมในรอบนี้)
               </Alert>
             )}
-          </Modal.Body>
-          <Modal.Footer>
+              </div>
+              <div className="px-6 py-4 border-t border-base-300 flex justify-end gap-2">
             <Button
               variant="secondary"
               onClick={() => {
@@ -1701,17 +1799,22 @@ const PostDetail: React.FC = () => {
                 'ยื่นขออนุมัติใหม่'
               )}
             </Button>
-          </Modal.Footer>
-        </Modal>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Sold Confirmation Modal */}
-        <Modal show={showSoldModal} onHide={() => setShowSoldModal(false)} centered>
-          <Modal.Header closeButton>
-            <Modal.Title>
+        {showSoldModal && (
+          <div className="fixed inset-0 z-[9999] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowSoldModal(false)}>
+            <div className="card bg-base-100 w-full max-w-xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="px-6 py-4 border-b border-base-300 flex items-center justify-between">
+                <h3 className="font-bold text-lg m-0">
               {post.postType === 'auction' ? '✅ ยืนยันการจบการประมูล' : '✅ ยืนยันการขาย'}
-            </Modal.Title>
-          </Modal.Header>
-          <Modal.Body>
+                </h3>
+                <button type="button" className="btn btn-ghost btn-sm btn-circle" onClick={() => setShowSoldModal(false)}>✕</button>
+              </div>
+              <div className="px-6 py-4">
             <p>
               {post.postType === 'auction'
                 ? `คุณต้องการจบการประมูลของโพสต์ "${post.title}" หรือไม่?`
@@ -1720,8 +1823,8 @@ const PostDetail: React.FC = () => {
             <Alert variant="warning">
               ⚠️ การดำเนินการนี้ไม่สามารถย้อนกลับได้
             </Alert>
-          </Modal.Body>
-          <Modal.Footer>
+              </div>
+              <div className="px-6 py-4 border-t border-base-300 flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setShowSoldModal(false)}>
               ยกเลิก
             </Button>
@@ -1739,15 +1842,20 @@ const PostDetail: React.FC = () => {
                 'ยืนยันการขาย'
               )}
             </Button>
-          </Modal.Footer>
-        </Modal>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Bid Modal */}
-        <Modal show={showBidModal} onHide={() => { setShowBidModal(false); setBidCardId(undefined); setBidAmount(''); }} centered>
-          <Modal.Header closeButton>
-            <Modal.Title>🔨 ประมูล - {post?.title}</Modal.Title>
-          </Modal.Header>
-          <Modal.Body>
+        {showBidModal && (
+          <div className="fixed inset-0 z-[9999] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => { setShowBidModal(false); setBidCardId(undefined); setBidAmount(''); }}>
+            <div className="card bg-base-100 w-full max-w-2xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="px-6 py-4 border-b border-base-300 flex items-center justify-between">
+                <h3 className="font-bold text-lg m-0">🔨 ประมูล - {post?.title}</h3>
+                <button type="button" className="btn btn-ghost btn-sm btn-circle" onClick={() => { setShowBidModal(false); setBidCardId(undefined); setBidAmount(''); }}>✕</button>
+              </div>
+              <div className="px-6 py-4">
             <div className="bid-info mb-4">
               <h6>📊 ข้อมูลการประมูล</h6>
               <div className="bid-details">
@@ -1780,21 +1888,21 @@ const PostDetail: React.FC = () => {
               </div>
             </div>
             
-            <Form.Group className="mb-3">
-              <Form.Label>จำนวนเงินประมูล (บาท) *</Form.Label>
-              <Form.Control
+            <div className="mb-3">
+              <label className="label-text font-medium">จำนวนเงินประมูล (บาท) *</label>
+              <input
+                className="input input-bordered w-full bid-input"
                 type="number"
                 placeholder={`ขั้นต่ำ ${formatPrice((post?.currentBid || post?.startingBid) + 1)}`}
                 value={bidAmount}
                 onChange={(e) => setBidAmount(e.target.value)}
                 min={(post?.currentBid || post?.startingBid) + 1}
                 step="1"
-                className="bid-input"
               />
-              <Form.Text className="text-muted">
+              <small className="text-base-content/60">
                 จำนวนเงินประมูลต้องมากกว่า {formatPrice(bidCardId ? bidMinAmount : (post?.currentBid || post?.startingBid || 0))}
-              </Form.Text>
-            </Form.Group>
+              </small>
+            </div>
             
             <Alert variant="warning">
               ⚠️ <strong>ข้อควรระวัง:</strong> หลังจากประมูลแล้ว คุณจะไม่สามารถแก้ไขหรือยกเลิกการประมูลได้
@@ -1803,8 +1911,8 @@ const PostDetail: React.FC = () => {
             <Alert variant="info">
               💡 <strong>คำแนะนำ:</strong> ตรวจสอบราคาและเวลาสิ้นสุดการประมูลให้ดีก่อนประมูล
             </Alert>
-          </Modal.Body>
-          <Modal.Footer>
+              </div>
+              <div className="px-6 py-4 border-t border-base-300 flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setShowBidModal(false)}>
               ยกเลิก
             </Button>
@@ -1822,8 +1930,10 @@ const PostDetail: React.FC = () => {
                 '🔨 ยืนยันการประมูล'
               )}
             </Button>
-          </Modal.Footer>
-        </Modal>
+              </div>
+            </div>
+          </div>
+        )}
 
       </Container>
     </div>

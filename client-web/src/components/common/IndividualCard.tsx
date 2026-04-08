@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Button, Badge, Modal, Spinner, Form } from 'react-bootstrap';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCart } from '../../contexts/CartContext';
@@ -55,6 +56,24 @@ const IndividualCard: React.FC<IndividualCardProps> = ({
     const max = Math.max(1, remaining);
     setSelectedQty(prev => (prev > max ? max : prev < 1 ? 1 : prev));
   }, [remaining]);
+
+  useEffect(() => {
+    if (!showImageModal) return;
+
+    const handleEsc = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowImageModal(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleEsc);
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.removeEventListener('keydown', handleEsc);
+      document.body.style.overflow = '';
+    };
+  }, [showImageModal]);
 
   const formatPrice = (price: number): string => {
     return new Intl.NumberFormat('th-TH', {
@@ -261,11 +280,11 @@ const IndividualCard: React.FC<IndividualCardProps> = ({
             ) : (
                 !readOnly ? (
                   <Button
-                    variant="primary"
+                    variant={currentUser ? 'primary' : 'secondary'}
                     size="sm"
-                    className="btn-tcg-primary w-100"
+                    className={`w-100 ${currentUser ? 'btn-tcg-primary' : ''}`}
                     onClick={handleAddToCart}
-                    disabled={isAddingToCart || post.status !== 'active' || isOutOfStock}
+                    disabled={!currentUser || isAddingToCart || post.status !== 'active' || isOutOfStock}
                   >
                     {isAddingToCart ? (
                       <>
@@ -313,44 +332,50 @@ const IndividualCard: React.FC<IndividualCardProps> = ({
         </Card.Body>
       </Card>
 
-      {/* Image Modal */}
-      <Modal 
-        show={showImageModal} 
-        onHide={() => setShowImageModal(false)}
-        centered
-        size="lg"
-      >
-        <Modal.Header closeButton>
-          <Modal.Title>
-            <i className="fas fa-image me-2"></i>
-            {post.title || 'การ์ดเกม'}
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body className="text-center">
-          <img
-            src={card.imageUrl}
-            alt={`การ์ด ${card.id}`}
-            className="modal-card-image"
-            style={{ maxWidth: '100%', height: 'auto' }}
-          />
-        </Modal.Body>
-        <Modal.Footer>
-          <div className="card-info">
-            <div className="info-item">
-              <strong>ราคา:</strong> {formatPrice(typeof card.price === 'number' ? card.price : (post.individualPrice || post.price || 0))}
-            </div>
-            <div className="info-item">
-              <strong>เหลือ:</strong> {remaining} ใบ
-            </div>
-            <div className="info-item">
-              <strong>หมวดหมู่:</strong> {post.category || 'อื่นๆ'}
-            </div>
-            <div className="info-item">
-              <strong>ผู้ขาย:</strong> {post.sellerName}
+      {/* Image Lightbox */}
+      {showImageModal && createPortal(
+        <div
+          className="individual-image-lightbox-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="ภาพการ์ดขยาย"
+          onClick={() => setShowImageModal(false)}
+        >
+          <button
+            type="button"
+            className="individual-image-lightbox-close"
+            onClick={() => setShowImageModal(false)}
+            aria-label="ปิด"
+          >
+            ✕
+          </button>
+          <div
+            className="individual-image-lightbox-content"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={card.imageUrl}
+              alt={`การ์ด ${card.id}`}
+              className="modal-card-image"
+            />
+            <div className="card-info mt-3">
+              <div className="info-item">
+                <strong>ราคา:</strong> {formatPrice(typeof card.price === 'number' ? card.price : (post.individualPrice || post.price || 0))}
+              </div>
+              <div className="info-item">
+                <strong>เหลือ:</strong> {remaining} ใบ
+              </div>
+              <div className="info-item">
+                <strong>หมวดหมู่:</strong> {post.category || 'อื่นๆ'}
+              </div>
+              <div className="info-item">
+                <strong>ผู้ขาย:</strong> {post.sellerName}
+              </div>
             </div>
           </div>
-        </Modal.Footer>
-      </Modal>
+        </div>,
+        document.body
+      )}
 
       <Modal
         show={showLoginModal}

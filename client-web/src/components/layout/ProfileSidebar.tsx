@@ -1,5 +1,4 @@
 import React from 'react';
-import { Nav } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -153,41 +152,51 @@ const ProfileSidebar: React.FC<ProfileSidebarProps> = ({ activeTab, onTabChange 
   };
 
   return (
-    <div className="profile-sidebar">
-      <div className="sidebar-header">
-        <div className="d-flex align-items-center justify-content-between">
-          <span className="sidebar-title">บัญชีของฉัน</span>
-          <span className="dropdown-arrow">▼</span>
+    <aside className="profile-sidebar card bg-base-100 border border-base-300 shadow-sm rounded-2xl overflow-hidden">
+      <div className="sidebar-header px-4 py-4 border-b border-base-300 bg-base-200/60">
+        <div className="flex items-center justify-between">
+          <span className="sidebar-title text-sm font-semibold text-base-content/80">บัญชีของฉัน</span>
+          <span className="dropdown-arrow text-base-content/50">▼</span>
         </div>
       </div>
       
-      <Nav className="flex-column sidebar-nav">
+      <nav className="sidebar-nav p-2 space-y-1">
         {menuItems.map((item) => (
           <React.Fragment key={item.id}>
-            <Nav.Item>
-              <Nav.Link
-                className={`sidebar-item ${activeTab === item.id ? 'active' : ''}`}
+            <div>
+              <button
+                type="button"
+                className={`sidebar-item w-full text-left rounded-xl px-3 py-2.5 flex items-center gap-2 transition-all ${
+                  activeTab === item.id
+                    ? 'active bg-primary/10 text-primary font-semibold'
+                    : 'text-base-content/80 hover:bg-base-200'
+                }`}
                 onClick={() => handleItemClick(item.id)}
               >
                 <span className="item-icon">{renderIcon(item.icon)}</span>
-                <span className="item-label">{item.label}</span>
+                <span className="item-label text-sm">{item.label}</span>
                 {item.hasDropdown && <span className="dropdown-arrow">▼</span>}
-              </Nav.Link>
-            </Nav.Item>
+              </button>
+            </div>
             
             {/* Submenu items */}
             {item.children && (
-              <div className="submenu">
+              <div className="submenu ml-2 pl-2 border-l border-base-300 space-y-1 my-1">
                 {item.children.map((child) => (
-                  <Nav.Item key={child.id}>
-                    <Nav.Link
-                      className={`sidebar-item submenu-item ${activeTab === child.id ? 'active' : ''}`}
+                  <div key={child.id}>
+                    <button
+                      type="button"
+                      className={`sidebar-item submenu-item w-full text-left rounded-lg px-3 py-2 flex items-center gap-2 transition-all ${
+                        activeTab === child.id
+                          ? 'active bg-primary/10 text-primary font-medium'
+                          : 'text-base-content/70 hover:bg-base-200'
+                      }`}
                       onClick={() => handleItemClick(child.id)}
                     >
                       <span className="item-icon">{renderIcon(child.icon)}</span>
-                      <span className="item-label">{child.label}</span>
-                    </Nav.Link>
-                  </Nav.Item>
+                      <span className="item-label text-sm">{child.label}</span>
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -195,17 +204,18 @@ const ProfileSidebar: React.FC<ProfileSidebarProps> = ({ activeTab, onTabChange 
         ))}
         
         {/* Logout Button */}
-        <Nav.Item className="mt-auto">
-          <Nav.Link
-            className="sidebar-item logout-item"
+        <div className="pt-2 mt-2 border-t border-base-300">
+          <button
+            type="button"
+            className="sidebar-item logout-item w-full text-left rounded-xl px-3 py-2.5 flex items-center gap-2 text-error hover:bg-error/10 transition-all"
             onClick={handleLogout}
           >
             <span className="item-icon">{renderIcon('logout')}</span>
-            <span className="item-label">ออกจากระบบ</span>
-          </Nav.Link>
-        </Nav.Item>
-      </Nav>
-    </div>
+            <span className="item-label text-sm font-medium">ออกจากระบบ</span>
+          </button>
+        </div>
+      </nav>
+    </aside>
   );
 };
 

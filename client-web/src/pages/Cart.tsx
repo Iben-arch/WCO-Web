@@ -1,33 +1,47 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Card, Button, Alert, Spinner, Badge, Modal, Form } from 'react-bootstrap';
 import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../contexts/CartContext';
 import { useAuth } from '../contexts/AuthContext';
 import { CartItem } from '../types';
 import { ordersAPI } from '../api/api';
 import { toast } from 'react-toastify';
-import { PrimaryActionButton, SecondaryActionButton } from '../components/common/ButtonComponents';
-import '../styles/cart.css';
+
+/* ───── tiny inline Modal (no bootstrap) ───── */
+const Modal: React.FC<{ show: boolean; onHide: () => void; children: React.ReactNode }> = ({ show, onHide, children }) => {
+  if (!show) return null;
+  return (
+    <div
+      className="fixed inset-0 z-[9999] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={onHide}
+    >
+      <div
+        className="bg-base-100 rounded-2xl w-full max-w-md shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
+      </div>
+    </div>
+  );
+};
 
 const Cart: React.FC = () => {
-  const { cartItems, loading, error, removeFromCart, clearCart, getTotalPrice, formatPrice, fetchCartItems } = useCart();
+  const { cartItems, loading, removeFromCart, clearCart, formatPrice, fetchCartItems } = useCart();
   const { currentUser, userProfile } = useAuth();
   const navigate = useNavigate();
-  const [removingItem, setRemovingItem] = useState<string | null>(null);
-  const [showClearModal, setShowClearModal] = useState<boolean>(false);
-  const [showCheckoutModal, setShowCheckoutModal] = useState<boolean>(false);
-  const [checkoutAddress, setCheckoutAddress] = useState<string>('');
-  const [checkoutPhone, setCheckoutPhone] = useState<string>('');
-  const [clearingCart, setClearingCart] = useState<boolean>(false);
-  const [checkingOut, setCheckingOut] = useState<boolean>(false);
-  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
 
-  // รวมทั้ง sale และ auction ที่ชนะแล้ว
+  const [removingItem, setRemovingItem]       = useState<string | null>(null);
+  const [showClearModal, setShowClearModal]   = useState(false);
+  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+  const [checkoutAddress, setCheckoutAddress] = useState('');
+  const [checkoutPhone, setCheckoutPhone]     = useState('');
+  const [clearingCart, setClearingCart]       = useState(false);
+  const [checkingOut, setCheckingOut]         = useState(false);
+  const [selectedItems, setSelectedItems]     = useState<Set<string>>(new Set());
+
   const normalCartItems = cartItems;
 
-  const getItemKey = (item: CartItem): string => item.id || `${item.postId}_${item.cardId || ''}`;
+  const getItemKey = (item: CartItem) => item.id || `${item.postId}_${item.cardId || ''}`;
 
-  /** ราคาต่อหน่วย: ถ้ามี cardId ใช้ราคาจาก individualCards[].price ก่อน (ให้ตรงกับที่กดในโพสต์) */
   const getItemUnitPrice = (item: CartItem): number => {
     if (item.unitPrice != null && item.unitPrice > 0) return item.unitPrice;
     if (item.cardId && item.post.individualCards?.length) {
@@ -37,123 +51,96 @@ const Cart: React.FC = () => {
     return item.post.individualPrice ?? item.post.price ?? item.post.currentBid ?? 0;
   };
 
-  // Refresh cart items when component mounts
   useEffect(() => {
-    if (currentUser) {
-      fetchCartItems();
-    }
+    if (currentUser) fetchCartItems();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser]);
 
-  // Select all items by default when cart items change
   useEffect(() => {
     if (normalCartItems.length > 0) {
       setSelectedItems(new Set(normalCartItems.map(getItemKey)));
     }
   }, [normalCartItems]);
 
-  const handleRemoveItem = async (item: CartItem): Promise<void> => {
-    const itemKey = getItemKey(item);
-    setRemovingItem(itemKey);
+  const handleRemoveItem = async (item: CartItem) => {
+    const key = getItemKey(item);
+    setRemovingItem(key);
     try {
       const result = await removeFromCart(item.id || item.postId, item.cardId);
-      if (result.success) {
-        toast.success(result.message);
-      } else {
-        toast.error(result.message);
-      }
-    } catch (error) {
+      result.success ? toast.success(result.message) : toast.error(result.message);
+    } catch {
       toast.error('เกิดข้อผิดพลาดในการลบรายการ');
     } finally {
       setRemovingItem(null);
     }
   };
 
-  const handleClearCart = async (): Promise<void> => {
+  const handleClearCart = async () => {
     setClearingCart(true);
     try {
       const result = await clearCart();
-      if (result.success) {
-        toast.success(result.message);
-        setShowClearModal(false);
-      } else {
-        toast.error(result.message);
-      }
-    } catch (error) {
+      if (result.success) { toast.success(result.message); setShowClearModal(false); }
+      else toast.error(result.message);
+    } catch {
       toast.error('เกิดข้อผิดพลาดในการล้างตะกร้า');
     } finally {
       setClearingCart(false);
     }
   };
 
-  const handleToggleItem = (postId: string): void => {
-    const newSelected = new Set(selectedItems);
-    if (newSelected.has(postId)) {
-      newSelected.delete(postId);
-    } else {
-      newSelected.add(postId);
-    }
-    setSelectedItems(newSelected);
+  const handleToggleItem = (key: string) => {
+    const next = new Set(selectedItems);
+    next.has(key) ? next.delete(key) : next.add(key);
+    setSelectedItems(next);
   };
 
-  const handleSelectAll = (): void => {
-    if (selectedItems.size === normalCartItems.length) {
-      setSelectedItems(new Set());
-    } else {
-      setSelectedItems(new Set(normalCartItems.map(getItemKey)));
-    }
+  const handleSelectAll = () => {
+    setSelectedItems(
+      selectedItems.size === normalCartItems.length
+        ? new Set()
+        : new Set(normalCartItems.map(getItemKey))
+    );
   };
 
-  const getSelectedTotal = (): number => {
-    return normalCartItems
+  const getSelectedTotal = () =>
+    normalCartItems
       .filter(item => selectedItems.has(getItemKey(item)))
-      .reduce((total, item) => {
-        const price = getItemUnitPrice(item);
-        const qty = item.quantity ?? 1;
-        return total + price * qty;
-      }, 0);
-  };
+      .reduce((sum, item) => sum + getItemUnitPrice(item) * (item.quantity ?? 1), 0);
 
-  const openCheckoutModal = (): void => {
+  const openCheckoutModal = () => {
     setCheckoutAddress(userProfile?.address ?? (userProfile as any)?.address ?? '');
     setCheckoutPhone(userProfile?.phone ?? (userProfile as any)?.phone ?? '');
     setShowCheckoutModal(true);
   };
 
-  const handleConfirmCheckout = async (): Promise<void> => {
-    if (!currentUser) {
-      navigate('/login');
-      return;
-    }
+  const handleCheckout = () => {
+    if (!currentUser) { navigate('/login'); return; }
+    const selected = normalCartItems.filter(item => selectedItems.has(getItemKey(item)));
+    if (selected.length === 0) { toast.warning('กรุณาเลือกสินค้าที่ต้องการซื้อ'); return; }
+    const ids = selected.map(i => i.id).filter((id): id is string => !!id);
+    if (ids.length === 0) { toast.error('ไม่พบรหัสรายการตะกร้า กรุณารีเฟรชหน้า'); return; }
+    openCheckoutModal();
+  };
+
+  const handleConfirmCheckout = async () => {
+    if (!currentUser) { navigate('/login'); return; }
     const address = checkoutAddress?.trim();
-    if (!address) {
-      toast.warning('กรุณากรอกที่อยู่จัดส่ง หรือเพิ่มที่อยู่ในโปรไฟล์');
-      return;
-    }
-    const phone = checkoutPhone?.trim();
-    if (!phone) {
-      toast.warning('กรุณากรอกเบอร์โทร หรือเพิ่มเบอร์โทรในโปรไฟล์');
-      return;
-    }
+    const phone   = checkoutPhone?.trim();
+    if (!address) { toast.warning('กรุณากรอกที่อยู่จัดส่ง'); return; }
+    if (!phone)   { toast.warning('กรุณากรอกเบอร์โทร'); return; }
 
     const selected = normalCartItems.filter(item => selectedItems.has(getItemKey(item)));
-    if (selected.length === 0) {
-      toast.warning('กรุณาเลือกสินค้าที่ต้องการซื้อ');
-      return;
-    }
+    if (selected.length === 0) { toast.warning('กรุณาเลือกสินค้าที่ต้องการซื้อ'); return; }
     const cartItemIds = selected
-      .map(item => (item as any).id ?? (item as any).Id ?? item.id)
+      .map(item => (item as any).id ?? item.id)
       .filter((id): id is string => typeof id === 'string' && id.length > 0);
-    if (cartItemIds.length === 0) {
-      toast.error('ไม่พบรหัสรายการตะกร้า กรุณารีเฟรชหน้า');
-      return;
-    }
+    if (cartItemIds.length === 0) { toast.error('ไม่พบรหัสรายการตะกร้า กรุณารีเฟรชหน้า'); return; }
 
     setCheckingOut(true);
     try {
       const result = await ordersAPI.checkout({ cartItemIds, shippingAddress: address, shippingPhone: phone });
       if (result.success) {
-        toast.success(result.message || 'สั่งซื้อสำเร็จ สถานะ: รอจัดส่ง');
+        toast.success(result.message || 'สั่งซื้อสำเร็จ');
         setShowCheckoutModal(false);
         setCheckoutAddress('');
         setCheckoutPhone('');
@@ -162,369 +149,371 @@ const Cart: React.FC = () => {
       } else {
         toast.error(result.error || 'เกิดข้อผิดพลาดในการสั่งซื้อ');
       }
-    } catch (e) {
+    } catch {
       toast.error('เกิดข้อผิดพลาดในการสั่งซื้อ');
     } finally {
       setCheckingOut(false);
     }
   };
 
-  const handleCheckout = (): void => {
-    if (!currentUser) {
-      navigate('/login');
-      return;
-    }
-    const selected = normalCartItems.filter(item => selectedItems.has(getItemKey(item)));
-    if (selected.length === 0) {
-      toast.warning('กรุณาเลือกสินค้าที่ต้องการซื้อ');
-      return;
-    }
-    const cartItemIds = selected.map(item => item.id).filter((id): id is string => !!id);
-    if (cartItemIds.length === 0) {
-      toast.error('ไม่พบรหัสรายการตะกร้า กรุณารีเฟรชหน้า');
-      return;
-    }
-    openCheckoutModal();
-  };
-
+  /* ── Loading ── */
   if (loading) {
     return (
-      <div className="cart-loading">
-        <Container className="py-5">
-          <div className="d-flex justify-content-center">
-            <Spinner animation="border" role="status">
-              <span className="visually-hidden">Loading...</span>
-            </Spinner>
-          </div>
-        </Container>
+      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-3 bg-base-200/40">
+        <span className="loading loading-spinner loading-lg text-primary" />
+        <p className="text-sm text-base-content/50">กำลังโหลดตะกร้า...</p>
       </div>
     );
   }
 
-  // Don't show error state - show empty cart instead for better UX
-  // if (error) {
-  //   return (
-  //     <Container className="py-5">
-  //       <Alert variant="danger">
-  //         <h4>เกิดข้อผิดพลาด</h4>
-  //         <p>{error}</p>
-  //         <Button variant="primary" onClick={() => window.location.reload()}>
-  //           รีเฟรชหน้า
-  //         </Button>
-  //       </Alert>
-  //     </Container>
-  //   );
-  // }
+  /* ── Empty cart ── */
+  if (normalCartItems.length === 0) {
+    return (
+      <div className="min-h-[70vh] flex items-center justify-center bg-base-200/40 p-4">
+        <div className="bg-base-100 rounded-2xl border border-base-300 shadow-sm p-10 text-center max-w-sm w-full">
+          <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-5">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-primary/60">
+              <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+              <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+            </svg>
+          </div>
+          <h3 className="font-bold text-lg text-base-content mb-2">ตะกร้าของคุณว่างอยู่</h3>
+          <p className="text-sm text-base-content/50 mb-6 leading-relaxed">
+            ยังไม่มีสินค้าในตะกร้า<br />ไปเลือกสินค้าที่ต้องการกันเถอะ!
+          </p>
+          <Link to="/" className="btn btn-primary w-full">ไปเลือกสินค้า</Link>
+        </div>
+      </div>
+    );
+  }
 
+  const allSelected  = selectedItems.size === normalCartItems.length;
+  const someSelected = selectedItems.size > 0;
+
+  /* ── Main cart ── */
   return (
-    <div className="cart-container">
-      <Container className="cart-container-inner py-5">
-        <Row className="mb-4">
-          <Col>
-            <header className="cart-page-header">
-              <div className="cart-page-header-inner">
-                <h1 className="cart-page-title">
-                  ตะกร้าของฉัน
-                  {normalCartItems.length > 0 && (
-                    <Badge bg="primary" className="cart-page-badge ms-2">
-                      {normalCartItems.length} รายการ
-                    </Badge>
-                  )}
-                </h1>
-                <p className="cart-page-subtitle">รายการสินค้าที่คุณต้องการซื้อ — เลือกรายการแล้วดำเนินการซื้อ</p>
-              </div>
-            </header>
-          </Col>
-        </Row>
+    <div className="min-h-screen bg-base-200/40 pb-12">
+      <div className="max-w-6xl mx-auto px-4 py-6">
 
-        {loading ? (
-          <div className="cart-loading">
-            <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '50vh' }}>
-              <Spinner animation="border" role="status">
-                <span className="visually-hidden">กำลังโหลด...</span>
-              </Spinner>
+        {/* Page header */}
+        <div className="mb-6">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shadow-sm">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+                <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+              </svg>
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-base-content flex items-center gap-2">
+                ตะกร้าของฉัน
+                <span className="badge badge-primary badge-sm">{normalCartItems.length} รายการ</span>
+              </h1>
+              <p className="text-xs text-base-content/50 mt-0.5">เลือกรายการแล้วดำเนินการซื้อ</p>
             </div>
           </div>
-        ) : normalCartItems.length === 0 ? (
-          <div className="cart-empty-state">
-            <Card className="cart-empty-card">
-              <Card.Body>
-                <div className="cart-empty-icon" aria-hidden>
-                  <i className="fas fa-shopping-cart" />
-                </div>
-                <h3 className="cart-empty-title">ไม่มีสินค้าในตะกร้า</h3>
-                <p className="cart-empty-description">
-                  ยังไม่มีสินค้าในตะกร้า<br />
-                  ไปเลือกสินค้าที่ต้องการซื้อกันเถอะ!
-                </p>
-                <PrimaryActionButton as={Link as any} to="/" icon={<i className="fas fa-store" />}>
-                  ไปเลือกสินค้า
-                </PrimaryActionButton>
-              </Card.Body>
-            </Card>
-          </div>
-        ) : (
-          <>
-            {/* Cart Items */}
-            <Row>
-              <Col lg={8}>
-                <Card className="cart-items-card mb-4">
-                  <Card.Header className="cart-items-header">
-                    <div className="d-flex align-items-center justify-content-between">
-                      <div className="d-flex align-items-center">
-                        <Form.Check
-                          type="checkbox"
-                          checked={normalCartItems.length > 0 && selectedItems.size === normalCartItems.length}
-                          onChange={handleSelectAll}
-                          className="me-3"
-                          label="เลือกทั้งหมด"
-                        />
-                      </div>
-                      <span className="cart-items-count">
-                        {normalCartItems.length} รายการ
-                      </span>
-                    </div>
-                  </Card.Header>
-                  <Card.Body className="p-0">
-                    <div className="cart-items-list">
-                      {normalCartItems.map((item: CartItem) => {
-                        const itemKey = getItemKey(item);
-                        const displayImage = item.cardId && item.post.individualCards
-                          ? item.post.individualCards.find(c => c.id === item.cardId)?.imageUrl
-                          : item.post.images?.[0];
-                        return (
-                        <div key={itemKey} className="cart-item-row">
-                          <div className="cart-item-checkbox">
-                            <Form.Check
-                              type="checkbox"
-                              checked={selectedItems.has(itemKey)}
-                              onChange={() => handleToggleItem(itemKey)}
-                            />
-                          </div>
-                          <div className="cart-item-image-wrapper">
-                            {displayImage ? (
-                              <img
-                                src={displayImage}
-                                alt={item.post.title}
-                                className="cart-item-image"
-                              />
-                            ) : item.post.images && item.post.images.length > 0 ? (
-                              <img
-                                src={item.post.images[0]}
-                                alt={item.post.title}
-                                className="cart-item-image"
-                              />
-                            ) : (
-                              <div className="cart-item-image-placeholder">
-                                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                                  <rect x="3" y="3" width="18" height="18" rx="2" strokeDasharray="2 2"/>
-                                  <circle cx="8.5" cy="8.5" r="1.5"/>
-                                  <path d="M21 15l-5-5L5 21"/>
-                                </svg>
-                              </div>
-                            )}
-                          </div>
-                          <div className="cart-item-info">
-                            <h6 className="cart-item-name">
-                              <Link to={`/post/${item.postId}`} className="text-decoration-none">
-                                {item.post.title}
-                              </Link>
-                            </h6>
-                            <div className="cart-item-meta-info">
-                              <Badge className="me-2" bg="secondary">
-                                {item.post.category}
-                              </Badge>
-                              <span className="cart-item-seller-info">
-                                ผู้ขาย: <Link to={`/seller/${item.post.sellerId}`} className="seller-link">{item.post.sellerName}</Link>
-                              </span>
-                            </div>
-                            {item.post.status === 'sold' && (
-                              <Badge bg="danger" className="mt-2"><i className="fas fa-check-circle me-1" aria-hidden />ขายแล้ว</Badge>
-                            )}
-                          </div>
-                          <div className="cart-item-price-section">
-                            <div className="cart-item-price-value">
-                              {formatPrice(getItemUnitPrice(item) * (item.quantity ?? 1))}
-                              {item.quantity && item.quantity > 1 && (
-                                <small className="text-muted ms-1">x{item.quantity}</small>
-                              )}
-                            </div>
-                            <Button
-                              variant="link"
-                              className="cart-item-remove-btn"
-                              onClick={() => handleRemoveItem(item)}
-                              disabled={removingItem === itemKey}
-                            >
-                              {removingItem === itemKey ? (
-                                <Spinner size="sm" as="span" />
-                              ) : (
-                                <i className="fas fa-trash-alt" aria-hidden />
-                              )}
-                            </Button>
-                          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-5 items-start">
+
+          {/* ── Left: Cart items ── */}
+          <div className="bg-base-100 rounded-2xl border border-base-300 shadow-sm overflow-hidden">
+            {/* Header */}
+            <div className="px-5 py-3.5 border-b border-base-300 flex items-center justify-between bg-base-100">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="checkbox checkbox-primary checkbox-sm"
+                  checked={allSelected && normalCartItems.length > 0}
+                  onChange={handleSelectAll}
+                />
+                <span className="text-sm font-medium text-base-content">
+                  เลือกทั้งหมด
+                </span>
+              </label>
+              <span className="text-xs text-base-content/40">{normalCartItems.length} รายการ</span>
+            </div>
+
+            {/* Item list */}
+            <div className="divide-y divide-base-300">
+              {normalCartItems.map((item: CartItem) => {
+                const itemKey = getItemKey(item);
+                const isSelected = selectedItems.has(itemKey);
+                const isRemoving = removingItem === itemKey;
+                const displayImage = item.cardId && item.post.individualCards
+                  ? item.post.individualCards.find(c => c.id === item.cardId)?.imageUrl
+                  : item.post.images?.[0];
+                const unitPrice = getItemUnitPrice(item);
+                const qty = item.quantity ?? 1;
+
+                return (
+                  <div
+                    key={itemKey}
+                    className={`flex items-center gap-3 px-5 py-4 transition-colors duration-150 ${isSelected ? 'bg-primary/[0.03]' : 'bg-base-100'} hover:bg-base-50`}
+                  >
+                    {/* Checkbox */}
+                    <input
+                      type="checkbox"
+                      className="checkbox checkbox-primary checkbox-sm shrink-0"
+                      checked={isSelected}
+                      onChange={() => handleToggleItem(itemKey)}
+                    />
+
+                    {/* Image */}
+                    <div className="w-20 h-20 shrink-0 rounded-xl overflow-hidden border border-base-300 bg-base-200">
+                      {displayImage ? (
+                        <img src={displayImage} alt={item.post.title} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-base-content/20">
+                            <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                          </svg>
                         </div>
-                      );})}
+                      )}
                     </div>
-                  </Card.Body>
-                </Card>
-              </Col>
 
-              {/* Cart Summary */}
-              <Col lg={4}>
-                <Card className="cart-summary-card">
-                  <Card.Header className="cart-summary-header">
-                    <h5 className="mb-0"><i className="fas fa-receipt me-2" aria-hidden />สรุปตะกร้า</h5>
-                  </Card.Header>
-                  <Card.Body>
-                    <div className="cart-summary-details">
-                      <div className="summary-item">
-                        <span>จำนวนรายการ:</span>
-                        <span>{selectedItems.size} / {normalCartItems.length} รายการ</span>
-                      </div>
-                      <div className="summary-item summary-total">
-                        <span>ยอดรวม:</span>
-                        <span className="total-price-amount">
-                          {formatPrice(getSelectedTotal())}
-                        </span>
-                      </div>
-                    </div>
-                    
-                    <div className="cart-summary-actions">
-                      <PrimaryActionButton
-                        className="w-100 mb-2"
-                        onClick={handleCheckout}
-                        disabled={selectedItems.size === 0 || checkingOut}
-                        icon={checkingOut ? null : <i className="fas fa-credit-card" />}
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <Link
+                        to={`/post/${item.postId}`}
+                        className="font-semibold text-sm text-base-content hover:text-primary transition-colors line-clamp-2 block mb-1.5"
                       >
-                        {checkingOut ? (
-                          <>
-                            <Spinner size="sm" className="me-2" as="span" />
-                            กำลังดำเนินการ...
-                          </>
-                        ) : (
-                          `ดำเนินการซื้อ (${selectedItems.size})`
+                        {item.post.title}
+                      </Link>
+                      <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                        <span className="badge badge-ghost badge-sm">{item.post.category}</span>
+                        {item.post.status === 'sold' && (
+                          <span className="badge badge-error badge-sm">ขายแล้ว</span>
                         )}
-                      </PrimaryActionButton>
-                      <SecondaryActionButton
-                        className="w-100"
-                        onClick={() => setShowClearModal(true)}
-                        icon={<i className="fas fa-broom" />}
+                      </div>
+                      <p className="text-xs text-base-content/40">
+                        ผู้ขาย:{' '}
+                        <Link to={`/seller/${item.post.sellerId}`} className="text-primary hover:underline">
+                          {item.post.sellerName}
+                        </Link>
+                      </p>
+                    </div>
+
+                    {/* Price + remove */}
+                    <div className="shrink-0 flex flex-col items-end gap-2">
+                      <p className="font-bold text-primary text-base">
+                        {formatPrice(unitPrice * qty)}
+                      </p>
+                      {qty > 1 && (
+                        <p className="text-xs text-base-content/40">{formatPrice(unitPrice)} × {qty}</p>
+                      )}
+                      <button
+                        className="btn btn-ghost btn-xs text-error hover:bg-error/10"
+                        onClick={() => handleRemoveItem(item)}
+                        disabled={isRemoving}
+                        title="ลบออกจากตะกร้า"
                       >
-                        ล้างตะกร้าทั้งหมด
-                      </SecondaryActionButton>
+                        {isRemoving ? (
+                          <span className="loading loading-spinner loading-xs" />
+                        ) : (
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                          </svg>
+                        )}
+                      </button>
                     </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
 
-                    <div className="cart-summary-note">
-                      <Alert variant="info" className="cart-summary-info mb-0">
-                        <small>
-                          <i className="fas fa-lightbulb me-2" aria-hidden />
-                          กด &quot;ดำเนินการซื้อ&quot; เพื่อยืนยันคำสั่งซื้อ สถานะจะเป็น <strong>รอจัดส่ง</strong>
-                          หลังจากผู้ขายยืนยันการส่งและแนบใบเสร็จ ดูได้ที่ <strong>รายการคำสั่งซื้อ</strong> ในโปรไฟล์
-                        </small>
-                      </Alert>
-                    </div>
-                  </Card.Body>
-                </Card>
-              </Col>
-            </Row>
-          </>
-        )}
-      </Container>
+          {/* ── Right: Summary ── */}
+          <div className="lg:sticky lg:top-4 space-y-3">
+            <div className="bg-base-100 rounded-2xl border border-base-300 shadow-sm overflow-hidden">
+              {/* Summary header */}
+              <div className="px-5 py-4 border-b border-base-300 flex items-center gap-2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+                </svg>
+                <h3 className="font-semibold text-base-content">สรุปตะกร้า</h3>
+              </div>
 
-      <Modal show={showCheckoutModal} onHide={() => !checkingOut && setShowCheckoutModal(false)} centered className="cart-modal">
-        <Modal.Header closeButton className="cart-modal-header">
-          <Modal.Title><i className="fas fa-truck me-2" aria-hidden />ยืนยันการสั่งซื้อ</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <p className="text-muted small mb-2">ที่อยู่จัดส่ง (ดึงจากโปรไฟล์ หรือกรอกด้านล่าง)</p>
-          <Form.Group className="mb-3">
-            <Form.Control
-              as="textarea"
+              <div className="p-5 space-y-3">
+                {/* Stats */}
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-base-content/60">รายการที่เลือก</span>
+                  <span className="font-medium text-base-content">
+                    {selectedItems.size} / {normalCartItems.length}
+                  </span>
+                </div>
+                <div className="divider my-0" />
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-base-content">ยอดรวม</span>
+                  <span className="text-xl font-bold text-primary">{formatPrice(getSelectedTotal())}</span>
+                </div>
+
+                {/* CTA */}
+                <button
+                  className="btn btn-primary w-full mt-2 gap-2"
+                  onClick={handleCheckout}
+                  disabled={!someSelected || checkingOut}
+                >
+                  {checkingOut ? (
+                    <><span className="loading loading-spinner loading-sm" />กำลังดำเนินการ...</>
+                  ) : (
+                    <>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+                      </svg>
+                      ดำเนินการซื้อ ({selectedItems.size})
+                    </>
+                  )}
+                </button>
+
+                <button
+                  className="btn btn-ghost btn-sm w-full text-error hover:bg-error/10 gap-1.5"
+                  onClick={() => setShowClearModal(true)}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>
+                  </svg>
+                  ล้างตะกร้าทั้งหมด
+                </button>
+              </div>
+            </div>
+
+            {/* Info note */}
+            <div className="flex gap-2.5 p-3.5 rounded-xl bg-info/10 border border-info/20 text-info">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+              <p className="text-xs leading-relaxed">
+                กด "ดำเนินการซื้อ" เพื่อยืนยันคำสั่งซื้อ สถานะจะเป็น <strong>รอจัดส่ง</strong> หลังจากผู้ขายยืนยันและแนบใบเสร็จ
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Checkout Modal ── */}
+      <Modal show={showCheckoutModal} onHide={() => !checkingOut && setShowCheckoutModal(false)}>
+        <div className="px-6 py-4 border-b border-base-300 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
+              <rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+            </svg>
+            <h3 className="font-bold text-base-content">ยืนยันการสั่งซื้อ</h3>
+          </div>
+          {!checkingOut && (
+            <button className="btn btn-ghost btn-sm btn-circle" onClick={() => setShowCheckoutModal(false)}>✕</button>
+          )}
+        </div>
+
+        <div className="p-6 space-y-4">
+          <div className="form-control">
+            <label className="label pb-1">
+              <span className="label-text font-medium">ที่อยู่จัดส่ง</span>
+              <span className="label-text-alt text-base-content/40">ดึงจากโปรไฟล์อัตโนมัติ</span>
+            </label>
+            <textarea
+              className="textarea textarea-bordered w-full resize-none"
               rows={3}
-              placeholder="กรอกที่อยู่จัดส่ง เช่น บ้านเลขที่ ถนน ตำบล อำเภอ จังหวัด รหัสไปรษณีย์"
+              placeholder="บ้านเลขที่ ถนน ตำบล อำเภอ จังหวัด รหัสไปรษณีย์"
               value={checkoutAddress}
               onChange={(e) => setCheckoutAddress(e.target.value)}
               disabled={checkingOut}
-              className="form-control-sakura"
             />
-          </Form.Group>
-          <Form.Group className="mb-3">
-            <Form.Label className="text-muted small">เบอร์โทร</Form.Label>
-            <Form.Control
+          </div>
+
+          <div className="form-control">
+            <label className="label pb-1">
+              <span className="label-text font-medium">เบอร์โทรศัพท์</span>
+            </label>
+            <input
               type="tel"
+              className="input input-bordered w-full"
               placeholder="เช่น 08x-xxx-xxxx"
               value={checkoutPhone}
               onChange={(e) => setCheckoutPhone(e.target.value)}
               disabled={checkingOut}
-              className="form-control-sakura"
             />
-          </Form.Group>
-          <Alert variant="warning" className="cart-modal-warning mb-0">
-            <small>
-              <i className="fas fa-info-circle me-2" aria-hidden />
-              <strong>การชำระเงินเป็นแบบ mock</strong> — ไม่มีการหักเงินจริง กดยืนยันเพื่อสร้างคำสั่งซื้อ
-            </small>
-          </Alert>
-        </Modal.Body>
-        <Modal.Footer>
-          <SecondaryActionButton onClick={() => setShowCheckoutModal(false)} disabled={checkingOut} icon={<i className="fas fa-times" />}>
+          </div>
+
+          {/* Total preview */}
+          <div className="flex items-center justify-between p-3 rounded-xl bg-primary/5 border border-primary/15">
+            <span className="text-sm text-base-content/70">ยอดสั่งซื้อ ({selectedItems.size} รายการ)</span>
+            <span className="font-bold text-primary">{formatPrice(getSelectedTotal())}</span>
+          </div>
+
+          <div className="flex gap-2 items-start p-3 rounded-xl bg-warning/10 border border-warning/20 text-warning-content">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5 text-warning">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <p className="text-xs text-warning">การชำระเงินเป็นแบบ mock — ไม่มีการหักเงินจริง</p>
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-base-300 flex gap-2 justify-end">
+          <button className="btn btn-ghost btn-sm" onClick={() => setShowCheckoutModal(false)} disabled={checkingOut}>
             ยกเลิก
-          </SecondaryActionButton>
-          <PrimaryActionButton
+          </button>
+          <button
+            className="btn btn-primary btn-sm gap-2"
             onClick={handleConfirmCheckout}
             disabled={!checkoutAddress?.trim() || !checkoutPhone?.trim() || checkingOut}
-            icon={checkingOut ? null : <i className="fas fa-check" />}
           >
             {checkingOut ? (
-              <>
-                <Spinner size="sm" className="me-2" as="span" />
-                กำลังดำเนินการ...
-              </>
+              <><span className="loading loading-spinner loading-xs" />กำลังดำเนินการ...</>
             ) : (
-              'ยืนยันสั่งซื้อ'
+              <>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                ยืนยันสั่งซื้อ
+              </>
             )}
-          </PrimaryActionButton>
-        </Modal.Footer>
+          </button>
+        </div>
       </Modal>
 
-      <Modal show={showClearModal} onHide={() => setShowClearModal(false)} centered className="cart-modal">
-        <Modal.Header closeButton className="cart-modal-header cart-modal-header--danger">
-          <Modal.Title><i className="fas fa-trash-alt me-2" aria-hidden />ยืนยันการล้างตะกร้า</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <p className="mb-0">คุณต้องการล้างตะกร้าทั้งหมดหรือไม่?</p>
-          <Alert variant="warning" className="cart-modal-warning mt-3 mb-0">
-            <i className="fas fa-exclamation-triangle me-2" aria-hidden />
-            การดำเนินการนี้ไม่สามารถย้อนกลับได้
-          </Alert>
-        </Modal.Body>
-        <Modal.Footer>
-          <SecondaryActionButton onClick={() => setShowClearModal(false)} icon={<i className="fas fa-times" />}>
+      {/* ── Clear cart Modal ── */}
+      <Modal show={showClearModal} onHide={() => setShowClearModal(false)}>
+        <div className="px-6 py-4 border-b border-base-300 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-error">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+            </svg>
+            <h3 className="font-bold text-base-content">ล้างตะกร้า</h3>
+          </div>
+          <button className="btn btn-ghost btn-sm btn-circle" onClick={() => setShowClearModal(false)}>✕</button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <p className="text-base-content/80">คุณต้องการล้างตะกร้าทั้งหมดหรือไม่?</p>
+          <div className="flex gap-2 items-start p-3 rounded-xl bg-error/10 border border-error/20">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5 text-error">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <p className="text-xs text-error">การดำเนินการนี้ไม่สามารถย้อนกลับได้ รายการทั้งหมดจะถูกลบออก</p>
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-base-300 flex gap-2 justify-end">
+          <button className="btn btn-ghost btn-sm" onClick={() => setShowClearModal(false)} disabled={clearingCart}>
             ยกเลิก
-          </SecondaryActionButton>
-          <Button
-            variant="danger"
-            onClick={handleClearCart}
-            disabled={clearingCart}
-            className="btn-tcg-danger"
-          >
+          </button>
+          <button className="btn btn-error btn-sm gap-2" onClick={handleClearCart} disabled={clearingCart}>
             {clearingCart ? (
-              <>
-                <Spinner size="sm" className="me-2" as="span" />
-                กำลังล้าง...
-              </>
+              <><span className="loading loading-spinner loading-xs" />กำลังล้าง...</>
             ) : (
               <>
-                <i className="fas fa-broom me-2" aria-hidden />
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                </svg>
                 ยืนยันการล้าง
               </>
             )}
-          </Button>
-        </Modal.Footer>
+          </button>
+        </div>
       </Modal>
     </div>
   );
 };
 
 export default Cart;
-

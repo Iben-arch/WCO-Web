@@ -2,22 +2,6 @@ import React, { useState, FormEvent, ChangeEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  height: '3rem',
-  paddingLeft: '2.75rem',
-  paddingRight: '1rem',
-  fontSize: '0.875rem',
-  border: '1.5px solid #e2e8f0',
-  borderRadius: '0.75rem',
-  outline: 'none',
-  backgroundColor: 'white',
-  color: '#1e293b',
-  boxSizing: 'border-box',
-  transition: 'border-color 0.2s, box-shadow 0.2s',
-  boxShadow: 'none',
-};
-
 const EmailIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
@@ -71,100 +55,81 @@ const Login: React.FC = () => {
     }
   };
 
-  const focusBorder = (e: React.FocusEvent<HTMLInputElement>) => {
-    e.currentTarget.style.borderColor = '#0077B6';
-    e.currentTarget.style.boxShadow = '0 0 0 3px rgba(0, 119, 182, 0.12)';
-  };
-  const blurBorder = (e: React.FocusEvent<HTMLInputElement>) => {
-    e.currentTarget.style.borderColor = '#e2e8f0';
-    e.currentTarget.style.boxShadow = 'none';
-  };
-
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.25rem', background: 'linear-gradient(135deg, #eff6ff 0%, #ffffff 45%, #ecfeff 100%)' }}>
-      <div style={{ width: '100%', maxWidth: '440px' }}>
-
-        {/* Brand */}
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <Link to="/" style={{ textDecoration: 'none', display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ fontSize: '3.5rem', lineHeight: 1 }}>🎴</span>
-            <h1 style={{ margin: 0, fontSize: '1.625rem', fontWeight: 800, color: '#0077B6', letterSpacing: '-0.025em' }}>
-              WCO Thailand
-            </h1>
-            <p style={{ margin: 0, fontSize: '0.8125rem', color: '#94a3b8', maxWidth: '280px', lineHeight: 1.5 }}>
+    <div className="min-h-screen bg-base-200 flex items-center justify-center p-5">
+      <div className="w-full max-w-md">
+        <div className="text-center mb-8">
+          <Link to="/" className="inline-flex flex-col items-center gap-2 no-underline">
+            <span className="text-6xl leading-none">🎴</span>
+            <h1 className="m-0 text-3xl font-extrabold text-primary">WCO Thailand</h1>
+            <p className="m-0 text-sm text-base-content/60 max-w-xs">
               เรามุ่งมั่นที่จะผลักดันวงการการ์ดเกมประเทศไทย
             </p>
           </Link>
         </div>
 
-        {/* Card */}
-        <div style={{ background: 'white', borderRadius: '1.5rem', padding: '2.5rem', boxShadow: '0 20px 60px -10px rgba(0, 119, 182, 0.15), 0 8px 24px -4px rgba(0,0,0,0.06)', border: '1px solid #f1f5f9' }}>
-          <h2 style={{ textAlign: 'center', fontWeight: 700, fontSize: '1.25rem', color: '#0f172a', margin: '0 0 0.25rem' }}>
-            เข้าสู่ระบบ
-          </h2>
-          <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.875rem', margin: '0 0 1.5rem' }}>
-            เข้าสู่ระบบเพื่อซื้อขายการ์ดเกม
-          </p>
+        <div className="card bg-base-100 border border-base-300 shadow-xl">
+          <div className="card-body p-8">
+            <h2 className="text-center text-2xl font-bold mb-1">เข้าสู่ระบบ</h2>
+            <p className="text-center text-sm text-base-content/60 mb-6">เข้าสู่ระบบเพื่อซื้อขายการ์ดเกม</p>
 
-          {error && (
-            <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', borderRadius: '0.75rem', padding: '0.75rem 1rem', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>
+            {error && (
+            <div className="alert alert-error mb-5">
               <span>⚠️</span><span>{error}</span>
             </div>
           )}
 
           <form onSubmit={handleSubmit}>
-            {/* Email */}
-            <div style={{ marginBottom: '1.125rem' }}>
-              <label style={{ display: 'block', fontWeight: 600, fontSize: '0.875rem', color: '#374151', marginBottom: '0.4rem' }}>
+            <div className="form-control mb-4">
+              <label className="label pb-2">
+                <span className="label-text font-semibold">
                 อีเมล
+                </span>
               </label>
-              <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: '0.875rem', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', display: 'flex', pointerEvents: 'none' }}>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/40 pointer-events-none">
                   <EmailIcon />
                 </span>
                 <input
                   type="email"
-                  style={inputStyle}
+                  className="input input-bordered w-full pl-11"
                   placeholder="กรอกอีเมลของคุณ"
                   value={email}
                   onChange={(e: ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
-                  onFocus={focusBorder}
-                  onBlur={blurBorder}
                   required
                   autoComplete="email"
                 />
               </div>
             </div>
 
-            {/* Password */}
-            <div style={{ marginBottom: '1.5rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-                <label style={{ fontWeight: 600, fontSize: '0.875rem', color: '#374151' }}>
+            <div className="form-control mb-6">
+              <div className="flex justify-between items-center pb-2">
+                <label className="label p-0">
+                  <span className="label-text font-semibold">
                   รหัสผ่าน
+                  </span>
                 </label>
-                <Link to="/forgot-password" style={{ fontSize: '0.8125rem', color: '#0077B6', textDecoration: 'none', fontWeight: 500 }}>
+                <Link to="/forgot-password" className="link link-primary text-sm">
                   ลืมรหัสผ่าน?
                 </Link>
               </div>
-              <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: '0.875rem', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', display: 'flex', pointerEvents: 'none' }}>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/40 pointer-events-none">
                   <LockIcon />
                 </span>
                 <input
                   type={showPassword ? 'text' : 'password'}
-                  style={{ ...inputStyle, paddingRight: '3rem' }}
+                  className="input input-bordered w-full pl-11 pr-11"
                   placeholder="กรอกรหัสผ่านของคุณ"
                   value={password}
                   onChange={(e: ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
-                  onFocus={focusBorder}
-                  onBlur={blurBorder}
                   required
                   autoComplete="current-password"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  style={{ position: 'absolute', right: '0.875rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#94a3b8', display: 'flex' }}
+                  className="btn btn-ghost btn-xs absolute right-2 top-1/2 -translate-y-1/2"
                   aria-label={showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
                 >
                   {showPassword ? <EyeOffIcon /> : <EyeIcon />}
@@ -172,48 +137,36 @@ const Login: React.FC = () => {
               </div>
             </div>
 
-            {/* Submit */}
             <button
               type="submit"
               disabled={loading}
-              style={{ width: '100%', height: '3rem', background: loading ? '#93c5fd' : 'linear-gradient(135deg, #0077B6 0%, #005A8E 100%)', color: 'white', border: 'none', borderRadius: '0.75rem', fontWeight: 700, fontSize: '1rem', cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', transition: 'opacity 0.2s', letterSpacing: '0.01em' }}
-              onMouseEnter={e => { if (!loading) (e.currentTarget as HTMLButtonElement).style.opacity = '0.92'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '1'; }}
+              className="btn btn-primary w-full h-12"
             >
               {loading ? (
                 <>
-                  <span style={{ width: '1rem', height: '1rem', border: '2px solid rgba(255,255,255,0.4)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.7s linear infinite', display: 'inline-block' }} />
+                  <span className="loading loading-spinner loading-sm" />
                   กำลังเข้าสู่ระบบ...
                 </>
               ) : 'เข้าสู่ระบบ'}
             </button>
           </form>
 
-          {/* Divider */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', margin: '1.5rem 0' }}>
-            <div style={{ flex: 1, height: '1px', background: '#f1f5f9' }} />
-            <span style={{ fontSize: '0.8125rem', color: '#cbd5e1', fontWeight: 500 }}>หรือ</span>
-            <div style={{ flex: 1, height: '1px', background: '#f1f5f9' }} />
-          </div>
-
-          <p style={{ textAlign: 'center', fontSize: '0.875rem', color: '#64748b', margin: 0 }}>
+          <div className="divider my-6">หรือ</div>
+          <p className="text-center text-sm text-base-content/70 m-0">
             ยังไม่มีบัญชี?{' '}
-            <Link to="/register" style={{ color: '#0077B6', fontWeight: 700, textDecoration: 'none' }}>
+            <Link to="/register" className="link link-primary font-bold no-underline">
               สมัครสมาชิก
             </Link>
           </p>
+          </div>
         </div>
 
-        <div style={{ textAlign: 'center', marginTop: '1.5rem' }}>
-          <Link to="/" style={{ fontSize: '0.875rem', color: '#94a3b8', textDecoration: 'none' }}>
+        <div className="text-center mt-6">
+          <Link to="/" className="link link-hover text-base-content/60 no-underline">
             ← กลับไปหน้าแรก
           </Link>
         </div>
       </div>
-
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-      `}</style>
     </div>
   );
 };

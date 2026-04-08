@@ -366,19 +366,17 @@ namespace ServerApi.Controllers
                     return BadRequest(new { success = false, error = "ไม่พบรหัสผู้ขาย" });
                 }
 
-                // ลองดึงจาก users table ก่อน (custom auth - ใช้ uid)
-                var user = await _supabaseService.GetAsync("users", sellerId, useServiceRole: true, idField: "uid");
+                // ดึงจากทั้ง users และ profiles แล้วผสานข้อมูล
+                // เหตุผล: seller_contact_note อยู่ใน profiles แต่ข้อมูลบางส่วนเดิมอยู่ใน users
+                var userFromUsers = await _supabaseService.GetAsync("users", sellerId, useServiceRole: true, idField: "uid");
+                var userFromProfiles = await _supabaseService.GetAsync("profiles", sellerId, useServiceRole: true, idField: "id");
 
-                // ถ้าไม่เจอใน users ลอง profiles table (Supabase auth)
-                if (user == null)
-                {
-                    user = await _supabaseService.GetAsync("profiles", sellerId, useServiceRole: true, idField: "id");
-                }
-
-                if (user == null)
+                if (userFromUsers == null && userFromProfiles == null)
                 {
                     return NotFound(new { success = false, error = "ไม่พบข้อมูลผู้ขาย" });
                 }
+
+                var user = userFromUsers ?? userFromProfiles!;
 
                 // ลบข้อมูลที่ไม่อยากให้ public เห็น
                 if (user.ContainsKey("passwordhash"))
@@ -398,7 +396,12 @@ namespace ServerApi.Controllers
                     ["profileImage"] = user.ContainsKey("photoURL") && user["photoURL"] != null
                         ? user["photoURL"].ToString()!
                         : (user.ContainsKey("avatar_url") && user["avatar_url"] != null ? user["avatar_url"].ToString()! : ""),
-                    ["phone"] = user.ContainsKey("phone") && user["phone"] != null ? user["phone"].ToString()! : "",
+                    ["phone"] = userFromProfiles != null && userFromProfiles.ContainsKey("phone") && userFromProfiles["phone"] != null
+                        ? userFromProfiles["phone"].ToString()!
+                        : (user.ContainsKey("phone") && user["phone"] != null ? user["phone"].ToString()! : ""),
+                    ["sellerContactNote"] = userFromProfiles != null && userFromProfiles.ContainsKey("seller_contact_note") && userFromProfiles["seller_contact_note"] != null
+                        ? userFromProfiles["seller_contact_note"].ToString()!
+                        : (user.ContainsKey("seller_contact_note") && user["seller_contact_note"] != null ? user["seller_contact_note"].ToString()! : ""),
                     ["createdAt"] = user.ContainsKey("createdAt") ? user["createdAt"] : (user.ContainsKey("created_at") ? user["created_at"] : DateTime.UtcNow)
                 };
 

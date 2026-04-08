@@ -1,5 +1,4 @@
 import React, { useState, FormEvent, ChangeEvent, useEffect } from 'react';
-import { Container, Row, Col, Card, Form, Button, Alert, ProgressBar, Spinner, Modal } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
@@ -14,6 +13,88 @@ import {
 } from '../components/common/ButtonComponents';
 import { Category, PostType, SaleType, CreatePostFormData, DetectedCard } from '../types';
 import '../styles/individual-card.css';
+
+const cx = (...classes: Array<string | false | null | undefined>) => classes.filter(Boolean).join(' ');
+
+const Container: React.FC<any> = ({ className, children }) => <div className={cx('container', className)}>{children}</div>;
+const Row: React.FC<any> = ({ className, children }) => <div className={cx('grid grid-cols-12 gap-4', className)}>{children}</div>;
+const Col: React.FC<any> = ({ className, children, xs, md, lg, xl }) => {
+  const xsMap: Record<number, string> = { 1:'col-span-1',2:'col-span-2',3:'col-span-3',4:'col-span-4',5:'col-span-5',6:'col-span-6',7:'col-span-7',8:'col-span-8',9:'col-span-9',10:'col-span-10',11:'col-span-11',12:'col-span-12' };
+  const mdMap: Record<number, string> = { 1:'md:col-span-1',2:'md:col-span-2',3:'md:col-span-3',4:'md:col-span-4',5:'md:col-span-5',6:'md:col-span-6',7:'md:col-span-7',8:'md:col-span-8',9:'md:col-span-9',10:'md:col-span-10',11:'md:col-span-11',12:'md:col-span-12' };
+  const lgMap: Record<number, string> = { 1:'lg:col-span-1',2:'lg:col-span-2',3:'lg:col-span-3',4:'lg:col-span-4',5:'lg:col-span-5',6:'lg:col-span-6',7:'lg:col-span-7',8:'lg:col-span-8',9:'lg:col-span-9',10:'lg:col-span-10',11:'lg:col-span-11',12:'lg:col-span-12' };
+  const xlMap: Record<number, string> = { 1:'xl:col-span-1',2:'xl:col-span-2',3:'xl:col-span-3',4:'xl:col-span-4',5:'xl:col-span-5',6:'xl:col-span-6',7:'xl:col-span-7',8:'xl:col-span-8',9:'xl:col-span-9',10:'xl:col-span-10',11:'xl:col-span-11',12:'xl:col-span-12' };
+  return <div className={cx(xs ? xsMap[xs] : 'col-span-12', md ? mdMap[md] : '', lg ? lgMap[lg] : '', xl ? xlMap[xl] : '', className)}>{children}</div>;
+};
+
+const CardRoot: React.FC<any> = ({ className, children, style }) => <div className={cx('card bg-base-100 border border-base-300 shadow-sm', className)} style={style}>{children}</div>;
+const CardHeader: React.FC<any> = ({ className, children }) => <div className={cx('px-6 py-4 border-b border-base-300', className)}>{children}</div>;
+const CardBody: React.FC<any> = ({ className, children }) => <div className={cx('card-body', className)}>{children}</div>;
+const CardImg: React.FC<any> = ({ className, ...props }) => <img className={cx('w-full', className)} {...props} alt={props.alt || ''} />;
+const Card = Object.assign(CardRoot, { Header: CardHeader, Body: CardBody, Img: CardImg });
+
+const Button: React.FC<any> = ({ variant, size, className, children, ...props }) => {
+  const v = variant === 'primary' ? 'btn-primary'
+    : variant === 'secondary' ? 'btn-secondary'
+    : variant === 'outline-secondary' ? 'btn-outline'
+    : variant === 'outline-primary' ? 'btn-outline btn-primary'
+    : variant === 'danger' ? 'btn-error'
+    : '';
+  const s = size === 'sm' ? 'btn-sm' : size === 'lg' ? 'btn-lg' : '';
+  return <button className={cx('btn', v, s, className)} {...props}>{children}</button>;
+};
+const Alert: React.FC<any> = ({ variant, className, children, ...props }) => (
+  <div className={cx('alert', variant === 'danger' ? 'alert-error' : '', variant === 'warning' ? 'alert-warning' : '', variant === 'info' ? 'alert-info' : '', className)} {...props}>
+    <span>{children}</span>
+  </div>
+);
+const Spinner: React.FC<any> = ({ size, className, as }) => {
+  if (as === 'span') return <span className={cx('loading loading-spinner', size === 'sm' ? 'loading-sm' : '', className)} />;
+  return <span className={cx('loading loading-spinner', size === 'sm' ? 'loading-sm' : '', className)} />;
+};
+const ProgressBar: React.FC<any> = ({ now = 0, label, className }) => (
+  <progress className={cx('progress progress-primary w-full', className)} value={now} max={100} aria-label={label || 'progress'} />
+);
+
+type FormType = React.FC<any> & { Group: React.FC<any>; Label: React.FC<any>; Control: React.FC<any>; Select: React.FC<any>; Check: React.FC<any>; Text: React.FC<any> };
+const FormRoot: React.FC<any> = ({ className, children, ...props }) => <form className={className} {...props}>{children}</form>;
+const FormGroup: React.FC<any> = ({ className, children }) => <div className={className}>{children}</div>;
+const FormLabel: React.FC<any> = ({ className, children }) => <label className={cx('label-text font-medium', className)}>{children}</label>;
+const FormControl: React.FC<any> = ({ className, as, type, ...props }) => {
+  if (as === 'textarea') return <textarea className={cx('textarea textarea-bordered w-full', className)} {...props} />;
+  if (type === 'file') return <input type="file" className={cx('file-input file-input-bordered w-full', className)} {...props} />;
+  return <input type={type} className={cx('input input-bordered w-full', className)} {...props} />;
+};
+const FormSelect: React.FC<any> = ({ className, children, ...props }) => <select className={cx('select select-bordered w-full', className)} {...props}>{children}</select>;
+const FormCheck: React.FC<any> = ({ id, type = 'radio', label, name, checked, onChange, className }) => (
+  <label htmlFor={id} className={cx('label cursor-pointer justify-start gap-3', className)}>
+    <input id={id} type={type} name={name} checked={checked} onChange={onChange} className={cx(type === 'radio' ? 'radio radio-primary' : 'checkbox checkbox-primary')} />
+    <span className="label-text">{label}</span>
+  </label>
+);
+const FormText: React.FC<any> = ({ className, children }) => <small className={cx('text-base-content/60', className)}>{children}</small>;
+const Form = Object.assign(FormRoot, { Group: FormGroup, Label: FormLabel, Control: FormControl, Select: FormSelect, Check: FormCheck, Text: FormText }) as FormType;
+
+type ModalType = React.FC<any> & { Header: React.FC<any>; Title: React.FC<any>; Body: React.FC<any> };
+const Modal = (({ show, onHide, children }) => {
+  if (!show) return null;
+  const withClose = React.Children.map(children, (child) =>
+    React.isValidElement(child) ? React.cloneElement(child as React.ReactElement<any>, { __onHide: onHide }) : child
+  );
+  return (
+    <div className="fixed inset-0 z-[9999] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={onHide}>
+      <div className="card bg-base-100 w-full max-w-3xl shadow-2xl" onClick={(e) => e.stopPropagation()}>{withClose}</div>
+    </div>
+  );
+}) as ModalType;
+const ModalHeader: React.FC<any> = ({ children, closeButton, __onHide }) => (
+  <div className="px-6 py-4 border-b border-base-300 flex items-center justify-between">
+    <div className="font-bold text-lg">{children}</div>
+    {closeButton ? <button type="button" className="btn btn-ghost btn-sm btn-circle" onClick={__onHide}>✕</button> : null}
+  </div>
+);
+const ModalTitle: React.FC<any> = ({ children }) => <>{children}</>;
+const ModalBody: React.FC<any> = ({ children, className }) => <div className={cx('px-6 py-4', className)}>{children}</div>;
+Object.assign(Modal, { Header: ModalHeader, Title: ModalTitle, Body: ModalBody });
 
 const ImagePreviewThumbnail: React.FC<{ file: File; index: number; onClick: () => void; onRemove?: () => void }> = ({ file, index, onClick, onRemove }) => {
   const [url, setUrl] = useState<string>(() => URL.createObjectURL(file));
@@ -254,7 +335,18 @@ const CreatePost: React.FC = () => {
 
   const canProceedFromStep1 = (): boolean => true;
   const canProceedFromStep2 = (): boolean => formData.images.length > 0;
+
+  /** ขั้นตอนกรอกข้อมูล: บังคับชื่อการ์ด + หมวดหมู่ (ประเภทการ์ด) */
+  const hasRequiredCardBasics = (): boolean => {
+    const titleTrim = formData.title?.trim() ?? '';
+    const hasTitle = titleTrim.length >= 3;
+    const hasCategory = Boolean(formData.category?.trim());
+    return hasTitle && hasCategory;
+  };
+
   const canProceedFromStep3 = (): boolean => {
+    if (!hasRequiredCardBasics()) return false;
+
     if (formData.postType === 'sale') {
       if (formData.saleType === 'deck') {
         return !!(
@@ -388,6 +480,18 @@ const CreatePost: React.FC = () => {
       return;
     }
 
+    const titleTrim = formData.title?.trim() ?? '';
+    if (titleTrim.length < 3) {
+      setError('กรุณากรอกชื่อการ์ดอย่างน้อย 3 ตัวอักษร');
+      toast.error('กรุณากรอกชื่อการ์ดอย่างน้อย 3 ตัวอักษร');
+      return;
+    }
+    if (!formData.category?.trim()) {
+      setError('กรุณาเลือกประเภทการ์ด (หมวดหมู่)');
+      toast.error('กรุณาเลือกประเภทการ์ด (หมวดหมู่)');
+      return;
+    }
+
     // Validate price based on post type and sale type
     if (formData.postType === 'sale') {
       if (formData.saleType === 'deck') {
@@ -454,13 +558,6 @@ const CreatePost: React.FC = () => {
           return;
         }
       }
-    }
-
-    // Optional validation for card details (only if provided)
-    if (formData.title && formData.title.length > 0 && formData.title.length < 3) {
-      setError('ชื่อการ์ดต้องมีอย่างน้อย 3 ตัวอักษร');
-      toast.error('ชื่อการ์ดต้องมีอย่างน้อย 3 ตัวอักษร');
-      return;
     }
 
     if (formData.description && formData.description.length > 0 && formData.description.length < 10) {
@@ -549,9 +646,9 @@ const CreatePost: React.FC = () => {
 
       // 3. สร้าง JSON payload
       const payload: Record<string, unknown> = {
-        title: formData.title || 'การ์ดเกม',
+        title: titleTrim,
         description: formData.description || '',
-        category: formData.category || '',
+        category: formData.category.trim(),
         imageUrls,
         imageStoragePaths,
         postType: formData.postType
@@ -623,870 +720,532 @@ const CreatePost: React.FC = () => {
     }
   };
 
+  /* ── helpers ── */
+  const stepMeta = [
+    { icon: 'fa-layer-group', desc: 'เลือกวิธีลงขาย' },
+    { icon: 'fa-images',      desc: 'เพิ่มรูปการ์ด' },
+    { icon: 'fa-pen-nib',     desc: 'กรอกรายละเอียด' },
+    { icon: 'fa-check-circle',desc: 'ยืนยันและส่ง' }
+  ];
+
+  const SectionDivider = () => (
+    <div style={{ height: 1, background: 'linear-gradient(90deg, #e2e8f0, transparent)', margin: '28px 0' }} />
+  );
+
+  const SectionLabel: React.FC<{ icon: string; text: string; optional?: boolean; required?: boolean }> = ({ icon, text, optional, required }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+      <span style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg,#ccfbf1,#cffafe)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <i className={`fas ${icon}`} style={{ fontSize: 12, color: '#0d9488' }} />
+      </span>
+      <span style={{ fontSize: 13, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{text}</span>
+      {required && <span style={{ fontSize: 12, color: '#ef4444', marginLeft: 2 }}>*</span>}
+      {optional && <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(ไม่บังคับ)</span>}
+    </div>
+  );
+
+  const OptionTile: React.FC<{
+    selected: boolean; onClick: () => void; icon: string;
+    title: string; subtitle: string; desc: string; color: string;
+  }> = ({ selected, onClick, icon, title, subtitle, desc, color }) => (
+    <div
+      onClick={onClick}
+      style={{
+        cursor: 'pointer', borderRadius: 16, padding: '20px 20px',
+        border: `2px solid ${selected ? color : '#e5e7eb'}`,
+        background: selected ? `${color}0d` : 'white',
+        transition: 'all 0.2s',
+        boxShadow: selected ? `0 0 0 4px ${color}22` : '0 1px 3px rgba(0,0,0,0.06)',
+        display: 'flex', flexDirection: 'column', gap: 0
+      }}
+    >
+      <div style={{ width: 48, height: 48, borderRadius: 13, background: selected ? color : '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14, transition: 'background 0.2s' }}>
+        <i className={`fas ${icon}`} style={{ fontSize: 20, color: selected ? 'white' : '#94a3b8', transition: 'color 0.2s' }} />
+      </div>
+      <div style={{ fontWeight: 700, fontSize: 16, color: selected ? color : '#1e293b', marginBottom: 2 }}>{title}</div>
+      <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 8 }}>{subtitle}</div>
+      <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>{desc}</div>
+      {selected && (
+        <div style={{ marginTop: 12, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+          <span style={{ width: 18, height: 18, borderRadius: '50%', background: color, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+            <i className="fas fa-check" style={{ fontSize: 9, color: 'white' }} />
+          </span>
+          <span style={{ fontSize: 12, color: color, fontWeight: 600 }}>เลือกแล้ว</span>
+        </div>
+      )}
+    </div>
+  );
+
   return (
-    <Container className="py-5 create-post-container">
-      <Row className="justify-content-center">
-        <Col lg={10} xl={9}>
-          <div className="create-post-wrapper">
-            <Card className="sakura-card create-post-card" style={{
-              border: 'none',
-              borderRadius: 'var(--radius-xl)',
-              boxShadow: 'var(--shadow-xl)',
-              overflow: 'hidden',
-              background: 'var(--bg-primary)'
-            }}>
-              <Card.Header className="create-post-header">
-                <div className="create-post-header-inner">
-                  <h2>{formData.postType === 'auction' ? 'ประมูลการ์ดเกม' : 'ขายการ์ดเกม'}</h2>
-                  <p className="create-post-header-desc">
-                    {formData.postType === 'auction' ? 'สร้างการประมูลการ์ดเกมของคุณ' : 'สร้างโพสต์ขายการ์ดเกมของคุณ'}
-                  </p>
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(145deg,#f0fdfa 0%,#e0f2fe 55%,#f0f9ff 100%)', paddingTop: 32, paddingBottom: 48 }}>
+      <div style={{ maxWidth: 1080, margin: '0 auto', padding: '0 16px' }}>
+
+        {/* Error */}
+        {error && (
+          <Alert variant="danger" className="mb-5 rounded-xl" role="alert">
+            <strong>เกิดข้อผิดพลาด:</strong> {error}
+          </Alert>
+        )}
+
+        <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+
+          {/* ═══════════ LEFT SIDEBAR ═══════════ */}
+          <div style={{ width: 256, flexShrink: 0, position: 'sticky', top: 24 }} className="hidden lg:block">
+            <div style={{ background: 'linear-gradient(165deg,#0f766e 0%,#0e7490 70%,#0c4a6e 100%)', borderRadius: 24, padding: '28px 22px', color: 'white', boxShadow: '0 24px 64px rgba(14,116,144,0.32)', overflow: 'hidden', position: 'relative' }}>
+              {/* Decorative blobs */}
+              <div style={{ position: 'absolute', top: -48, right: -48, width: 130, height: 130, borderRadius: '50%', background: 'rgba(255,255,255,0.06)' }} />
+              <div style={{ position: 'absolute', bottom: -24, left: -24, width: 90, height: 90, borderRadius: '50%', background: 'rgba(255,255,255,0.05)' }} />
+
+              {/* Header */}
+              <div style={{ marginBottom: 28, position: 'relative' }}>
+                <div style={{ width: 52, height: 52, borderRadius: 15, background: 'rgba(255,255,255,0.14)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                  <i className={`fas ${formData.postType === 'auction' ? 'fa-gavel' : 'fa-store'} text-white`} style={{ fontSize: 22 }} />
                 </div>
-              </Card.Header>
-              <Card.Body className="create-post-body">
-                {error && (
-                  <Alert variant="danger" className="create-post-error mb-4" role="alert">
-                    <strong>เกิดข้อผิดพลาด:</strong> {error}
-                  </Alert>
-                )}
+                <div style={{ fontWeight: 800, fontSize: 18, color: 'white', lineHeight: 1.2 }}>
+                  {formData.postType === 'auction' ? 'ประมูลการ์ดเกม' : 'ขายการ์ดเกม'}
+                </div>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', marginTop: 3 }}>สร้างโพสต์ใหม่</div>
+              </div>
 
-                <nav className="create-post-stepper mb-4" aria-label="ขั้นตอนการสร้างโพสต์">
-                  <div className="stepper-track" role="list">
-                    {STEPS.map((step, idx) => (
+              {/* Vertical Steps */}
+              <div>
+                {STEPS.map((step, idx) => {
+                  const isDone = currentStep > step.id;
+                  const isCurrent = currentStep === step.id;
+                  return (
+                    <div key={step.id}>
                       <div
-                        key={step.id}
-                        role="listitem"
-                        aria-current={currentStep === step.id ? 'step' : undefined}
-                        aria-label={`ขั้นตอนที่ ${step.id}: ${step.label}`}
-                        className={`stepper-step ${currentStep >= step.id ? 'active' : ''} ${currentStep === step.id ? 'current' : ''}`}
-                        onClick={() => currentStep > step.id && setCurrentStep(step.id)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 11px', borderRadius: 11, cursor: isDone ? 'pointer' : 'default', background: isCurrent ? 'rgba(255,255,255,0.17)' : 'transparent', transition: 'background 0.2s' }}
+                        onClick={() => isDone && setCurrentStep(step.id)}
                       >
-                        <div className="stepper-circle">
-                          <span>{currentStep > step.id ? <i className="fas fa-check" aria-hidden /> : step.id}</span>
+                        <div style={{ width: 36, height: 36, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isDone ? '#4ade80' : isCurrent ? 'white' : 'rgba(255,255,255,0.14)', color: isDone ? 'white' : isCurrent ? '#0f766e' : 'rgba(255,255,255,0.4)', fontWeight: 700, fontSize: 14, boxShadow: isCurrent ? '0 0 0 4px rgba(255,255,255,0.18)' : 'none', transition: 'all 0.3s' }}>
+                          {isDone ? <i className="fas fa-check" style={{ fontSize: 12 }} /> : step.id}
                         </div>
-                        <span className="stepper-label">{step.label}</span>
-                        {idx < STEPS.length - 1 && <div className="stepper-line" aria-hidden />}
+                        <div>
+                          <div style={{ fontWeight: isCurrent ? 600 : 400, fontSize: 13, color: isCurrent ? 'white' : isDone ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.4)', transition: 'all 0.3s' }}>{step.label}</div>
+                          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>{stepMeta[idx].desc}</div>
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                </nav>
+                      {idx < STEPS.length - 1 && (
+                        <div style={{ width: 2, height: 14, marginLeft: 28, background: currentStep > step.id ? 'rgba(74,222,128,0.55)' : 'rgba(255,255,255,0.14)', borderRadius: 1, transition: 'background 0.3s' }} />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
 
-                <Form onSubmit={handleSubmit} className="create-post-form">
-                  {/* Step 1: Post Type Selection */}
-                  {currentStep === 1 && (
-                  <div className="form-section mb-4">
-                    <div className="section-header mb-3">
-                      <h5 className="section-title">
-                        ประเภทโพสต์
-                        <span className="required-badge">*</span>
-                      </h5>
-                      <p className="section-description">เลือกประเภทการโพสต์ที่คุณต้องการ</p>
-                    </div>
-                    <div className="radio-group-modern">
-                      <Form.Check
-                        type="radio"
-                        id="postType-sale"
-                        name="postType"
-                        value="sale"
-                        checked={formData.postType === 'sale'}
-                        onChange={handleChange}
-                        label={
-                          <div className="radio-label-content">
-                            <div>
-                              <div className="radio-title">ขายการ์ด</div>
-                              <div className="radio-subtitle">Card Sale</div>
-                            </div>
-                          </div>
-                        }
-                        className="radio-option-modern"
-                      />
-                      <Form.Check
-                        type="radio"
-                        id="postType-auction"
-                        name="postType"
-                        value="auction"
-                        checked={formData.postType === 'auction'}
-                        onChange={handleChange}
-                        label={
-                          <div className="radio-label-content">
-                            <div>
-                              <div className="radio-title">ประมูลการ์ด</div>
-                              <div className="radio-subtitle">Auction</div>
-                            </div>
-                          </div>
-                        }
-                        className="radio-option-modern"
-                      />
-                    </div>
-                    <div className="stepper-actions mt-4">
-                      <PrimaryActionButton type="button" onClick={goNextStep} icon={<i className="fas fa-arrow-right" />}>
-                        ถัดไป: อัปโหลดรูป
-                      </PrimaryActionButton>
-                    </div>
+              {/* Progress bar */}
+              <div style={{ marginTop: 26, paddingTop: 18, borderTop: '1px solid rgba(255,255,255,0.13)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 7 }}>
+                  <span>ความคืบหน้า</span>
+                  <span>{Math.round(((currentStep - 1) / (STEPS.length - 1)) * 100)}%</span>
+                </div>
+                <div style={{ height: 5, background: 'rgba(255,255,255,0.14)', borderRadius: 3 }}>
+                  <div style={{ height: '100%', borderRadius: 3, background: 'linear-gradient(90deg,#4ade80,#86efac)', width: `${Math.round(((currentStep - 1) / (STEPS.length - 1)) * 100)}%`, transition: 'width 0.45s ease' }} />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ═══════════ RIGHT CONTENT ═══════════ */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+
+            {/* Mobile horizontal stepper */}
+            <div className="lg:hidden" style={{ background: 'white', borderRadius: 16, padding: '14px 20px', marginBottom: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }}>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                {STEPS.map((step, idx) => {
+                  const isDone = currentStep > step.id;
+                  const isCurrent = currentStep === step.id;
+                  return (
+                    <React.Fragment key={step.id}>
+                      <div style={{ textAlign: 'center', cursor: isDone ? 'pointer' : 'default' }} onClick={() => isDone && setCurrentStep(step.id)}>
+                        <div style={{ width: 30, height: 30, borderRadius: '50%', margin: '0 auto 4px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: isDone ? '#4ade80' : isCurrent ? '#0d9488' : '#e5e7eb', color: isDone || isCurrent ? 'white' : '#9ca3af', fontWeight: 700, fontSize: 12 }}>
+                          {isDone ? <i className="fas fa-check" style={{ fontSize: 10 }} /> : step.id}
+                        </div>
+                        <div style={{ fontSize: 10, color: isCurrent ? '#0d9488' : '#9ca3af', fontWeight: isCurrent ? 600 : 400 }}>{step.label}</div>
+                      </div>
+                      {idx < STEPS.length - 1 && (
+                        <div style={{ flex: 1, height: 2, background: currentStep > step.id ? '#4ade80' : '#e5e7eb', margin: '0 5px', marginBottom: 18 }} />
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Content panel */}
+            <div style={{ background: 'white', borderRadius: 22, boxShadow: '0 4px 28px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
+
+              {/* Step Header Strip */}
+              <div style={{ background: 'linear-gradient(120deg,#f0fdfa 0%,#e0f2fe 100%)', padding: '22px 32px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div style={{ width: 50, height: 50, borderRadius: 14, background: 'linear-gradient(135deg,#0d9488,#0891b2)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 16px rgba(13,148,136,0.3)', flexShrink: 0 }}>
+                  <i className={`fas ${stepMeta[currentStep - 1].icon} text-white`} style={{ fontSize: 18 }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 19, fontWeight: 800, color: '#1e293b', lineHeight: 1.2 }}>
+                    {currentStep === 1 ? 'เลือกประเภทโพสต์' : currentStep === 2 ? 'อัปโหลดรูปภาพการ์ด' : currentStep === 3 ? 'กรอกข้อมูลการ์ด' : 'ตรวจสอบและยืนยัน'}
                   </div>
+                  <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>ขั้นตอนที่ {currentStep} จาก {STEPS.length} — {stepMeta[currentStep - 1].desc}</div>
+                </div>
+              </div>
+
+              {/* Form Body */}
+              <div style={{ padding: '32px' }}>
+                <Form onSubmit={handleSubmit}>
+
+                  {/* ════ STEP 1: Post Type ════ */}
+                  {currentStep === 1 && (
+                    <div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 32 }}>
+                        <OptionTile
+                          selected={formData.postType === 'sale'}
+                          onClick={() => setFormData(f => ({ ...f, postType: 'sale' }))}
+                          icon="fa-tags" title="ขายการ์ด" subtitle="Card Sale"
+                          desc="ตั้งราคาขายแบบตายตัว ผู้ซื้อสามารถซื้อได้ทันที"
+                          color="#0d9488"
+                        />
+                        <OptionTile
+                          selected={formData.postType === 'auction'}
+                          onClick={() => setFormData(f => ({ ...f, postType: 'auction' }))}
+                          icon="fa-gavel" title="ประมูลการ์ด" subtitle="Auction"
+                          desc="ให้ผู้ซื้อแข่งราคาเสนอ ได้ราคาสูงสุดจากตลาด"
+                          color="#0891b2"
+                        />
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                        <SecondaryActionButton type="button" onClick={() => navigate('/')} icon={<i className="fas fa-times" />}>ยกเลิก</SecondaryActionButton>
+                        <PrimaryActionButton type="button" fullWidth={false} onClick={goNextStep} icon={<i className="fas fa-arrow-right" />}>ถัดไป: อัปโหลดรูป</PrimaryActionButton>
+                      </div>
+                    </div>
                   )}
 
-                  {/* Step 2: Images (Image-First) */}
+                  {/* ════ STEP 2: Images ════ */}
                   {currentStep === 2 && (
-                  <div className="form-section mb-4">
-                    <div className="section-header mb-3">
-                      <h5 className="section-title">
-                        รูปภาพการ์ด
-                        <span className="required-badge">*</span>
-                      </h5>
-                      <p className="section-description">อัปโหลดรูปภาพการ์ดของคุณ (อย่างน้อย 1 รูป) - ลากวางได้</p>
-                    </div>
-                    <Form.Group className="mb-3 form-group-sakura">
-                      <div className="file-upload-wrapper">
-                        <Form.Control
-                          type="file"
-                          multiple
-                          accept="image/*"
-                          onChange={handleImageChange}
-                          className="form-control-sakura file-input-modern"
-                          id="image-upload"
-                        />
-                        <label htmlFor="image-upload" className="file-upload-label">
-                          <div className="file-upload-content">
-                            <span className="file-upload-icon"><i className="fas fa-cloud-upload-alt" aria-hidden /></span>
-                            <div>
-                              <div className="file-upload-text">
-                                คลิกเพื่อเลือกไฟล์ หรือลากไฟล์มาวางที่นี่
-                              </div>
-                              <div className="file-upload-hint">
-                                รองรับ JPG, PNG, GIF (สูงสุด 5 ไฟล์, ไม่เกิน 10MB ต่อไฟล์)
-                              </div>
-                            </div>
+                    <div>
+                      <input type="file" multiple accept="image/*" onChange={handleImageChange} id="image-upload" style={{ display: 'none' }} />
+                      <label htmlFor="image-upload" style={{ display: 'block', cursor: 'pointer', marginBottom: 20 }}>
+                        <div
+                          style={{ border: '2px dashed #cbd5e1', borderRadius: 18, padding: '44px 28px', textAlign: 'center', background: '#f8fafc', transition: 'all 0.2s' }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = '#0d9488'; (e.currentTarget as HTMLDivElement).style.background = '#f0fdfa'; }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = '#cbd5e1'; (e.currentTarget as HTMLDivElement).style.background = '#f8fafc'; }}
+                        >
+                          <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'linear-gradient(135deg,#ccfbf1,#cffafe)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                            <i className="fas fa-cloud-upload-alt" style={{ fontSize: 28, color: '#0d9488' }} />
                           </div>
-                        </label>
-                      </div>
+                          <div style={{ fontSize: 15, fontWeight: 600, color: '#1e293b', marginBottom: 6 }}>คลิกเพื่อเลือกรูปภาพ หรือลากมาวางที่นี่</div>
+                          <div style={{ fontSize: 13, color: '#94a3b8' }}>รองรับ JPG, PNG, GIF · สูงสุด 5 ไฟล์ · ไม่เกิน 10MB ต่อไฟล์</div>
+                        </div>
+                      </label>
+
                       {formData.images.length > 0 && (
-                        <div className="file-selected-info mt-3">
-                          <div className="file-count-badge">
-                            <span>เลือกแล้ว {formData.images.length} ไฟล์ - คลิกดูรูป · กด × เพื่อลบ</span>
+                        <div style={{ marginBottom: 24 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, padding: '8px 14px', background: '#f0fdf4', borderRadius: 10, border: '1px solid #bbf7d0' }}>
+                            <i className="fas fa-check-circle" style={{ color: '#16a34a', fontSize: 13 }} />
+                            <span style={{ fontSize: 13, color: '#15803d', fontWeight: 500 }}>เลือกแล้ว {formData.images.length} ไฟล์ — คลิกรูปเพื่อดูตัวอย่าง · กด × เพื่อลบ</span>
                           </div>
-                          <div className="d-flex flex-wrap gap-3 mt-3">
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
                             {Array.from(formData.images).map((file, index) => (
-                              <ImagePreviewThumbnail
-                                key={index}
-                                file={file}
-                                index={index}
-                                onClick={() => setPreviewImageIndex(index)}
-                                onRemove={() => handleRemoveImage(index)}
-                              />
+                              <ImagePreviewThumbnail key={index} file={file} index={index} onClick={() => setPreviewImageIndex(index)} onRemove={() => handleRemoveImage(index)} />
                             ))}
                           </div>
                         </div>
                       )}
-                    </Form.Group>
-                    <div className="stepper-actions mt-4 d-flex gap-2">
-                      <SecondaryActionButton type="button" onClick={goPrevStep} icon={<i className="fas fa-arrow-left" />}>
-                        ย้อนกลับ
-                      </SecondaryActionButton>
-                      <PrimaryActionButton type="button" onClick={goNextStep} disabled={!canProceedFromStep2()} icon={<i className="fas fa-arrow-right" />}>
-                        ถัดไป: กรอกข้อมูล
-                      </PrimaryActionButton>
-                    </div>
-                  </div>
-                  )}
 
-                  {/* Step 3: Form Data */}
-                  {currentStep === 3 ? (
-                  <div className="step-3-content">
-                  <div className="form-section mb-4">
-                  {(formData.postType === 'sale' || formData.postType === 'auction') && (
-                    <div className="form-section mb-4">
-                      <div className="section-header mb-3">
-                      <h5 className="section-title">
-                        ประเภทการขาย
-                        <span className="required-badge">*</span>
-                      </h5>
-                        <p className="section-description">เลือกว่าต้องการขายเป็นเด็คหรือแยกใบ</p>
-                      </div>
-                      <div className="radio-group-modern">
-                        <Form.Check
-                          type="radio"
-                          id="saleType-deck"
-                          name="saleType"
-                          value="deck"
-                          checked={formData.saleType === 'deck'}
-                          onChange={handleChange}
-                          label={
-                            <div className="radio-label-content">
-                              <div>
-                                <div className="radio-title">
-                                  {formData.postType === 'auction' ? 'ประมูลเป็นเด็ค' : 'ขายเป็นเด็ค'}
-                                </div>
-                                <div className="radio-subtitle">
-                                  {formData.postType === 'auction' ? 'Deck Auction' : 'Deck Sale'}
-                                </div>
-                              </div>
-                            </div>
-                          }
-                          className="radio-option-modern"
-                        />
-                        <Form.Check
-                          type="radio"
-                          id="saleType-individual"
-                          name="saleType"
-                          value="individual"
-                          checked={formData.saleType === 'individual'}
-                          onChange={handleChange}
-                          label={
-                            <div className="radio-label-content">
-                              <div>
-                                <div className="radio-title">
-                                  {formData.postType === 'auction' ? 'ประมูลแยกใบ' : 'ขายแยกใบ'}
-                                </div>
-                                <div className="radio-subtitle">
-                                  {formData.postType === 'auction' ? 'Individual Auction' : 'Individual Cards'}
-                                </div>
-                              </div>
-                            </div>
-                          }
-                          className="radio-option-modern"
-                        />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                        <SecondaryActionButton type="button" onClick={goPrevStep} icon={<i className="fas fa-arrow-left" />}>ย้อนกลับ</SecondaryActionButton>
+                        <PrimaryActionButton type="button" fullWidth={false} onClick={goNextStep} disabled={!canProceedFromStep2()} icon={<i className="fas fa-arrow-right" />}>ถัดไป: กรอกข้อมูล</PrimaryActionButton>
                       </div>
                     </div>
                   )}
 
-                  {/* Section 3: Basic Information */}
-                  <div className="form-section mb-4">
-                    <div className="section-header mb-3">
-                      <h5 className="section-title">
-                        <span className="section-icon"><i className="fas fa-edit" aria-hidden /></span>
-                        ข้อมูลพื้นฐาน
-                      </h5>
-                      <p className="section-description">กรอกข้อมูลพื้นฐานของการ์ด</p>
-                    </div>
-                    <Row>
-                      <Col md={formData.postType === 'sale' && formData.saleType === 'individual' ? 12 : 8}>
-                        <Form.Group className="mb-3 form-group-sakura">
-                          <Form.Label className="form-label-sakura">
-                            ชื่อการ์ด
-                            <span className="optional-badge">(ไม่บังคับ)</span>
-                          </Form.Label>
-                          <Form.Control
-                            type="text"
-                            name="title"
-                            placeholder="เช่น Pikachu VMAX, Blue-Eyes White Dragon..."
-                            value={formData.title}
-                            onChange={handleChange}
-                            className="form-control-sakura"
+                  {/* ════ STEP 3: Form Data ════ */}
+                  {currentStep === 3 && (
+                    <div>
+                      {/* Sale Type Picker */}
+                      <SectionLabel icon="fa-list-ul" text="ประเภทการขาย" required />
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 28 }}>
+                        {([
+                          { value: 'deck', icon: 'fa-layer-group', title: formData.postType === 'auction' ? 'ประมูลเป็นเด็ค' : 'ขายเป็นเด็ค', subtitle: formData.postType === 'auction' ? 'Deck Auction' : 'Deck Sale', desc: 'รวมการ์ดทั้งเด็คเป็นชุดเดียว' },
+                          { value: 'individual', icon: 'fa-clone', title: formData.postType === 'auction' ? 'ประมูลแยกใบ' : 'ขายแยกใบ', subtitle: formData.postType === 'auction' ? 'Individual Auction' : 'Individual Cards', desc: 'ระบุราคาและจำนวนต่อใบ' }
+                        ] as const).map(opt => (
+                          <OptionTile
+                            key={opt.value}
+                            selected={formData.saleType === opt.value}
+                            onClick={() => setFormData(f => ({ ...f, saleType: opt.value }))}
+                            icon={opt.icon} title={opt.title} subtitle={opt.subtitle} desc={opt.desc}
+                            color="#0d9488"
                           />
-                          <Form.Text className="form-help-text">
-                            กรอกชื่อการ์ดเฉพาะ (ถ้าต้องการระบุ)
-                          </Form.Text>
-                        </Form.Group>
-                      </Col>
-                      <Col md={4}>
-                        {formData.postType === 'sale' ? (
-                          formData.saleType === 'deck' ? (
-                            <Form.Group className="mb-3 form-group-sakura">
-                              <Form.Label className="form-label-sakura">
-                                ราคาเด็ค (บาท)
-                                <span className="required-badge">*</span>
-                              </Form.Label>
-                              <div className="input-with-icon">
-                                <span className="input-icon-left">฿</span>
-                                <Form.Control
-                                  type="number"
-                                  name="price"
-                                  placeholder="0.00"
-                                  value={formData.price}
-                                  onChange={handleChange}
-                                  className="form-control-sakura"
-                                  min="0"
-                                  step="0.01"
-                                  required
-                                />
-                              </div>
-                              <Form.Text className="form-help-text">
-                                ราคาสำหรับทั้งเด็ค
-                              </Form.Text>
-                            </Form.Group>
-                          ) : null
-                        ) : formData.postType === 'auction' ? (
-                          formData.saleType === 'deck' ? (
-                            <Form.Group className="mb-3 form-group-sakura">
-                              <Form.Label className="form-label-sakura">
-                                ราคาเริ่มต้นเด็ค (บาท)
-                                <span className="required-badge">*</span>
-                              </Form.Label>
-                              <div className="input-with-icon">
-                                <span className="input-icon-left">฿</span>
-                                <Form.Control
-                                  type="number"
-                                  name="startingBid"
-                                  placeholder="0.00"
-                                  value={formData.startingBid}
-                                  onChange={handleChange}
-                                  className="form-control-sakura"
-                                  min="0"
-                                  step="0.01"
-                                  required
-                                />
-                              </div>
-                              <Form.Text className="form-help-text">
-                                ราคาเริ่มต้นสำหรับทั้งเด็ค
-                              </Form.Text>
-                            </Form.Group>
-                          ) : (
-                            <Form.Group className="mb-3 form-group-sakura">
-                              <Form.Label className="form-label-sakura">
-                                ราคาเริ่มต้นต่อใบ (บาท)
-                                <span className="required-badge">*</span>
-                              </Form.Label>
-                              <div className="input-with-icon">
-                                <span className="input-icon-left">฿</span>
-                                <Form.Control
-                                  type="number"
-                                  name="startingBid"
-                                  placeholder="0.00"
-                                  value={formData.startingBid}
-                                  onChange={handleChange}
-                                  className="form-control-sakura"
-                                  min="0"
-                                  step="0.01"
-                                  required
-                                />
-                              </div>
-                              <Form.Text className="form-help-text">
-                                ราคาเริ่มต้นต่อการ์ด 1 ใบ
-                              </Form.Text>
-                            </Form.Group>
-                          )
-                        ) : null}
-                      </Col>
-                    </Row>
-                  </div>
-
-                  {/* Section 4: Deck-specific fields */}
-                  {((formData.postType === 'sale' && formData.saleType === 'deck') || (formData.postType === 'auction' && formData.saleType === 'deck')) && (
-                    <div className="form-section mb-4">
-                      <div className="section-header mb-3">
-                        <h5 className="section-title">
-                          <span className="section-icon"><i className="fas fa-layer-group" aria-hidden /></span>
-                          ข้อมูลเด็ค
-                        </h5>
-                        <p className="section-description">กรอกข้อมูลเกี่ยวกับเด็คการ์ด</p>
+                        ))}
                       </div>
+
+                      <SectionDivider />
+
+                      {/* Basic Info */}
+                      <SectionLabel icon="fa-pen" text="ข้อมูลพื้นฐาน" />
                       <Row>
-                        <Col md={6}>
-                          <Form.Group className="mb-3 form-group-sakura">
-                            <Form.Label className="form-label-sakura">
-                              จำนวนการ์ดในเด็ค
-                              <span className="required-badge">*</span>
-                            </Form.Label>
-                            <Form.Control
-                              type="number"
-                              name="cardCount"
-                              placeholder="เช่น 60"
-                              value={formData.cardCount}
-                              onChange={handleChange}
-                              className="form-control-sakura"
-                              min="1"
-                              required
-                            />
-                            <Form.Text className="form-help-text">
-                              จำนวนการ์ดทั้งหมดในเด็ค
-                            </Form.Text>
-                          </Form.Group>
-                        </Col>
-                        <Col md={6}>
-                          <Form.Group className="mb-3 form-group-sakura">
-                            <Form.Label className="form-label-sakura">
-                              รายละเอียดเด็ค
-                              <span className="optional-badge">(ไม่บังคับ)</span>
-                            </Form.Label>
+                        <Col md={formData.postType === 'sale' && formData.saleType === 'individual' ? 12 : 7}>
+                          <Form.Group className="mb-4 form-group-sakura">
+                            <Form.Label className="form-label-sakura">ชื่อการ์ด <span style={{ color: '#ef4444' }}>*</span></Form.Label>
                             <Form.Control
                               type="text"
-                              name="deckDescription"
-                              placeholder="เช่น Blue-Eyes Deck, Dragon Deck..."
-                              value={formData.deckDescription || ''}
+                              name="title"
+                              placeholder="เช่น Pikachu VMAX, Blue-Eyes White Dragon..."
+                              value={formData.title}
                               onChange={handleChange}
                               className="form-control-sakura"
+                              required
+                              minLength={3}
+                              autoComplete="off"
                             />
-                            <Form.Text className="form-help-text">
-                              อธิบายประเภทเด็ค (ไม่บังคับ)
-                            </Form.Text>
+                            <Form.Text className="form-help-text">อย่างน้อย 3 ตัวอักษร</Form.Text>
                           </Form.Group>
                         </Col>
+                        <Col md={5}>
+                          {formData.postType === 'sale' && formData.saleType === 'deck' && (
+                            <Form.Group className="mb-4 form-group-sakura">
+                              <Form.Label className="form-label-sakura">ราคาเด็ค (บาท) <span style={{ color: '#ef4444' }}>*</span></Form.Label>
+                              <div className="input-with-icon"><span className="input-icon-left">฿</span>
+                                <Form.Control type="number" name="price" placeholder="0.00" value={formData.price} onChange={handleChange} className="form-control-sakura" min="0" step="0.01" required />
+                              </div>
+                            </Form.Group>
+                          )}
+                          {formData.postType === 'auction' && (
+                            <Form.Group className="mb-4 form-group-sakura">
+                              <Form.Label className="form-label-sakura">ราคาเริ่มต้น (บาท) <span style={{ color: '#ef4444' }}>*</span></Form.Label>
+                              <div className="input-with-icon"><span className="input-icon-left">฿</span>
+                                <Form.Control type="number" name="startingBid" placeholder="0.00" value={formData.startingBid} onChange={handleChange} className="form-control-sakura" min="0" step="0.01" required />
+                              </div>
+                            </Form.Group>
+                          )}
+                        </Col>
                       </Row>
-                    </div>
-                  )}
 
-                  {/* Section 5: Individual card-specific fields + detection/crop tools */}
-                  {((formData.postType === 'sale' && formData.saleType === 'individual') || (formData.postType === 'auction' && formData.saleType === 'individual')) && (
-                    <div className="form-section mb-4">
-                      <div className="section-header mb-3">
-                      <h5 className="section-title">
-                        ข้อมูลการ์ดแยกใบ
-                      </h5>
-                        <p className="section-description">กรอกข้อมูลเกี่ยวกับการ์ดแยกใบ</p>
-                      </div>
-                      {formData.images.length > 0 && (
-                        <div className="card-detection-section mb-4">
-                          <div className="detection-header">
-                            <div>
-                              <h6 className="detection-title">
-                                การแยกการ์ดอัตโนมัติ
-                              </h6>
-                              <p className="detection-description">
-                                ใช้ AI แยกการ์ดแต่ละใบจากภาพ แล้วปรับราคา/จำนวนด้านล่าง หรือเพิ่มจากครอปเอง
-                              </p>
-                            </div>
-                            <Button
-                              variant="outline-primary"
-                              size="sm"
-                              onClick={processImagesForCards}
-                              disabled={processingCards}
-                              className="detection-button btn-tcg-outline"
-                            >
-                              {processingCards ? (
-                                <>
-                                  <Spinner size="sm" className="me-2" as="span" />
-                                  กำลังประมวลผล...
-                                </>
-                              ) : (
-                                <>
-                                  <i className="fas fa-magic me-2" aria-hidden />
-                                  แยกการ์ดอัตโนมัติ
-                                </>
-                              )}
-                            </Button>
-                          </div>
-                          {detectedCards.length > 0 && (
-                            <div className="detected-cards-preview mt-3">
-                              <div className="detected-cards-header">
-                                <div className="success-badge">
-                                  <span>ใช้ผลการแยก {detectedCards.length} ใบ แล้วปรับราคา/จำนวนต่อใบด้านล่าง</span>
+                      {/* Deck fields */}
+                      {formData.saleType === 'deck' && (
+                        <>
+                          <SectionDivider />
+                          <SectionLabel icon="fa-layer-group" text="ข้อมูลเด็ค" />
+                          <Row>
+                            <Col md={6}>
+                              <Form.Group className="mb-4 form-group-sakura">
+                                <Form.Label className="form-label-sakura">จำนวนการ์ดในเด็ค <span style={{ color: '#ef4444' }}>*</span></Form.Label>
+                                <Form.Control type="number" name="cardCount" placeholder="เช่น 60" value={formData.cardCount} onChange={handleChange} className="form-control-sakura" min="1" required />
+                              </Form.Group>
+                            </Col>
+                            <Col md={6}>
+                              <Form.Group className="mb-4 form-group-sakura">
+                                <Form.Label className="form-label-sakura">รายละเอียดเด็ค <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 400 }}>(ไม่บังคับ)</span></Form.Label>
+                                <Form.Control type="text" name="deckDescription" placeholder="เช่น Blue-Eyes Deck, Dragon Deck..." value={formData.deckDescription || ''} onChange={handleChange} className="form-control-sakura" />
+                              </Form.Group>
+                            </Col>
+                          </Row>
+                        </>
+                      )}
+
+                      {/* Individual card fields */}
+                      {formData.saleType === 'individual' && (
+                        <>
+                          <SectionDivider />
+                          <SectionLabel icon="fa-clone" text="การ์ดแยกใบ" />
+                          {formData.images.length > 0 && (
+                            <>
+                              {/* AI detection */}
+                              <div style={{ background: 'linear-gradient(135deg,#eff6ff,#f0f9ff)', borderRadius: 14, padding: '16px 20px', marginBottom: 12, border: '1px solid #bae6fd', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+                                <div>
+                                  <div style={{ fontWeight: 700, fontSize: 14, color: '#1e40af', marginBottom: 3 }}><i className="fas fa-magic me-2" />การแยกการ์ดอัตโนมัติ (AI)</div>
+                                  <div style={{ fontSize: 12, color: '#3b82f6' }}>ใช้ AI แยกการ์ดแต่ละใบจากภาพ หรือครอปกำหนดพื้นที่เอง</div>
+                                  {detectedCards.length > 0 && <div style={{ marginTop: 5, fontSize: 12, color: '#16a34a', fontWeight: 600 }}><i className="fas fa-check-circle me-1" />พบการ์ดแล้ว {detectedCards.length} ใบ</div>}
+                                </div>
+                                <Button variant="outline-primary" size="sm" onClick={processImagesForCards} disabled={processingCards} className="btn-tcg-outline" style={{ flexShrink: 0 }}>
+                                  {processingCards ? <><Spinner size="sm" className="me-2" as="span" />กำลังประมวลผล...</> : <><i className="fas fa-magic me-2" />แยกการ์ดอัตโนมัติ</>}
+                                </Button>
+                              </div>
+
+                              {/* Crop tool */}
+                              <div style={{ background: '#fafafa', borderRadius: 14, padding: '18px 20px', marginBottom: 16, border: '1px solid #e5e7eb' }}>
+                                <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <i className="fas fa-crop-alt" style={{ color: '#0d9488' }} />ครอปการ์ดจากรูปเพิ่มเอง
+                                </div>
+                                <div style={{ marginBottom: 12 }}>
+                                  <Form.Label className="form-label-sakura">เลือกรูปที่จะครอป</Form.Label>
+                                  <Form.Select value={cropImageIndex} onChange={(e) => setCropImageIndex(Number(e.target.value))} className="form-control-sakura">
+                                    {formData.images.map((_, i) => <option key={i} value={i}>รูปที่ {i + 1}</option>)}
+                                  </Form.Select>
+                                </div>
+                                {cropImageObjectUrl && (
+                                  <div style={{ position: 'relative', height: 360, background: '#000', borderRadius: 10, overflow: 'hidden', marginBottom: 12 }}>
+                                    <Cropper image={cropImageObjectUrl} crop={cropPosition} zoom={cropZoom} onCropChange={setCropPosition} onZoomChange={setCropZoom} onCropComplete={(_a, p) => setCropAreaPixels(p)} aspect={2.5 / 3.5} objectFit="contain" />
+                                  </div>
+                                )}
+                                <Button type="button" variant="outline-primary" className="btn-tcg-outline" onClick={handleAddCroppedCard} disabled={addingCrop || !cropAreaPixels}>
+                                  {addingCrop ? <><Spinner size="sm" className="me-2" as="span" />กำลังเพิ่ม...</> : <><i className="fas fa-plus-circle me-2" />เพิ่มการ์ดจากพื้นที่ที่เลือก</>}
+                                </Button>
+                              </div>
+                            </>
+                          )}
+                          {!(formData.postType === 'sale' && formData.saleType === 'individual') && (
+                            <Form.Group className="mb-4 form-group-sakura">
+                              <Form.Label className="form-label-sakura">จำนวนที่ขายได้ <span style={{ color: '#ef4444' }}>*</span></Form.Label>
+                              <Form.Control type="number" name="availableQuantity" placeholder="เช่น 10" value={formData.availableQuantity} onChange={handleChange} className="form-control-sakura" min="1" required />
+                            </Form.Group>
+                          )}
+                        </>
+                      )}
+
+                      {/* Category / ประเภทการ์ด */}
+                      <SectionDivider />
+                      <SectionLabel icon="fa-tag" text="ประเภทการ์ด (หมวดหมู่)" required />
+                      <Form.Select name="category" value={formData.category} onChange={handleChange} className="form-control-sakura" style={{ marginBottom: 28 }} required>
+                        <option value="" disabled>— เลือกประเภทการ์ด —</option>
+                        {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                      </Form.Select>
+
+                      {/* Auction fields */}
+                      {formData.postType === 'auction' && (
+                        <>
+                          <SectionDivider />
+                          <SectionLabel icon="fa-gavel" text="ข้อมูลการประมูล" />
+                          <Row>
+                            <Col md={6}>
+                              <Form.Group className="mb-4 form-group-sakura">
+                                <Form.Label className="form-label-sakura">วันสิ้นสุดการประมูล <span style={{ color: '#ef4444' }}>*</span></Form.Label>
+                                <Form.Control type="datetime-local" name="auctionEndDate" value={formData.auctionEndDate} onChange={handleChange} className="form-control-sakura" min={new Date().toISOString().slice(0, 16)} required />
+                              </Form.Group>
+                            </Col>
+                            <Col md={6}>
+                              <Form.Group className="mb-4 form-group-sakura">
+                                <Form.Label className="form-label-sakura">ราคาซื้อทันที (บาท) <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 400 }}>(ไม่บังคับ)</span></Form.Label>
+                                <div className="input-with-icon"><span className="input-icon-left">฿</span>
+                                  <Form.Control type="number" name="buyNowPrice" placeholder="0.00" value={formData.buyNowPrice} onChange={handleChange} className="form-control-sakura" min="0" step="0.01" />
+                                </div>
+                              </Form.Group>
+                            </Col>
+                          </Row>
+                        </>
+                      )}
+
+                      {/* Description */}
+                      <SectionDivider />
+                      <SectionLabel icon="fa-align-left" text="รายละเอียดเพิ่มเติม" optional />
+                      <Form.Group className="mb-4 form-group-sakura">
+                        <Form.Control as="textarea" rows={4} name="description" placeholder="เช่น สภาพการ์ด, เงื่อนไขการขาย, ข้อมูลเพิ่มเติม..." value={formData.description} onChange={handleChange} className="form-control-sakura" style={{ resize: 'vertical' }} />
+                      </Form.Group>
+
+                      {/* Detected cards list */}
+                      {detectedCards.length > 0 && (
+                        <>
+                          <SectionDivider />
+                          <SectionLabel icon="fa-th" text={`การ์ดที่พบ ${detectedCards.length} ใบ — กรอกราคาและจำนวนต่อใบ`} />
+                          <div className="cards-preview-grid">
+                            {detectedCards.map((card, index) => (
+                              <div key={card.id} className="card-preview-item">
+                                <div className="card-preview-image-wrapper">
+                                  <img src={card.imageUrl} alt={`การ์ด ${index + 1}`} className="card-preview-image" />
+                                  <div className="card-preview-number">#{index + 1}</div>
+                                  <button type="button" className="card-preview-remove-btn" onClick={() => handleRemoveDetectedCard(card.id)} aria-label="ลบการ์ด">×</button>
+                                </div>
+                                <div className="card-preview-form">
+                                  <div className="card-preview-fields">
+                                    <Form.Group className="mb-0 card-preview-field">
+                                      <Form.Label className="card-form-label">จำนวน</Form.Label>
+                                      <Form.Control type="number" placeholder="1" min="1" value={card.quantity} onChange={(e: ChangeEvent<HTMLInputElement>) => setDetectedCards(prev => prev.map(c => c.id === card.id ? { ...c, quantity: e.target.value } : c))} className="form-control-sakura" />
+                                    </Form.Group>
+                                    <Form.Group className="mb-0 card-preview-field">
+                                      <Form.Label className="card-form-label">ราคา (บาท)</Form.Label>
+                                      <Form.Control type="number" placeholder="0.00" min="0" step="0.01" value={card.price} onChange={(e: ChangeEvent<HTMLInputElement>) => setDetectedCards(prev => prev.map(c => c.id === card.id ? { ...c, price: e.target.value } : c))} className="form-control-sakura" />
+                                    </Form.Group>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          )}
-                        </div>
+                            ))}
+                          </div>
+                        </>
                       )}
 
-                      {formData.images.length > 0 && (
-                        <div className="form-section mb-4">
-                          <div className="section-header mb-3">
-                            <h5 className="section-title">
-                              <span className="section-icon"><i className="fas fa-crop-alt" aria-hidden /></span>
-                              ครอปการ์ดจากรูปเพิ่มเอง
-                            </h5>
-                            <p className="section-description">เลือกรูปแล้วลากกำหนดพื้นที่การ์ด 1 ใบ แล้วกดเพิ่มการ์ด (ทำซ้ำได้หลายใบ)</p>
-                          </div>
-                          <div className="mb-3">
-                            <Form.Label className="form-label-sakura">เลือกรูปที่จะครอป</Form.Label>
-                            <Form.Select
-                              value={cropImageIndex}
-                              onChange={(e) => setCropImageIndex(Number(e.target.value))}
-                              className="form-control-sakura"
-                            >
-                              {formData.images.map((_, i) => (
-                                <option key={i} value={i}>รูปที่ {i + 1}</option>
-                              ))}
-                            </Form.Select>
-                          </div>
-                          {cropImageObjectUrl && (
-                            <div className="crop-container-wrapper" style={{ position: 'relative', height: 400, background: '#000' }}>
-                              <Cropper
-                                image={cropImageObjectUrl}
-                                crop={cropPosition}
-                                zoom={cropZoom}
-                                onCropChange={setCropPosition}
-                                onZoomChange={setCropZoom}
-                                onCropComplete={(_area, croppedAreaPixels) => setCropAreaPixels(croppedAreaPixels)}
-                                aspect={2.5 / 3.5}
-                                objectFit="contain"
-                              />
-                            </div>
-                          )}
-                          <div className="mt-2">
-                            <Button
-                              type="button"
-                              variant="outline-primary"
-                              className="btn-tcg-outline"
-                              onClick={handleAddCroppedCard}
-                              disabled={addingCrop || !cropAreaPixels}
-                            >
-                              {addingCrop ? (
-                                <>
-                                  <Spinner size="sm" className="me-2" as="span" />
-                                  กำลังเพิ่ม...
-                                </>
-                              ) : (
-                                <>
-                                  <i className="fas fa-plus-circle me-2" aria-hidden />
-                                  เพิ่มการ์ดจากพื้นที่ที่เลือก
-                                </>
-                              )}
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-
-                      <Row>
-                        {!(formData.postType === 'sale' && formData.saleType === 'individual') && (
-                          <Col md={6}>
-                            <Form.Group className="mb-3 form-group-sakura">
-                              <Form.Label className="form-label-sakura">
-                                <i className="fas fa-box-open me-1" aria-hidden /> จำนวนที่ขายได้
-                                <span className="required-badge">*</span>
-                              </Form.Label>
-                              <Form.Control
-                                type="number"
-                                name="availableQuantity"
-                                placeholder="เช่น 10"
-                                value={formData.availableQuantity}
-                                onChange={handleChange}
-                                className="form-control-sakura"
-                                min="1"
-                                required
-                              />
-                              <Form.Text className="form-help-text">
-                                จำนวนการ์ดที่พร้อมขาย
-                              </Form.Text>
-                            </Form.Group>
-                          </Col>
-                        )}
-                        <Col md={formData.postType === 'sale' && formData.saleType === 'individual' ? 12 : 6}>
-                          <Form.Group className="mb-3 form-group-sakura">
-                            <Form.Label className="form-label-sakura">
-                              หมวดหมู่
-                              <span className="optional-badge">(ไม่บังคับ)</span>
-                            </Form.Label>
-                            <Form.Select
-                              name="category"
-                              value={formData.category}
-                              onChange={handleChange}
-                              className="form-control-sakura"
-                            >
-                              <option value="">เลือกหมวดหมู่ (ถ้าต้องการ)</option>
-                              {categories.map(cat => (
-                                <option key={cat} value={cat}>{cat}</option>
-                              ))}
-                            </Form.Select>
-                            <Form.Text className="form-help-text">
-                              เลือกประเภทการ์ดเกม
-                            </Form.Text>
-                          </Form.Group>
-                        </Col>
-                      </Row>
-                    </div>
-                  )}
-
-                  {/* Category field for deck sales and auctions */}
-                  {(formData.postType === 'auction' || (formData.postType === 'sale' && formData.saleType === 'deck')) && (
-                    <div className="form-section mb-4">
-                      <Row>
-                        <Col md={6}>
-                          <Form.Group className="mb-3 form-group-sakura">
-                            <Form.Label className="form-label-sakura">
-                              หมวดหมู่
-                              <span className="optional-badge">(ไม่บังคับ)</span>
-                            </Form.Label>
-                            <Form.Select
-                              name="category"
-                              value={formData.category}
-                              onChange={handleChange}
-                              className="form-control-sakura"
-                            >
-                              <option value="">เลือกหมวดหมู่ (ถ้าต้องการ)</option>
-                              {categories.map(cat => (
-                                <option key={cat} value={cat}>{cat}</option>
-                              ))}
-                            </Form.Select>
-                            <Form.Text className="form-help-text">
-                              เลือกประเภทการ์ดเกม
-                            </Form.Text>
-                          </Form.Group>
-                        </Col>
-                      </Row>
-                    </div>
-                  )}
-
-                  {/* Section 6: Auction-specific fields */}
-                  {formData.postType === 'auction' && (
-                    <div className="form-section mb-4">
-                      <div className="section-header mb-3">
-                      <h5 className="section-title">
-                        ข้อมูลการประมูล
-                      </h5>
-                        <p className="section-description">กรอกข้อมูลเกี่ยวกับการประมูล</p>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 32 }}>
+                        <SecondaryActionButton type="button" onClick={goPrevStep} icon={<i className="fas fa-arrow-left" />}>ย้อนกลับ</SecondaryActionButton>
+                        <PrimaryActionButton type="button" fullWidth={false} onClick={goNextStep} disabled={!canProceedFromStep3()} icon={<i className="fas fa-arrow-right" />}>ถัดไป: สรุป</PrimaryActionButton>
                       </div>
-                      <Row>
-                        <Col md={6}>
-                          <Form.Group className="mb-3 form-group-sakura">
-                              <Form.Label className="form-label-sakura">
-                                วันสิ้นสุดการประมูล
-                              <span className="required-badge">*</span>
-                            </Form.Label>
-                            <Form.Control
-                              type="datetime-local"
-                              name="auctionEndDate"
-                              value={formData.auctionEndDate}
-                              onChange={handleChange}
-                              className="form-control-sakura"
-                              min={new Date().toISOString().slice(0, 16)}
-                              required
-                            />
-                            <Form.Text className="form-help-text">
-                              เลือกวันและเวลาที่การประมูลจะสิ้นสุด
-                            </Form.Text>
-                          </Form.Group>
-                        </Col>
-                        <Col md={6}>
-                          <Form.Group className="mb-3 form-group-sakura">
-                              <Form.Label className="form-label-sakura">
-                                ราคาซื้อทันที (บาท)
-                              <span className="optional-badge">(ไม่บังคับ)</span>
-                            </Form.Label>
-                            <div className="input-with-icon">
-                              <span className="input-icon-left">฿</span>
-                              <Form.Control
-                                type="number"
-                                name="buyNowPrice"
-                                placeholder="0.00"
-                                value={formData.buyNowPrice}
-                                onChange={handleChange}
-                                className="form-control-sakura"
-                                min="0"
-                                step="0.01"
-                              />
-                            </div>
-                            <Form.Text className="form-help-text">
-                              ราคาที่ผู้ซื้อสามารถซื้อได้ทันทีโดยไม่ต้องรอการประมูล
-                            </Form.Text>
-                          </Form.Group>
-                        </Col>
-                      </Row>
                     </div>
                   )}
 
-                  {/* Section 7: Description */}
-                  <div className="form-section mb-4">
-                    <div className="section-header mb-3">
-                      <h5 className="section-title">
-                        <span className="section-icon"><i className="fas fa-align-left" aria-hidden /></span>
-                        รายละเอียดเพิ่มเติม
-                        <span className="optional-badge">(ไม่บังคับ)</span>
-                      </h5>
-                      <p className="section-description">อธิบายรายละเอียดเพิ่มเติมเกี่ยวกับการ์ด</p>
-                    </div>
-                    <Form.Group className="mb-3 form-group-sakura">
-                      <Form.Control
-                        as="textarea"
-                        rows={5}
-                        name="description"
-                        placeholder="เช่น สภาพการ์ด, เงื่อนไขการขาย, ข้อมูลเพิ่มเติม..."
-                        value={formData.description}
-                        onChange={handleChange}
-                        className="form-control-sakura"
-                        style={{ resize: 'vertical' }}
-                      />
-                      <Form.Text className="form-help-text">
-                        อธิบายรายละเอียดเพิ่มเติม เช่น สภาพการ์ด, เงื่อนไขการขาย, ข้อมูลเพิ่มเติม
-                      </Form.Text>
-                    </Form.Group>
-                  </div>
-
-                  {/* Detected cards - per-card price/quantity (Step 3) */}
-                  {detectedCards.length > 0 && (
-                    <div className="detected-cards-preview mt-4">
-                      <div className="detected-cards-header">
-                        <div className="success-badge">
-                          <span>พบการ์ด {detectedCards.length} ใบ - กรอกราคาและจำนวนต่อใบ</span>
-                        </div>
-                      </div>
-                      <div className="cards-preview-grid">
-                        {detectedCards.map((card, index) => (
-                          <div key={card.id} className="card-preview-item">
-                            <div className="card-preview-image-wrapper">
-                              <img
-                                src={card.imageUrl}
-                                alt={`การ์ด ${index + 1}`}
-                                className="card-preview-image"
-                              />
-                              <div className="card-preview-number">#{index + 1}</div>
-                              <button
-                                type="button"
-                                className="card-preview-remove-btn"
-                                onClick={() => handleRemoveDetectedCard(card.id)}
-                                aria-label="ลบการ์ด"
-                                title="ลบการ์ด"
-                              >
-                                ×
-                              </button>
+                  {/* ════ STEP 4: Summary ════ */}
+                  {currentStep === 4 && (
+                    <div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 12, marginBottom: 24 }}>
+                        {[
+                          { label: 'ประเภท', value: `${formData.postType === 'auction' ? 'ประมูล' : 'ขาย'} · ${formData.saleType === 'deck' ? 'เด็ค' : 'แยกใบ'}`, icon: 'fa-layer-group' },
+                          { label: 'รูปภาพ', value: `${formData.images.length} ไฟล์`, icon: 'fa-images' },
+                          { label: 'ชื่อการ์ด', value: formData.title || '—', icon: 'fa-signature' },
+                          { label: 'หมวดหมู่', value: formData.category || '—', icon: 'fa-tag' },
+                          ...(formData.postType === 'sale' && formData.saleType === 'deck' ? [{ label: 'ราคาเด็ค', value: `${formData.price} บาท · ${formData.cardCount} ใบ`, icon: 'fa-baht-sign' }] : []),
+                          ...(formData.postType === 'auction' ? [{ label: 'ราคาเริ่มต้น', value: `${formData.startingBid} บาท`, icon: 'fa-gavel' }, { label: 'สิ้นสุดการประมูล', value: formData.auctionEndDate ? new Date(formData.auctionEndDate).toLocaleString('th-TH') : '—', icon: 'fa-clock' }] : []),
+                          ...(detectedCards.length > 0 ? [{ label: 'การ์ดแยกใบ', value: `${detectedCards.length} ใบ`, icon: 'fa-clone' }] : []),
+                        ].map(item => (
+                          <div key={item.label} style={{ padding: '14px 16px', background: '#f8fafc', borderRadius: 12, border: '1px solid #e5e7eb', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                            <div style={{ width: 34, height: 34, borderRadius: 9, background: 'linear-gradient(135deg,#ccfbf1,#cffafe)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              <i className={`fas ${item.icon}`} style={{ fontSize: 12, color: '#0d9488' }} />
                             </div>
-                            <div className="card-preview-form">
-                              <div className="card-preview-fields">
-                                <Form.Group className="mb-0 card-preview-field">
-                                  <Form.Label className="card-form-label">จำนวน</Form.Label>
-                                  <Form.Control
-                                    type="number"
-                                    placeholder="1"
-                                    min="1"
-                                    value={card.quantity}
-                                    onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                                      const val = e.target.value;
-                                      setDetectedCards(prev => prev.map(c => c.id === card.id ? { ...c, quantity: val } : c));
-                                    }}
-                                    className="form-control-sakura"
-                                  />
-                                </Form.Group>
-                                <Form.Group className="mb-0 card-preview-field">
-                                  <Form.Label className="card-form-label">ราคา (บาท)</Form.Label>
-                                  <Form.Control
-                                    type="number"
-                                    placeholder="0.00"
-                                    min="0"
-                                    step="0.01"
-                                    value={card.price}
-                                    onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                                      const val = e.target.value;
-                                      setDetectedCards(prev => prev.map(c => c.id === card.id ? { ...c, price: val } : c));
-                                    }}
-                                    className="form-control-sakura"
-                                  />
-                                </Form.Group>
-                              </div>
+                            <div>
+                              <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{item.label}</div>
+                              <div style={{ fontSize: 14, color: '#1e293b', fontWeight: 600, marginTop: 2 }}>{item.value}</div>
                             </div>
                           </div>
                         ))}
                       </div>
-                    </div>
-                  )}
 
-                    <div className="stepper-actions mt-4 d-flex gap-2">
-                      <SecondaryActionButton type="button" onClick={goPrevStep} icon={<i className="fas fa-arrow-left" />}>
-                        ย้อนกลับ
-                      </SecondaryActionButton>
-                      <PrimaryActionButton type="button" onClick={goNextStep} disabled={!canProceedFromStep3()} icon={<i className="fas fa-arrow-right" />}>
-                        ถัดไป: สรุป
-                      </PrimaryActionButton>
-                    </div>
-                  </div>
-                  </div>
-                  ) : null}
-
-                  {/* Step 4: Summary */}
-                  {currentStep === 4 && (
-                  <div className="form-section mb-4">
-                    <div className="section-header mb-3">
-                      <h5 className="section-title">
-                        <span className="section-icon"><i className="fas fa-check-circle" aria-hidden /></span>
-                        สรุปข้อมูล
-                      </h5>
-                      <p className="section-description">ตรวจสอบข้อมูลก่อนส่ง</p>
-                    </div>
-                    <Card className="mb-4 create-post-summary-card">
-                      <Card.Body>
-                        <div className="summary-grid">
-                          <div className="summary-item"><span className="summary-label">ประเภท</span><span className="summary-value">{formData.postType === 'auction' ? 'ประมูล' : 'ขาย'} · {formData.saleType === 'deck' ? 'เด็ค' : 'แยกใบ'}</span></div>
-                          <div className="summary-item"><span className="summary-label">รูปภาพ</span><span className="summary-value">{formData.images.length} ไฟล์</span></div>
-                          <div className="summary-item"><span className="summary-label">ชื่อ</span><span className="summary-value">{formData.title || '-'}</span></div>
-                          <div className="summary-item"><span className="summary-label">หมวดหมู่</span><span className="summary-value">{formData.category || '-'}</span></div>
-                        {formData.postType === 'sale' && formData.saleType === 'deck' && (
-                          <div className="summary-item"><span className="summary-label">ราคาเด็ค</span><span className="summary-value">{formData.price} บาท · {formData.cardCount} ใบ</span></div>
-                        )}
-                        {formData.postType === 'sale' && formData.saleType === 'individual' && detectedCards.length === 0 && (
-                          <div className="summary-item"><span className="summary-label">ราคาต่อใบ</span><span className="summary-value">{formData.individualPrice} บาท · {formData.availableQuantity} ใบ</span></div>
-                        )}
-                        {formData.postType === 'auction' && (
-                          <div className="summary-item"><span className="summary-label">ราคาเริ่มต้น</span><span className="summary-value">{formData.startingBid} บาท · สิ้นสุด {formData.auctionEndDate ? new Date(formData.auctionEndDate).toLocaleString('th-TH') : '-'}</span></div>
-                        )}
+                      {/* Preview thumbnails */}
+                      {formData.images.length > 0 && (
+                        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20 }}>
+                          {Array.from(formData.images).slice(0, 5).map((file, i) => (
+                            <ImagePreviewThumbnail key={i} file={file} index={i} onClick={() => setPreviewImageIndex(i)} />
+                          ))}
                         </div>
-                      </Card.Body>
-                    </Card>
-                    <div className="stepper-actions mt-4 d-flex gap-2 flex-wrap">
-                      <SecondaryActionButton type="button" onClick={goPrevStep} icon={<i className="fas fa-arrow-left" />}>
-                        ย้อนกลับ
-                      </SecondaryActionButton>
-                      <PrimaryActionButton
-                        type="submit"
-                        disabled={loading}
-                        className="submit-button"
-                        icon={loading ? null : <i className="fas fa-paper-plane" />}
-                      >
-                        {loading ? (
-                          <>
-                            <Spinner size="sm" className="me-2" as="span" />
-                            {formData.postType === 'auction' ? 'กำลังสร้างการประมูล...' : 'กำลังสร้างโพสต์...'}
-                          </>
-                        ) : (
-                          formData.postType === 'auction' ? 'สร้างการประมูล' : 'สร้างโพสต์'
-                        )}
-                      </PrimaryActionButton>
-                    </div>
-                  </div>
-                  )}
+                      )}
 
-                  {/* Upload Progress */}
-                  {uploadProgress > 0 && uploadProgress < 100 && (
-                    <div className="upload-progress-section mb-4">
-                      <div className="progress-label mb-2">
-                        <span>กำลังอัปโหลด...</span>
-                        <span className="progress-percentage">{uploadProgress}%</span>
+                      {/* Upload progress */}
+                      {uploadProgress > 0 && uploadProgress < 100 && (
+                        <div style={{ marginBottom: 16, padding: '14px 18px', background: '#f0fdfa', borderRadius: 12, border: '1px solid #99f6e4' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#0f766e', fontWeight: 600, marginBottom: 8 }}>
+                            <span><i className="fas fa-spinner fa-spin me-2" />กำลังอัปโหลด...</span><span>{uploadProgress}%</span>
+                          </div>
+                          <ProgressBar now={uploadProgress} label={`${uploadProgress}%`} />
+                        </div>
+                      )}
+
+                      {/* Pending notice */}
+                      <div style={{ padding: '14px 18px', background: '#fffbeb', borderRadius: 12, border: '1px solid #fde68a', marginBottom: 28, display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <i className="fas fa-info-circle" style={{ color: '#d97706', fontSize: 15 }} />
+                        <span style={{ fontSize: 13, color: '#92400e' }}>โพสต์จะอยู่ในสถานะ <strong>รออนุมัติ</strong> ก่อนแสดงในหน้ารายการ</span>
                       </div>
-                      <ProgressBar 
-                        now={uploadProgress} 
-                        label={`${uploadProgress}%`}
-                        className="upload-progress-bar"
-                        style={{
-                          height: '10px',
-                          borderRadius: 'var(--radius-full)',
-                          backgroundColor: 'var(--gray-200)'
-                        }}
-                      />
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                        <SecondaryActionButton type="button" onClick={goPrevStep} icon={<i className="fas fa-arrow-left" />}>ย้อนกลับ</SecondaryActionButton>
+                        <PrimaryActionButton type="submit" fullWidth={false} disabled={loading} icon={loading ? null : <i className="fas fa-paper-plane" />}>
+                          {loading ? <><Spinner size="sm" className="me-2" as="span" />{formData.postType === 'auction' ? 'กำลังสร้างการประมูล...' : 'กำลังสร้างโพสต์...'}</> : (formData.postType === 'auction' ? 'สร้างการประมูล' : 'สร้างโพสต์')}
+                        </PrimaryActionButton>
+                      </div>
                     </div>
                   )}
 
-                  {/* Cancel button - show when not on step 4 */}
-                  {currentStep !== 4 && (
-                  <div className="form-actions mt-3">
-                    <SecondaryActionButton
-                      type="button"
-                      onClick={() => navigate('/')}
-                      className="cancel-button"
-                      icon={<i className="fas fa-times" />}
-                    >
-                      ยกเลิก
-                    </SecondaryActionButton>
-                  </div>
-                  )}
                 </Form>
-
-                {/* Modal สำหรับดูรูปเต็ม */}
-                <Modal
-                  show={previewImageIndex !== null}
-                  onHide={() => setPreviewImageIndex(null)}
-                  centered
-                  size="lg"
-                  className="create-post-preview-modal"
-                  aria-label="ดูรูปตัวอย่าง"
-                >
-                  <Modal.Header closeButton>
-                    <Modal.Title><i className="fas fa-image me-2" aria-hidden />รูปที่ {previewImageIndex !== null ? previewImageIndex + 1 : ''}</Modal.Title>
-                  </Modal.Header>
-                  <Modal.Body className="text-center p-0 create-post-preview-body">
-                    {previewImageUrl && (
-                      <img
-                        src={previewImageUrl}
-                        alt={`รูปที่ ${previewImageIndex !== null ? previewImageIndex + 1 : ''}`}
-                        className="img-fluid"
-                        style={{ maxHeight: '70vh', objectFit: 'contain' }}
-                      />
-                    )}
-                  </Modal.Body>
-                </Modal>
-              </Card.Body>
-            </Card>
+              </div>
+            </div>
           </div>
-        </Col>
-      </Row>
-    </Container>
+        </div>
+      </div>
+
+      {/* Image Preview Modal */}
+      <Modal show={previewImageIndex !== null} onHide={() => setPreviewImageIndex(null)} centered size="lg" aria-label="ดูรูปตัวอย่าง">
+        <Modal.Header closeButton>
+          <Modal.Title><i className="fas fa-image me-2" aria-hidden />รูปที่ {previewImageIndex !== null ? previewImageIndex + 1 : ''}</Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="text-center p-0 bg-base-200/50">
+          {previewImageUrl && (
+            <img src={previewImageUrl} alt={`รูปที่ ${previewImageIndex !== null ? previewImageIndex + 1 : ''}`} className="img-fluid" style={{ maxHeight: '70vh', objectFit: 'contain' }} />
+          )}
+        </Modal.Body>
+      </Modal>
+    </div>
   );
 };
 

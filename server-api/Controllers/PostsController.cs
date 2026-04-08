@@ -56,6 +56,17 @@ namespace ServerApi.Controllers
                     return BadRequest(new { success = false, error = "กรุณาอัปโหลดรูปภาพอย่างน้อย 1 รูป" });
                 }
 
+                var titleTrim = request.Title?.Trim() ?? "";
+                if (titleTrim.Length < 3)
+                {
+                    return BadRequest(new { success = false, error = "กรุณากรอกชื่อการ์ดอย่างน้อย 3 ตัวอักษร" });
+                }
+
+                if (string.IsNullOrWhiteSpace(request.Category))
+                {
+                    return BadRequest(new { success = false, error = "กรุณาเลือกประเภทการ์ด (หมวดหมู่)" });
+                }
+
                 var userId = GetUserId() ?? "unknown";
                 if (userId == "unknown")
                 {
@@ -84,9 +95,9 @@ namespace ServerApi.Controllers
 
                 var postData = new Dictionary<string, object>
                 {
-                    ["title"] = request.Title ?? "การ์ดเกม",
+                    ["title"] = titleTrim,
                     ["description"] = request.Description ?? "",
-                    ["category"] = request.Category ?? "",
+                    ["category"] = request.Category!.Trim(),
                     ["images"] = imageUrls,
                     ["imageStoragePaths"] = imageStoragePaths,
                     ["sellerId"] = userId,

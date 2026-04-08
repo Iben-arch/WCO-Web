@@ -60,6 +60,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           isBanned: (data as any).is_banned === true,
           phone: data.phone || undefined,
           address: data.address || undefined,
+          seller_contact_note: (data as any).seller_contact_note || undefined,
           email: currentUser?.email || undefined
         });
       }
@@ -248,6 +249,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (profileData.bank_account_number !== undefined) {
         (updateData as any).bank_account_number = profileData.bank_account_number;
       }
+      if (profileData.seller_contact_note !== undefined) {
+        (updateData as any).seller_contact_note = profileData.seller_contact_note;
+      }
       // Map displayName to username for backward compatibility
       if (profileData.displayName !== undefined && !profileData.username) {
         updateData.username = profileData.displayName;
@@ -279,6 +283,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         isAdmin: data.role === 'admin',
         phone: data.phone || undefined,
         address: data.address || undefined,
+        seller_contact_note: (data as any).seller_contact_note || undefined,
         email: currentUser.email || undefined
       });
 
