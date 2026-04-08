@@ -1130,12 +1130,6 @@ const PostDetail: React.FC = () => {
                                   </Badge>
                                 </div>
 
-                                <div className="text-muted mt-1" style={{ fontSize: '0.7rem' }}>
-                                  provider: {sourceScreening.sourceProviderStatus || '-'} |
-                                  visual matches: {totalMatches} |
-                                  Mercari/Yahoo/Magi: {allMarketplaceLinks.length} |
-                                  dHash ยืนยัน: {dHashLinks.length} แหล่ง
-                                </div>
                               </Alert>
                             );
                           })()}
@@ -1526,7 +1520,7 @@ const PostDetail: React.FC = () => {
         {/* Resubmit Approval Modal */}
         {showResubmitModal && (
           <div
-            className="fixed inset-0 z-[9999] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
+            className="fixed inset-0 z-[9999] bg-black/55 flex items-center justify-center p-4"
             onClick={() => {
               resubmitImagePreviews.forEach((u) => URL.revokeObjectURL(u));
               setResubmitImages([]);
@@ -1534,8 +1528,8 @@ const PostDetail: React.FC = () => {
               setShowResubmitModal(false);
             }}
           >
-            <div className="card bg-base-100 w-full max-w-2xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <div className="px-6 py-4 border-b border-base-300 flex items-center justify-between">
+            <div className="card bg-white w-full max-w-3xl max-h-[92vh] shadow-2xl border border-slate-200 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="px-6 py-4 bg-white border-b border-base-300 flex items-center justify-between sticky top-0 z-10">
                 <h3 className="font-bold text-lg m-0">📝 แก้ไข & ยื่นขออนุมัติใหม่</h3>
                 <button
                   type="button"
@@ -1550,9 +1544,10 @@ const PostDetail: React.FC = () => {
                   ✕
                 </button>
               </div>
-              <div className="px-6 py-4">
-            <Alert variant="warning">
-              โพสต์นี้ถูกปฏิเสธแล้ว คุณสามารถแก้ไขรายละเอียดและยื่นขออนุมัติใหม่ได้
+              <div className="px-6 py-4 bg-white overflow-y-auto max-h-[calc(92vh-148px)]">
+            <Alert variant="warning" className="mb-4 border border-amber-300 bg-amber-50 text-amber-900">
+              <strong className="block mb-1">โพสต์นี้ถูกปฏิเสธแล้ว</strong>
+              คุณสามารถแก้ไขรายละเอียดและยื่นขออนุมัติใหม่ได้
             </Alert>
 
             <div className="mb-3">
@@ -1603,7 +1598,7 @@ const PostDetail: React.FC = () => {
                   setResubmitImagePreviews(sliced.map((f) => URL.createObjectURL(f)));
                 }}
               />
-              <small className="text-base-content/60">
+              <small className="text-base-content/60 block mt-1">
                 เลือกได้สูงสุด 5 รูป
               </small>
 
@@ -1833,7 +1828,7 @@ const PostDetail: React.FC = () => {
               </Alert>
             )}
               </div>
-              <div className="px-6 py-4 border-t border-base-300 flex justify-end gap-2">
+              <div className="px-6 py-4 bg-white border-t border-base-300 flex justify-end gap-2 sticky bottom-0 z-10">
             <Button
               variant="secondary"
               onClick={() => {

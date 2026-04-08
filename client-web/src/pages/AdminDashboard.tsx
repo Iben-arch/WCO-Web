@@ -91,19 +91,19 @@ const Modal = (({ show, onHide, children, className }) => {
   );
   return (
     <div className={cx('fixed inset-0 z-[9999] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4', className)} onClick={onHide}>
-      <div className="card bg-base-100 w-full max-w-3xl shadow-2xl" onClick={(e) => e.stopPropagation()}>{withClose}</div>
+      <div className="card bg-white w-full max-w-3xl shadow-2xl" onClick={(e) => e.stopPropagation()}>{withClose}</div>
     </div>
   );
 }) as ModalType;
 const ModalHeader: React.FC<any> = ({ children, closeButton, __onHide }) => (
-  <div className="px-6 py-4 border-b border-base-300 flex items-center justify-between">
+  <div className="px-6 py-4 bg-white border-b border-base-300 flex items-center justify-between">
     <div className="font-bold text-lg">{children}</div>
     {closeButton ? <button type="button" className="btn btn-ghost btn-sm btn-circle" onClick={__onHide}>✕</button> : null}
   </div>
 );
 const ModalTitle: React.FC<any> = ({ children }) => <>{children}</>;
-const ModalBody: React.FC<any> = ({ children }) => <div className="px-6 py-4">{children}</div>;
-const ModalFooter: React.FC<any> = ({ children }) => <div className="px-6 py-4 border-t border-base-300 flex justify-end gap-2">{children}</div>;
+const ModalBody: React.FC<any> = ({ children }) => <div className="px-6 py-4 bg-white">{children}</div>;
+const ModalFooter: React.FC<any> = ({ children }) => <div className="px-6 py-4 bg-white border-t border-base-300 flex justify-end gap-2">{children}</div>;
 Object.assign(Modal, { Header: ModalHeader, Title: ModalTitle, Body: ModalBody, Footer: ModalFooter });
 
 const AdminDashboard: React.FC = () => {
@@ -1103,12 +1103,21 @@ const AdminDashboard: React.FC = () => {
         </Card>
       )}
 
-        <Modal show={showModal} onHide={() => setShowModal(false)} centered className="admin-modal">
-          <Modal.Header closeButton>
+        <Modal
+          show={showModal}
+          onHide={() => setShowModal(false)}
+          centered
+          className={`admin-modal admin-modal--${modalAction === 'active' ? 'approve' : 'danger'}`}
+          dialogClassName="admin-modal-dialog"
+          contentClassName="admin-modal-content"
+          backdropClassName="admin-modal-backdrop"
+          style={{ backgroundColor: '#ffffff', opacity: 1 }}
+        >
+          <Modal.Header closeButton className={`admin-modal-header--${modalAction === 'active' ? 'approve' : 'danger'}`}>
             <Modal.Title>
               {modalAction === 'delete' && <i className="fas fa-trash-alt me-2" aria-hidden />}
               {modalAction === 'active' && <i className="fas fa-check-circle me-2" aria-hidden />}
-              {modalAction === 'rejected' && <i className="fas fa-times-circle me-2" aria-hidden />}
+              {modalAction === 'rejected' && <i className="fas fa-ban me-2" aria-hidden />}
               {modalAction === 'bulkRejected' && <i className="fas fa-layer-group me-2" aria-hidden />}
               {modalAction === 'delete'
                 ? 'ยืนยันการลบ'
@@ -1120,12 +1129,32 @@ const AdminDashboard: React.FC = () => {
             </Modal.Title>
           </Modal.Header>
           <Modal.Body>
-            <p>
-              {modalAction === 'delete' ? 'คุณแน่ใจหรือไม่ที่จะลบโพสต์นี้?' :
-               modalAction === 'active' ? 'คุณแน่ใจหรือไม่ที่จะอนุมัติโพสต์นี้?' :
-               modalAction === 'bulkRejected' ? `คุณแน่ใจหรือไม่ที่จะปฏิเสธโพสต์จำนวน ${bulkPostIds.length} รายการ?` :
-               'คุณแน่ใจหรือไม่ที่จะปฏิเสธโพสต์นี้?'}
-            </p>
+            {(modalAction === 'rejected' || modalAction === 'bulkRejected' || modalAction === 'delete') && (
+              <div className={`admin-modal-warning-banner admin-modal-warning-banner--${modalAction === 'delete' ? 'delete' : 'reject'}`}>
+                <i className={`fas ${modalAction === 'delete' ? 'fa-exclamation-triangle' : 'fa-ban'} admin-modal-warning-icon`} aria-hidden />
+                <div>
+                  <div className="admin-modal-warning-title">
+                    {modalAction === 'delete' ? 'การลบไม่สามารถย้อนกลับได้' : 'การปฏิเสธจะแจ้งเตือนผู้ขาย'}
+                  </div>
+                  <div className="admin-modal-warning-sub">
+                    {modalAction === 'delete'
+                      ? 'คุณแน่ใจหรือไม่ที่จะลบโพสต์นี้ถาวร?'
+                      : modalAction === 'bulkRejected'
+                        ? `กำลังปฏิเสธโพสต์จำนวน ${bulkPostIds.length} รายการ`
+                        : 'คุณแน่ใจหรือไม่ที่จะปฏิเสธโพสต์นี้?'}
+                  </div>
+                </div>
+              </div>
+            )}
+            {modalAction === 'active' && (
+              <div className="admin-modal-warning-banner admin-modal-warning-banner--approve">
+                <i className="fas fa-check-circle admin-modal-warning-icon" aria-hidden />
+                <div>
+                  <div className="admin-modal-warning-title">อนุมัติโพสต์</div>
+                  <div className="admin-modal-warning-sub">โพสต์จะแสดงต่อสาธารณะและผู้ขายจะได้รับแจ้งเตือน</div>
+                </div>
+              </div>
+            )}
             {modalAction === 'bulkRejected' && (
               <div className="admin-modal-preview">
                 <div className="admin-modal-preview-count">
@@ -1210,39 +1239,42 @@ const AdminDashboard: React.FC = () => {
                 </div>
               </div>
             )}
-            <Form.Group>
-              <Form.Label>เหตุผล (ไม่บังคับ)</Form.Label>
+            <div className="admin-modal-reason-group">
+              <label className="admin-modal-reason-label">
+                <i className="fas fa-comment-alt me-2" aria-hidden />
+                เหตุผล <span className="admin-modal-reason-optional">(ไม่บังคับ)</span>
+              </label>
               <Form.Control
                 as="textarea"
                 rows={3}
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                placeholder="ระบุเหตุผล..."
-                className="form-control-sakura"
+                placeholder="ระบุเหตุผลเพื่อแจ้งให้ผู้ขายทราบ..."
+                className="admin-modal-reason-textarea"
               />
-            </Form.Group>
+            </div>
           </Modal.Body>
-          <Modal.Footer>
-            <SecondaryActionButton onClick={() => setShowModal(false)} icon={<i className="fas fa-times" />}>
+          <Modal.Footer className="admin-modal-footer-actions">
+            <button type="button" className="admin-modal-btn-cancel" onClick={() => setShowModal(false)}>
+              <i className="fas fa-arrow-left me-2" aria-hidden />
               ยกเลิก
-            </SecondaryActionButton>
-            <Button
-              className={modalAction === 'active' ? 'btn-tcg-primary' : 'btn-tcg-outline'}
-              variant={modalAction === 'delete' || modalAction === 'bulkRejected' ? 'danger' : undefined}
+            </button>
+            <button
+              type="button"
+              className={`admin-modal-btn-confirm admin-modal-btn-confirm--${modalAction === 'active' ? 'approve' : 'danger'}`}
               onClick={handleActionConfirm}
             >
-              {modalAction === 'delete' && <i className="fas fa-trash-alt me-1" aria-hidden />}
-              {modalAction === 'active' && <i className="fas fa-check me-1" aria-hidden />}
-              {modalAction === 'rejected' && <i className="fas fa-times me-1" aria-hidden />}
-              {modalAction === 'bulkRejected' && <i className="fas fa-times me-1" aria-hidden />}
+              {modalAction === 'delete' && <i className="fas fa-trash-alt me-2" aria-hidden />}
+              {modalAction === 'active' && <i className="fas fa-check me-2" aria-hidden />}
+              {(modalAction === 'rejected' || modalAction === 'bulkRejected') && <i className="fas fa-ban me-2" aria-hidden />}
               {modalAction === 'delete'
-                ? 'ลบ'
+                ? 'ลบโพสต์'
                 : modalAction === 'active'
-                  ? 'อนุมัติ'
+                  ? 'อนุมัติโพสต์'
                   : modalAction === 'bulkRejected'
-                    ? 'ปฏิเสธทั้งหมด'
-                    : 'ปฏิเสธ'}
-            </Button>
+                    ? `ปฏิเสธ ${bulkPostIds.length} รายการ`
+                    : 'ปฏิเสธโพสต์'}
+            </button>
           </Modal.Footer>
         </Modal>
       </Container>

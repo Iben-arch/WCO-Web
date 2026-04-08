@@ -1,4 +1,4 @@
-import React, { useState, FormEvent, ChangeEvent, useEffect } from 'react';
+import React, { useState, FormEvent, ChangeEvent, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
@@ -199,6 +199,90 @@ const STEPS = [
   { id: 4, label: 'สรุป' }
 ];
 
+type CropCardToolProps = {
+  imageUrl: string;
+  addingCrop: boolean;
+  onAddCroppedCard: (area: Area) => Promise<void>;
+};
+
+const CropCardTool: React.FC<CropCardToolProps> = React.memo(({ imageUrl, addingCrop, onAddCroppedCard }) => {
+  const [cropPosition, setCropPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [cropZoom, setCropZoom] = useState<number>(1);
+  const [cropAreaPixels, setCropAreaPixels] = useState<Area | null>(null);
+  const MIN_ZOOM = 0.9;
+  const MAX_ZOOM = 3;
+
+  useEffect(() => {
+    setCropPosition({ x: 0, y: 0 });
+    setCropZoom(1);
+    setCropAreaPixels(null);
+  }, [imageUrl]);
+
+  const handleCropComplete = useCallback((_a: Area, p: Area) => {
+    setCropAreaPixels(p);
+  }, []);
+
+  const handleZoomChange = useCallback((z: number) => {
+    const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
+    setCropZoom(next);
+  }, []);
+
+  const handleAdd = useCallback(async () => {
+    if (!cropAreaPixels) {
+      toast.error('กรุณาลากเลือกพื้นที่การ์ดก่อนกดเพิ่มการ์ด');
+      return;
+    }
+    await onAddCroppedCard(cropAreaPixels);
+  }, [cropAreaPixels, onAddCroppedCard]);
+
+  return (
+    <>
+      <div style={{ position: 'relative', height: 360, background: '#000', borderRadius: 10, overflow: 'hidden', marginBottom: 12 }}>
+        <Cropper
+          image={imageUrl}
+          crop={cropPosition}
+          zoom={cropZoom}
+          onCropChange={setCropPosition}
+          onZoomChange={handleZoomChange}
+          onCropComplete={handleCropComplete}
+          aspect={2.5 / 3.5}
+          objectFit="contain"
+          restrictPosition
+          minZoom={MIN_ZOOM}
+          maxZoom={MAX_ZOOM}
+          zoomSpeed={0.06}
+        />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+        <span style={{ fontSize: 12, color: '#475569', minWidth: 52 }}>ซูม</span>
+        <input
+          type="range"
+          min={MIN_ZOOM}
+          max={MAX_ZOOM}
+          step={0.01}
+          value={cropZoom}
+          onChange={(e) => handleZoomChange(Number(e.target.value))}
+          style={{ flex: 1 }}
+          aria-label="ปรับซูมครอป"
+        />
+        <button
+          type="button"
+          className="btn btn-sm btn-outline"
+          onClick={() => {
+            setCropZoom(1);
+            setCropPosition({ x: 0, y: 0 });
+          }}
+        >
+          พอดีการ์ด
+        </button>
+      </div>
+      <Button type="button" variant="outline-primary" className="btn-tcg-outline" onClick={handleAdd} disabled={addingCrop || !cropAreaPixels}>
+        {addingCrop ? <><Spinner size="sm" className="me-2" as="span" />กำลังเพิ่ม...</> : <><i className="fas fa-plus-circle me-2" />เพิ่มการ์ดจากพื้นที่ที่เลือก</>}
+      </Button>
+    </>
+  );
+});
+
 const CreatePost: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser, profile, userProfile, loading: authLoading } = useAuth();
@@ -227,9 +311,6 @@ const CreatePost: React.FC = () => {
   const [previewImageIndex, setPreviewImageIndex] = useState<number | null>(null);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [cropImageIndex, setCropImageIndex] = useState<number>(0);
-  const [cropAreaPixels, setCropAreaPixels] = useState<Area | null>(null);
-  const [cropZoom, setCropZoom] = useState<number>(1);
-  const [cropPosition, setCropPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [addingCrop, setAddingCrop] = useState<boolean>(false);
   const [cropImageObjectUrl, setCropImageObjectUrl] = useState<string | null>(null);
 
@@ -260,13 +341,9 @@ const CreatePost: React.FC = () => {
     if (formData.images.length > 0 && cropImageIndex >= 0 && cropImageIndex < formData.images.length) {
       const url = URL.createObjectURL(formData.images[cropImageIndex]);
       setCropImageObjectUrl(url);
-      setCropPosition({ x: 0, y: 0 });
-      setCropZoom(1);
-      setCropAreaPixels(null);
       return () => URL.revokeObjectURL(url);
     }
     setCropImageObjectUrl(null);
-    setCropAreaPixels(null);
   }, [cropImageIndex, formData.images]);
 
   const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>): void => {
@@ -300,9 +377,8 @@ const CreatePost: React.FC = () => {
     }
   };
 
-  const handleAddCroppedCard = async (): Promise<void> => {
-    if (!cropAreaPixels || formData.images.length === 0) {
-      toast.error('กรุณาลากเลือกพื้นที่การ์ดก่อนกดเพิ่มการ์ด');
+  const handleAddCroppedCard = useCallback(async (pixelArea: Area): Promise<void> => {
+    if (!pixelArea || formData.images.length === 0) {
       return;
     }
     const file = formData.images[cropImageIndex];
@@ -310,7 +386,7 @@ const CreatePost: React.FC = () => {
     const imageSrc = URL.createObjectURL(file);
     setAddingCrop(true);
     try {
-      const base64 = await getCroppedImg(imageSrc, cropAreaPixels);
+      const base64 = await getCroppedImg(imageSrc, pixelArea);
       URL.revokeObjectURL(imageSrc);
       const newCard: DetectedCard = {
         id: `crop-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -327,7 +403,7 @@ const CreatePost: React.FC = () => {
     } finally {
       setAddingCrop(false);
     }
-  };
+  }, [formData.images, cropImageIndex]);
 
   const handleRemoveDetectedCard = (cardId: string): void => {
     setDetectedCards(prev => prev.filter(c => c.id !== cardId));
@@ -950,6 +1026,31 @@ const CreatePost: React.FC = () => {
                         </div>
                       )}
 
+                      {/* AI split photo tips */}
+                      <div style={{ background: 'linear-gradient(135deg,#fefce8,#fef9c3)', border: '1px solid #fde047', borderRadius: 14, padding: '14px 18px', marginBottom: 20 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: '#854d0e', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 7 }}>
+                          <i className="fas fa-lightbulb" style={{ color: '#ca8a04' }} />
+                          เคล็ดลับ: ถ่ายรูปให้ AI แยกการ์ดได้แม่นยำ
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: '6px 16px' }}>
+                          {[
+                            { icon: 'fa-border-all', text: 'วางการ์ดบนพื้นหลังสีเดียว เช่น โต๊ะ ผ้า หรือ playmat' },
+                            { icon: 'fa-th', text: 'จัดเรียงเป็นตาราง แถวละเท่าๆ กัน ไม่ซ้อนทับ' },
+                            { icon: 'fa-arrows-alt-h', text: 'เว้นช่องว่างเล็กน้อยระหว่างแต่ละใบ' },
+                            { icon: 'fa-camera', text: 'ถ่ายตรงจากด้านบน ไม่เอียงมุม ไม่มีแสงสะท้อน' },
+                          ].map((tip, i) => (
+                            <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, color: '#713f12' }}>
+                              <i className={`fas ${tip.icon}`} style={{ color: '#ca8a04', marginTop: 2, flexShrink: 0, width: 14, textAlign: 'center' }} />
+                              <span>{tip.text}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #fde047', fontSize: 12, color: '#92400e', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <i className="fas fa-magic" style={{ color: '#ca8a04' }} />
+                          <span>หลังอัปโหลดรูป ไปที่ขั้นตอนถัดไป → ส่วน <strong>การ์ดแยกใบ</strong> → กดปุ่ม <strong>แยกการ์ดอัตโนมัติ</strong></span>
+                        </div>
+                      </div>
+
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                         <SecondaryActionButton type="button" onClick={goPrevStep} icon={<i className="fas fa-arrow-left" />}>ย้อนกลับ</SecondaryActionButton>
                         <PrimaryActionButton type="button" fullWidth={false} onClick={goNextStep} disabled={!canProceedFromStep2()} icon={<i className="fas fa-arrow-right" />}>ถัดไป: กรอกข้อมูล</PrimaryActionButton>
@@ -1049,15 +1150,33 @@ const CreatePost: React.FC = () => {
                           {formData.images.length > 0 && (
                             <>
                               {/* AI detection */}
-                              <div style={{ background: 'linear-gradient(135deg,#eff6ff,#f0f9ff)', borderRadius: 14, padding: '16px 20px', marginBottom: 12, border: '1px solid #bae6fd', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-                                <div>
-                                  <div style={{ fontWeight: 700, fontSize: 14, color: '#1e40af', marginBottom: 3 }}><i className="fas fa-magic me-2" />การแยกการ์ดอัตโนมัติ (AI)</div>
-                                  <div style={{ fontSize: 12, color: '#3b82f6' }}>ใช้ AI แยกการ์ดแต่ละใบจากภาพ หรือครอปกำหนดพื้นที่เอง</div>
-                                  {detectedCards.length > 0 && <div style={{ marginTop: 5, fontSize: 12, color: '#16a34a', fontWeight: 600 }}><i className="fas fa-check-circle me-1" />พบการ์ดแล้ว {detectedCards.length} ใบ</div>}
+                              <div style={{ background: 'linear-gradient(135deg,#eff6ff,#f0f9ff)', borderRadius: 14, padding: '16px 20px', marginBottom: 12, border: '1px solid #bae6fd' }}>
+                                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontWeight: 700, fontSize: 14, color: '#1e40af', marginBottom: 3 }}><i className="fas fa-magic me-2" />การแยกการ์ดอัตโนมัติ (AI)</div>
+                                    <div style={{ fontSize: 12, color: '#3b82f6', marginBottom: 8 }}>ใช้ AI แยกการ์ดแต่ละใบจากภาพ หรือครอปกำหนดพื้นที่เอง</div>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
+                                      {[
+                                        { icon: 'fa-border-all', text: 'พื้นหลังสีเดียว' },
+                                        { icon: 'fa-th', text: 'จัดเป็นตาราง' },
+                                        { icon: 'fa-arrows-alt-h', text: 'เว้นช่องว่างระหว่างใบ' },
+                                        { icon: 'fa-camera', text: 'ถ่ายตรงจากด้านบน' },
+                                      ].map((t, i) => (
+                                        <span key={i} style={{ fontSize: 11, color: '#1d4ed8', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                          <i className={`fas ${t.icon}`} style={{ color: '#60a5fa' }} />{t.text}
+                                        </span>
+                                      ))}
+                                    </div>
+                                    {detectedCards.length > 0 && (
+                                      <div style={{ marginTop: 8, fontSize: 12, color: '#16a34a', fontWeight: 600 }}>
+                                        <i className="fas fa-check-circle me-1" />พบการ์ดแล้ว {detectedCards.length} ใบ
+                                      </div>
+                                    )}
+                                  </div>
+                                  <Button variant="outline-primary" size="sm" onClick={processImagesForCards} disabled={processingCards} className="btn-tcg-outline" style={{ flexShrink: 0, alignSelf: 'flex-start' }}>
+                                    {processingCards ? <><Spinner size="sm" className="me-2" as="span" />กำลังประมวลผล...</> : <><i className="fas fa-magic me-2" />แยกการ์ดอัตโนมัติ</>}
+                                  </Button>
                                 </div>
-                                <Button variant="outline-primary" size="sm" onClick={processImagesForCards} disabled={processingCards} className="btn-tcg-outline" style={{ flexShrink: 0 }}>
-                                  {processingCards ? <><Spinner size="sm" className="me-2" as="span" />กำลังประมวลผล...</> : <><i className="fas fa-magic me-2" />แยกการ์ดอัตโนมัติ</>}
-                                </Button>
                               </div>
 
                               {/* Crop tool */}
@@ -1067,18 +1186,17 @@ const CreatePost: React.FC = () => {
                                 </div>
                                 <div style={{ marginBottom: 12 }}>
                                   <Form.Label className="form-label-sakura">เลือกรูปที่จะครอป</Form.Label>
-                                  <Form.Select value={cropImageIndex} onChange={(e) => setCropImageIndex(Number(e.target.value))} className="form-control-sakura">
+                                  <Form.Select value={cropImageIndex} onChange={(e) => setCropImageIndex(Number(e.target.value))} className="form-select">
                                     {formData.images.map((_, i) => <option key={i} value={i}>รูปที่ {i + 1}</option>)}
                                   </Form.Select>
                                 </div>
                                 {cropImageObjectUrl && (
-                                  <div style={{ position: 'relative', height: 360, background: '#000', borderRadius: 10, overflow: 'hidden', marginBottom: 12 }}>
-                                    <Cropper image={cropImageObjectUrl} crop={cropPosition} zoom={cropZoom} onCropChange={setCropPosition} onZoomChange={setCropZoom} onCropComplete={(_a, p) => setCropAreaPixels(p)} aspect={2.5 / 3.5} objectFit="contain" />
-                                  </div>
+                                  <CropCardTool
+                                    imageUrl={cropImageObjectUrl}
+                                    addingCrop={addingCrop}
+                                    onAddCroppedCard={handleAddCroppedCard}
+                                  />
                                 )}
-                                <Button type="button" variant="outline-primary" className="btn-tcg-outline" onClick={handleAddCroppedCard} disabled={addingCrop || !cropAreaPixels}>
-                                  {addingCrop ? <><Spinner size="sm" className="me-2" as="span" />กำลังเพิ่ม...</> : <><i className="fas fa-plus-circle me-2" />เพิ่มการ์ดจากพื้นที่ที่เลือก</>}
-                                </Button>
                               </div>
                             </>
                           )}
@@ -1094,10 +1212,23 @@ const CreatePost: React.FC = () => {
                       {/* Category / ประเภทการ์ด */}
                       <SectionDivider />
                       <SectionLabel icon="fa-tag" text="ประเภทการ์ด (หมวดหมู่)" required />
-                      <Form.Select name="category" value={formData.category} onChange={handleChange} className="form-control-sakura" style={{ marginBottom: 28 }} required>
-                        <option value="" disabled>— เลือกประเภทการ์ด —</option>
-                        {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                      <Form.Select
+                        name="category"
+                        value={formData.category}
+                        onChange={handleChange}
+                        className="form-select"
+                        style={{
+                          marginBottom: 8,
+                          color: formData.category ? '#1e293b' : '#94a3b8'
+                        }}
+                        required
+                      >
+                        <option value="" disabled style={{ color: '#94a3b8' }}>— เลือกประเภทการ์ด —</option>
+                        {categories.map(cat => <option key={cat} value={cat} style={{ color: '#1e293b' }}>{cat}</option>)}
                       </Form.Select>
+                      <div style={{ minHeight: 18, marginBottom: 20, fontSize: 12, color: formData.category ? '#16a34a' : '#94a3b8' }}>
+                        {formData.category ? <>หมวดหมู่ที่เลือก: <strong>{formData.category}</strong></> : 'ยังไม่ได้เลือกหมวดหมู่'}
+                      </div>
 
                       {/* Auction fields */}
                       {formData.postType === 'auction' && (
