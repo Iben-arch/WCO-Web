@@ -26,6 +26,11 @@ namespace ServerApi.Services
         /// Used for dHash/pHash direct image comparison to confirm same photo (not just same card).
         /// </summary>
         public List<(string Link, string ThumbUrl)> MarketplaceMatchDetails { get; init; } = new();
+        /// <summary>
+        /// Per-match details for ALL sources (marketplace + general web).
+        /// Each entry carries IsTargetMarketplace so downstream dHash comparison can weight accordingly.
+        /// </summary>
+        public List<(string Link, string ThumbUrl, bool IsTargetMarketplace)> AllMatchDetails { get; init; } = new();
     }
 
     public class ExternalReverseImageService
@@ -147,6 +152,9 @@ namespace ServerApi.Services
                 // Collect (link, thumbUrl) pairs for target marketplace matches — used for dHash comparison.
                 var marketplaceMatchDetails = ExtractMarketplaceMatchDetails(allMatchesArray, fragments);
 
+                // Also collect match details for ALL sources (marketplace + general web).
+                var allMatchDetails = ExtractAllMatchDetails(allMatchesArray, fragments);
+
                 // Build deduplicated page-link list from match details.
                 var targetMarketplacePageLinks = marketplaceMatchDetails
                     .Select(x => x.Link)
@@ -155,10 +163,12 @@ namespace ServerApi.Services
                     .ToList();
                 var targetMarketplaceMatchCount = targetMarketplacePageLinks.Count;
 
-                // Also keep flat candidate URL list for CLIP (backward compat).
-                var candidateImageUrls = marketplaceMatchDetails
+                // Flat candidate URL list for CLIP — include ALL sources (marketplace first, then general).
+                var candidateImageUrls = allMatchDetails
+                    .OrderByDescending(x => x.IsTargetMarketplace)
                     .Where(x => !string.IsNullOrWhiteSpace(x.ThumbUrl))
                     .Select(x => x.ThumbUrl)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
                     .Take(14)
                     .ToList();
 
@@ -178,7 +188,8 @@ namespace ServerApi.Services
                         MatchLevel = "none", CandidateImageUrls = candidateImageUrls,
                         TargetMarketplaceMatchCount = 0,
                         TargetMarketplacePageLinks = new(),
-                        MarketplaceMatchDetails = new()
+                        MarketplaceMatchDetails = new(),
+                        AllMatchDetails = new()
                     };
                     _cache[cacheKey] = new CacheEntry { StoredAtUtc = now, Value = zeroResult };
                     return zeroResult;
@@ -219,7 +230,8 @@ namespace ServerApi.Services
                     MatchLevel = level, CandidateImageUrls = candidateImageUrls,
                     TargetMarketplaceMatchCount = targetMarketplaceMatchCount,
                     TargetMarketplacePageLinks = targetMarketplacePageLinks,
-                    MarketplaceMatchDetails = marketplaceMatchDetails
+                    MarketplaceMatchDetails = marketplaceMatchDetails,
+                    AllMatchDetails = allMatchDetails
                 };
                 _cache[cacheKey] = new CacheEntry { StoredAtUtc = now, Value = result };
                 return result;
@@ -291,6 +303,29 @@ namespace ServerApi.Services
                 var thumbUrl = GetStringProperty(item, "thumbnail") ?? GetStringProperty(item, "image") ?? "";
                 results.Add((link, thumbUrl));
                 if (results.Count >= 14) break;
+            }
+            return results;
+        }
+
+        /// <summary>
+        /// Extract (pageLink, thumbnailUrl, isMarketplace) for ALL sources.
+        /// Marketplace entries are tagged so downstream dHash comparison can weight them higher.
+        /// </summary>
+        private static List<(string Link, string ThumbUrl, bool IsTargetMarketplace)> ExtractAllMatchDetails(
+            List<JsonElement> items, List<string> hostFragments)
+        {
+            var results = new List<(string Link, string ThumbUrl, bool IsTargetMarketplace)>();
+            foreach (var item in items)
+            {
+                if (item.ValueKind != JsonValueKind.Object) continue;
+                if (!item.TryGetProperty("link", out var linkProp)) continue;
+                var link = linkProp.GetString();
+                if (string.IsNullOrWhiteSpace(link)) continue;
+
+                var thumbUrl = GetStringProperty(item, "thumbnail") ?? GetStringProperty(item, "image") ?? "";
+                var isMarketplace = IsTargetMarketplaceHost(link, hostFragments);
+                results.Add((link, thumbUrl, isMarketplace));
+                if (results.Count >= 20) break;
             }
             return results;
         }

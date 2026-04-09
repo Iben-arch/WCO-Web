@@ -243,15 +243,15 @@ export interface AiScreeningImageResult {
   internalBestSimilarityScore?: number | null;
   externalProvider?: string | null;
   externalMatchCount: number;
-  /** ลิงก์จาก Mercari / Yahoo! Auctions JP / Magi ในผลค้นหาเท่านั้น */
+  /** จำนวนลิงก์ที่เป็น Mercari / Yahoo! Auctions JP / Magi */
   targetMarketplaceMatchCount?: number;
   externalHasOurDomain: boolean;
   externalMatchLevel?: string | null;
-  /** ความคล้ายทั้งภาพกับตัวอย่างจากเว็บอื่น (CLIP) — ดูองค์ประกอบภาพรวม ไม่ใช่แค่การ์ด */
+  /** ความคล้ายทั้งภาพกับตัวอย่างจากแหล่งภายนอก (CLIP) — รวมทุกเว็บ โฟกัส 3 เว็บหลักเป็นพิเศษ */
   externalCompositionSimilarityPct?: number | null;
-  /** URL หน้าเว็บที่พบรูปคล้ายจาก Mercari / Yahoo! Auctions JP / Magi (Lens visual match) */
+  /** URL หน้าเว็บที่พบรูปคล้าย — รวมทุกแหล่ง (marketplace + เว็บทั่วไป) */
   externalMatchLinks?: string[];
-  /** URL ที่ผ่านการยืนยันด้วย dHash ว่าเป็นภาพเดิม (เชื่อถือได้) */
+  /** URL ที่ผ่านการยืนยันด้วย dHash ว่าเป็นภาพเดิม — รวมทุกแหล่ง (เชื่อถือได้) */
   dHashConfirmedLinks?: string[];
   /** % ความคล้ายสูงสุดจาก dHash (0-100) */
   dHashSimilarityPct?: number | null;
@@ -278,7 +278,7 @@ export interface AiScreeningResult {
   sourceUnavailableReason?: string | null;
   sourceProviderStatus?: string | null;
   hasStrongExternalMatch?: boolean;
-  /** สูงสุดของความคล้ายทั้งภาพ — เทียบกับรูปบน Mercari / Yahoo! Auctions JP / Magi เท่านั้น */
+  /** สูงสุดของความคล้ายทั้งภาพ — เทียบกับรูปจากแหล่งภายนอกทุกเว็บ (โฟกัส 3 เว็บหลัก) */
   maxCompositionSimilarityPct?: number | null;
   /** รวมจำนวนลิงก์จาก 3 เว็บเป้าหมายในผลค้นหา */
   totalTargetMarketplaceMatchLinks?: number;
@@ -290,9 +290,9 @@ export interface AiScreeningResult {
   aiGeneratedWarningLevel?: AiGeneratedWarningLevel | null;
   reasons: string[];
   images: AiScreeningImageResult[];
-  /** รวม URL หน้าเว็บที่พบรูปคล้ายจาก Mercari / Yahoo! Auctions JP / Magi (ทุกรูปในโพสต์) */
+  /** รวม URL หน้าเว็บที่พบรูปคล้าย — ทุกแหล่ง (marketplace + เว็บทั่วไป) ทุกรูปในโพสต์ */
   allExternalMatchLinks?: string[];
-  /** URL ที่ผ่านการยืนยันด้วย dHash ว่าเป็นภาพเดิม (เชื่อถือได้มากที่สุด) */
+  /** URL ที่ผ่านการยืนยันด้วย dHash ว่าเป็นภาพเดิม — รวมทุกแหล่ง (เชื่อถือได้มากที่สุด) */
   dHashConfirmedLinks?: string[];
   /** % ความคล้ายสูงสุดจาก dHash ทุกรูปในโพสต์ */
   maxDHashSimilarityPct?: number | null;

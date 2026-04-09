@@ -43,11 +43,11 @@ namespace ServerApi.Services
         public double AiGeneratedRiskPct { get; set; }
         public List<string> Reasons { get; set; } = new();
         public List<AiScreeningImageResult> Images { get; set; } = new();
-        /// <summary>รวม URL หน้าเว็บที่พบรูปคล้ายจาก Mercari / Yahoo! Auctions JP / Magi (ทุกรูปในโพสต์)</summary>
+        /// <summary>รวม URL หน้าเว็บที่พบรูปคล้าย — ทุกแหล่ง (marketplace + เว็บทั่วไป) ทุกรูปในโพสต์</summary>
         public List<string> AllExternalMatchLinks { get; set; } = new();
         /// <summary>
         /// URL หน้าเว็บที่ผ่านการยืนยันด้วย dHash (perceptual hash) ว่าเป็นภาพเดิม ไม่ใช่แค่การ์ดชนิดเดียวกัน
-        /// เชื่อถือได้มากกว่า AllExternalMatchLinks
+        /// รวมทุกแหล่ง เชื่อถือได้มากกว่า AllExternalMatchLinks
         /// </summary>
         public List<string> DHashConfirmedLinks { get; set; } = new();
         /// <summary>ค่าความคล้ายทั้งภาพสูงสุดจาก dHash (0-100%) — ไม่ต้องรอ CLIP worker</summary>
@@ -69,13 +69,13 @@ namespace ServerApi.Services
         public int ExternalMatchCount { get; set; }
         public bool ExternalHasOurDomain { get; set; }
         public string? ExternalMatchLevel { get; set; }
-        /// <summary>ลิงก์ที่เป็น Mercari / Yahoo! Auctions JP / Magi เท่านั้น</summary>
+        /// <summary>จำนวนลิงก์ที่เป็น Mercari / Yahoo! Auctions JP / Magi</summary>
         public int TargetMarketplaceMatchCount { get; set; }
-        /// <summary>ความคล้ายทั้งภาพกับรูปบน 3 เว็บนี้เท่านั้น (CLIP)</summary>
+        /// <summary>ความคล้ายทั้งภาพกับรูปจากแหล่งภายนอก (CLIP) — รวมทุกเว็บ โฟกัส 3 เว็บหลักเป็นพิเศษ</summary>
         public double? ExternalCompositionSimilarityPct { get; set; }
-        /// <summary>URL หน้าเว็บที่พบรูปคล้ายจาก Mercari / Yahoo! Auctions JP / Magi (Lens visual match)</summary>
+        /// <summary>URL หน้าเว็บที่พบรูปคล้าย — รวมทุกแหล่ง (marketplace + เว็บทั่วไป)</summary>
         public List<string> ExternalMatchLinks { get; set; } = new();
-        /// <summary>URL หน้าเว็บที่ผ่านการยืนยันด้วย dHash ว่าภาพตรงกัน (เชื่อถือได้)</summary>
+        /// <summary>URL หน้าเว็บที่ผ่านการยืนยันด้วย dHash ว่าภาพตรงกัน — รวมทุกแหล่ง (เชื่อถือได้)</summary>
         public List<string> DHashConfirmedLinks { get; set; } = new();
         /// <summary>% ความคล้ายสูงสุดจาก dHash เทียบกับ thumbnail ของเว็บที่พบ (0-100)</summary>
         public double? DHashSimilarityPct { get; set; }
@@ -326,26 +326,35 @@ namespace ServerApi.Services
                         item.ExternalProvider = external.Provider;
                         item.ExternalMatchCount = external.MatchCount;
                         item.TargetMarketplaceMatchCount = external.TargetMarketplaceMatchCount;
-                        item.ExternalMatchLinks = external.TargetMarketplacePageLinks;
+                        // Include all external page links (marketplace + general), marketplace first.
+                        item.ExternalMatchLinks = external.AllMatchDetails
+                            .OrderByDescending(x => x.IsTargetMarketplace)
+                            .Select(x => x.Link)
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .Take(15)
+                            .ToList();
                         item.ExternalHasOurDomain = external.HasOurDomain;
                         item.ExternalMatchLevel = external.MatchLevel;
                         item.SourceAnalysisAvailable = external.AnalysisAvailable;
                         item.SourceUnavailableReason = external.UnavailableReason;
 
-                        // dHash comparison: compare post image against each marketplace thumbnail directly.
-                        // This confirms whether the found pages contain the SAME PHOTO or just the same card type.
-                        // Works without the CLIP worker — runs entirely in-process using OpenCV.
-                        if (external.MarketplaceMatchDetails.Count > 0)
+                        // dHash comparison: compare post image against ALL external thumbnails directly.
+                        // Marketplace matches (Mercari/Yahoo/Magi) get higher risk escalation,
+                        // but non-marketplace confirmed matches also raise risk.
+                        if (external.AllMatchDetails.Count > 0)
                         {
-                            var (confirmedLinks, bestSimilarityPct) = await ComputeDHashSimilarityAsync(
-                                bytes, external.MarketplaceMatchDetails, cancellationToken).ConfigureAwait(false);
-                            item.DHashConfirmedLinks = confirmedLinks;
-                            item.DHashSimilarityPct = bestSimilarityPct;
+                            var dHashResult = await ComputeDHashSimilarityAsync(
+                                bytes, external.AllMatchDetails, cancellationToken).ConfigureAwait(false);
+                            item.DHashConfirmedLinks = dHashResult.MarketplaceConfirmedLinks
+                                .Concat(dHashResult.OtherConfirmedLinks)
+                                .Distinct(StringComparer.OrdinalIgnoreCase)
+                                .ToList();
+                            item.DHashSimilarityPct = dHashResult.BestOverallSimilarityPct;
 
-                            // Escalate risk when dHash confirms the composition matches.
-                            if (bestSimilarityPct.HasValue)
+                            // Marketplace-confirmed matches: highest escalation
+                            if (dHashResult.BestMarketplaceSimilarityPct.HasValue)
                             {
-                                var sim = bestSimilarityPct.Value;
+                                var sim = dHashResult.BestMarketplaceSimilarityPct.Value;
                                 if (sim >= 88)
                                 {
                                     item.ExternalMatchLevel = "exact_or_near";
@@ -356,12 +365,34 @@ namespace ServerApi.Services
                                     item.ExternalMatchLevel = "near";
                                     item.ExternalSourceRiskPct = Math.Max(item.ExternalSourceRiskPct, 78d);
                                 }
-                                else
+                            }
+
+                            // Non-marketplace confirmed matches: high escalation (slightly below marketplace)
+                            if (dHashResult.BestOtherSimilarityPct.HasValue)
+                            {
+                                var sim = dHashResult.BestOtherSimilarityPct.Value;
+                                if (sim >= 88)
                                 {
-                                    // dHash says images are different — de-escalate Lens risk.
-                                    item.ExternalMatchLevel = "ambiguous";
-                                    item.ExternalSourceRiskPct = Math.Min(item.ExternalSourceRiskPct, 45d);
+                                    if (item.ExternalMatchLevel != "exact_or_near")
+                                        item.ExternalMatchLevel = "near";
+                                    item.ExternalSourceRiskPct = Math.Max(item.ExternalSourceRiskPct, 80d);
                                 }
+                                else if (sim >= 75)
+                                {
+                                    if (item.ExternalMatchLevel != "exact_or_near" && item.ExternalMatchLevel != "near")
+                                        item.ExternalMatchLevel = "weak";
+                                    item.ExternalSourceRiskPct = Math.Max(item.ExternalSourceRiskPct, 65d);
+                                }
+                            }
+
+                            // De-escalate only if ALL comparisons show different images
+                            if (dHashResult.MarketplaceConfirmedLinks.Count == 0
+                                && dHashResult.OtherConfirmedLinks.Count == 0
+                                && dHashResult.BestOverallSimilarityPct.HasValue
+                                && dHashResult.BestOverallSimilarityPct.Value < 75)
+                            {
+                                item.ExternalMatchLevel = "ambiguous";
+                                item.ExternalSourceRiskPct = Math.Min(item.ExternalSourceRiskPct, 45d);
                             }
                         }
 
@@ -706,24 +737,35 @@ namespace ServerApi.Services
         // Handles JPEG re-encoding, small resizing, and color adjustments well.
         // Hamming distance 0-10/64 ≈ same photo; >20/64 ≈ different photo.
 
-        private async Task<(List<string> confirmedLinks, double? bestSimilarityPct)> ComputeDHashSimilarityAsync(
+        private sealed record DHashResult
+        {
+            public List<string> MarketplaceConfirmedLinks { get; init; } = new();
+            public List<string> OtherConfirmedLinks { get; init; } = new();
+            public double? BestMarketplaceSimilarityPct { get; init; }
+            public double? BestOtherSimilarityPct { get; init; }
+            public double? BestOverallSimilarityPct { get; init; }
+        }
+
+        private async Task<DHashResult> ComputeDHashSimilarityAsync(
             byte[] postImageBytes,
-            List<(string Link, string ThumbUrl)> marketplaceDetails,
+            List<(string Link, string ThumbUrl, bool IsTargetMarketplace)> allMatchDetails,
             CancellationToken cancellationToken)
         {
-            var confirmedLinks = new List<string>();
-            double? bestSim = null;
+            var marketplaceConfirmed = new List<string>();
+            var otherConfirmed = new List<string>();
+            double? bestMarketplace = null;
+            double? bestOther = null;
+            double? bestOverall = null;
 
             var postHash = ComputeDHash(postImageBytes);
-            if (postHash == 0) return (confirmedLinks, null);
+            if (postHash == 0) return new DHashResult();
 
             var httpClient = _httpClientFactory.CreateClient();
             httpClient.Timeout = TimeSpan.FromSeconds(10);
 
-            // dHash threshold: ≤ 12 out of 64 bits different = same photo (≥ 81% similar).
             const int ConfirmThreshold = 12;
 
-            foreach (var (link, thumbUrl) in marketplaceDetails.Take(10))
+            foreach (var (link, thumbUrl, isMarketplace) in allMatchDetails.Take(16))
             {
                 if (string.IsNullOrWhiteSpace(thumbUrl)) continue;
                 try
@@ -735,11 +777,23 @@ namespace ServerApi.Services
                     var distance = HammingDistance(postHash, thumbHash);
                     var simPct = (1.0 - distance / 64.0) * 100.0;
 
-                    if (!bestSim.HasValue || simPct > bestSim.Value)
-                        bestSim = simPct;
+                    if (!bestOverall.HasValue || simPct > bestOverall.Value)
+                        bestOverall = simPct;
 
-                    if (distance <= ConfirmThreshold)
-                        confirmedLinks.Add(link);
+                    if (isMarketplace)
+                    {
+                        if (!bestMarketplace.HasValue || simPct > bestMarketplace.Value)
+                            bestMarketplace = simPct;
+                        if (distance <= ConfirmThreshold)
+                            marketplaceConfirmed.Add(link);
+                    }
+                    else
+                    {
+                        if (!bestOther.HasValue || simPct > bestOther.Value)
+                            bestOther = simPct;
+                        if (distance <= ConfirmThreshold)
+                            otherConfirmed.Add(link);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -747,7 +801,14 @@ namespace ServerApi.Services
                 }
             }
 
-            return (confirmedLinks, bestSim.HasValue ? RoundPct(bestSim.Value) : null);
+            return new DHashResult
+            {
+                MarketplaceConfirmedLinks = marketplaceConfirmed,
+                OtherConfirmedLinks = otherConfirmed,
+                BestMarketplaceSimilarityPct = bestMarketplace.HasValue ? RoundPct(bestMarketplace.Value) : null,
+                BestOtherSimilarityPct = bestOther.HasValue ? RoundPct(bestOther.Value) : null,
+                BestOverallSimilarityPct = bestOverall.HasValue ? RoundPct(bestOverall.Value) : null
+            };
         }
 
         private static ulong ComputeDHash(byte[] imageBytes)

@@ -1105,30 +1105,37 @@ const PostDetail: React.FC = () => {
                                       เปรียบเทียบรูปจริงโดยตรง (dHash) ยืนยันว่าภาพตรงกับหน้าเหล่านี้:
                                     </div>
                                     <ul className="mb-0" style={{ listStyle: 'none', padding: 0 }}>
-                                      {dHashLinks.map((link, i) => (
-                                        <li key={i} className="mb-1">
-                                          <a href={link} target="_blank" rel="noopener noreferrer"
-                                            className="text-primary" style={{ wordBreak: 'break-all', fontSize: '0.8rem' }}>
-                                            🔗 {getDomain(link)}
-                                          </a>
-                                        </li>
-                                      ))}
+                                      {dHashLinks.map((link, i) => {
+                                        const domain = getDomain(link);
+                                        const isMarketplace = /mercari|auctions\.yahoo\.co\.jp|magi\.care|magi\.jp/i.test(domain);
+                                        return (
+                                          <li key={i} className="mb-1">
+                                            <a href={link} target="_blank" rel="noopener noreferrer"
+                                              className="text-primary" style={{ wordBreak: 'break-all', fontSize: '0.8rem' }}>
+                                              🔗 {domain}
+                                            </a>
+                                            {isMarketplace && (
+                                              <span className="badge bg-danger ms-1" style={{ fontSize: '0.65rem' }}>marketplace</span>
+                                            )}
+                                          </li>
+                                        );
+                                      })}
                                     </ul>
                                   </div>
                                 ) : hasMarketplaceHits ? (
-                                  /* Lens found marketplace pages but dHash didn't confirm → same card, different photo */
+                                  /* Lens found pages but dHash didn't confirm → same card, different photo */
                                   <div className="mb-2">
                                     <div className="fw-semibold mb-1" style={{ color: '#6c757d' }}>
-                                      ℹ️ พบการ์ดชนิดนี้ขายในเว็บอื่น แต่ภาพไม่ตรงกัน
+                                      ℹ️ พบการ์ดชนิดนี้ในเว็บอื่น แต่ภาพไม่ตรงกัน
                                     </div>
                                     <div className="text-muted small">
-                                      Google Lens พบหน้าขายการ์ดนี้ใน Mercari/Yahoo/Magi ({allMarketplaceLinks.length} แหล่ง)
+                                      Google Lens พบหน้าที่มีภาพคล้ายกัน ({allMarketplaceLinks.length} แหล่ง)
                                       แต่เมื่อเปรียบเทียบรูป (dHash) พบว่าเป็นภาพคนละภาพ
                                       — น่าจะถ่ายคนละมุม/พื้นหลัง ไม่ใช่ภาพที่นำมาจากเว็บเหล่านั้น
                                     </div>
                                     <details className="mt-2">
                                       <summary className="text-muted small" style={{ cursor: 'pointer' }}>
-                                        ดูรายการเว็บที่พบการ์ดชนิดนี้ ({allMarketplaceLinks.length} แหล่ง)
+                                        ดูรายการเว็บที่พบ ({allMarketplaceLinks.length} แหล่ง)
                                       </summary>
                                       <ul className="mt-1 mb-0" style={{ listStyle: 'none', padding: 0 }}>
                                         {allMarketplaceLinks.map((link, i) => (
