@@ -39,19 +39,9 @@ namespace ServerApi.Controllers
                     return true;
                 }).ToList();
 
-                // ถ้าส่ง cartItemIds มาแต่ filter ไม่ตรง (เช่น format ต่างกัน) แต่มีรายการในตะกร้า — ใช้ทั้งหมด
-                if (itemsToProcess.Count == 0 && cartItems.Count > 0)
-                {
-                    itemsToProcess = cartItems.Where(c =>
-                    {
-                        var cartId = c.ContainsKey("id") ? c["id"]?.ToString() : null;
-                        return !string.IsNullOrEmpty(cartId);
-                    }).ToList();
-                }
-
                 if (itemsToProcess.Count == 0)
                 {
-                    return BadRequest(new { success = false, error = "ไม่มีรายการที่เลือกหรือตะกร้าว่าง" });
+                    return BadRequest(new { success = false, error = "ไม่มีรายการที่เลือกหรือตะกร้าว่าง กรุณารีเฟรชหน้าแล้วลองใหม่" });
                 }
 
                 var profile = await _supabaseService.GetAsync("profiles", userId, useServiceRole: true, idField: "id");
@@ -69,13 +59,23 @@ namespace ServerApi.Controllers
 
                 var buyerName = profile?.TryGetValue("username", out var un) == true && un != null ? un.ToString() : "ผู้ซื้อ";
 
+                // Batch load โพสต์ทั้งหมดใน 1 query แทน N+1
+                var allPostIds = itemsToProcess
+                    .Select(c => c.ContainsKey("post_id") ? c["post_id"]?.ToString() : null)
+                    .Where(id => !string.IsNullOrEmpty(id))
+                    .Distinct()
+                    .ToList()!;
+                var allPosts = await _supabaseService.QueryInAsync("posts", "id", allPostIds!, useServiceRole: true);
+                var postLookup = allPosts.ToDictionary(
+                    p => p.ContainsKey("id") ? p["id"]?.ToString() ?? "" : "",
+                    p => p,
+                    StringComparer.OrdinalIgnoreCase);
+
                 var bySeller = new Dictionary<string, List<Dictionary<string, object>>>();
                 foreach (var item in itemsToProcess)
                 {
                     var postId = item.ContainsKey("post_id") ? item["post_id"]?.ToString() : null;
-                    if (string.IsNullOrEmpty(postId)) continue;
-                    var post = await _supabaseService.GetAsync("posts", postId, useServiceRole: true);
-                    if (post == null) continue;
+                    if (string.IsNullOrEmpty(postId) || !postLookup.TryGetValue(postId, out var post)) continue;
                     var sellerId = post.ContainsKey("sellerId") ? post["sellerId"]?.ToString() : null;
                     if (string.IsNullOrEmpty(sellerId)) continue;
                     var sellerName = post.ContainsKey("sellerName") ? post["sellerName"]?.ToString() : "";
@@ -168,9 +168,18 @@ namespace ServerApi.Controllers
                 foreach (var kv in reductionsByPost)
                 {
                     var postId = kv.Key;
-                    var post = await _supabaseService.GetAsync("posts", postId, useServiceRole: true);
-                    if (post == null) continue;
-                    var postUpdate = ReducePostStock(post, kv.Value);
+                    // Re-fetch เพื่อเช็คสต็อกล่าสุด (ป้องกัน oversell จาก concurrent checkout)
+                    var freshPost = await _supabaseService.GetAsync("posts", postId, useServiceRole: true);
+                    if (freshPost == null) continue;
+
+                    // ตรวจสอบว่าสต็อกเพียงพอก่อนลด
+                    if (!ValidateStockAvailable(freshPost, kv.Value))
+                    {
+                        var postTitle = freshPost.TryGetValue("title", out var t) ? t?.ToString() : postId;
+                        return BadRequest(new { success = false, error = $"สินค้า \"{postTitle}\" มีจำนวนไม่เพียงพอ อาจมีคนอื่นซื้อไปก่อน กรุณาลองใหม่" });
+                    }
+
+                    var postUpdate = ReducePostStock(freshPost, kv.Value);
                     if (postUpdate != null && postUpdate.Count > 0)
                         await _supabaseService.UpdateAsync("posts", postId, postUpdate, null, true);
                 }
@@ -215,45 +224,7 @@ namespace ServerApi.Controllers
             {
                 var userId = GetUserIdRequired();
                 var orders = await _supabaseService.QueryAsync("orders", "buyer_id", userId, useServiceRole: true);
-                var list = new List<object>();
-                foreach (var o in orders)
-                {
-                    var orderId = o.ContainsKey("id") ? o["id"]?.ToString() : null;
-                    if (string.IsNullOrEmpty(orderId)) continue;
-                    var items = await _supabaseService.QueryAsync("order_items", "order_id", orderId, useServiceRole: true);
-                    var itemsWithPost = new List<object>();
-                    foreach (var it in items)
-                    {
-                        var postId = it.ContainsKey("post_id") ? it["post_id"]?.ToString() : null;
-                        var post = !string.IsNullOrEmpty(postId) ? await _supabaseService.GetAsync("posts", postId, useServiceRole: true) : null;
-                        itemsWithPost.Add(new
-                        {
-                            id = it.ContainsKey("id") ? it["id"] : null,
-                            postId,
-                            cardId = it.ContainsKey("card_id") ? it["card_id"] : null,
-                            quantity = it.ContainsKey("quantity") ? it["quantity"] : 1,
-                            unitPrice = it.ContainsKey("unit_price") ? it["unit_price"] : 0,
-                            post = post
-                        });
-                    }
-                    list.Add(new
-                    {
-                        id = o["id"],
-                        buyerId = o.ContainsKey("buyer_id") ? o["buyer_id"] : null,
-                        sellerId = o.ContainsKey("seller_id") ? o["seller_id"] : null,
-                        sellerName = o.ContainsKey("seller_name") ? o["seller_name"] : null,
-                        status = o.ContainsKey("status") ? o["status"] : "pending_shipment",
-                        receiptUrl = o.ContainsKey("receipt_url") ? o["receipt_url"] : null,
-                        shippingAddress = o.ContainsKey("shipping_address") ? o["shipping_address"] : null,
-                        shippingPhone = o.ContainsKey("shipping_phone") ? o["shipping_phone"] : null,
-                        buyerName = o.ContainsKey("buyer_name") ? o["buyer_name"] : null,
-                        totalAmount = o.ContainsKey("total_amount") ? o["total_amount"] : 0,
-                        createdAt = o.ContainsKey("created_at") ? o["created_at"] : null,
-                        updatedAt = o.ContainsKey("updated_at") ? o["updated_at"] : null,
-                        items = itemsWithPost
-                    });
-                }
-                return Ok(list);
+                return Ok(await BuildOrderListAsync(orders));
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -276,45 +247,7 @@ namespace ServerApi.Controllers
             {
                 var userId = GetUserIdRequired();
                 var orders = await _supabaseService.QueryAsync("orders", "seller_id", userId, useServiceRole: true);
-                var list = new List<object>();
-                foreach (var o in orders)
-                {
-                    var orderId = o.ContainsKey("id") ? o["id"]?.ToString() : null;
-                    if (string.IsNullOrEmpty(orderId)) continue;
-                    var items = await _supabaseService.QueryAsync("order_items", "order_id", orderId, useServiceRole: true);
-                    var itemsWithPost = new List<object>();
-                    foreach (var it in items)
-                    {
-                        var postId = it.ContainsKey("post_id") ? it["post_id"]?.ToString() : null;
-                        var post = !string.IsNullOrEmpty(postId) ? await _supabaseService.GetAsync("posts", postId, useServiceRole: true) : null;
-                        itemsWithPost.Add(new
-                        {
-                            id = it.ContainsKey("id") ? it["id"] : null,
-                            postId,
-                            cardId = it.ContainsKey("card_id") ? it["card_id"] : null,
-                            quantity = it.ContainsKey("quantity") ? it["quantity"] : 1,
-                            unitPrice = it.ContainsKey("unit_price") ? it["unit_price"] : 0,
-                            post = post
-                        });
-                    }
-                    list.Add(new
-                    {
-                        id = o["id"],
-                        buyerId = o.ContainsKey("buyer_id") ? o["buyer_id"] : null,
-                        buyerName = o.ContainsKey("buyer_name") ? o["buyer_name"] : null,
-                        sellerId = o.ContainsKey("seller_id") ? o["seller_id"] : null,
-                        sellerName = o.ContainsKey("seller_name") ? o["seller_name"] : null,
-                        status = o.ContainsKey("status") ? o["status"] : "pending_shipment",
-                        receiptUrl = o.ContainsKey("receipt_url") ? o["receipt_url"] : null,
-                        shippingAddress = o.ContainsKey("shipping_address") ? o["shipping_address"] : null,
-                        shippingPhone = o.ContainsKey("shipping_phone") ? o["shipping_phone"] : null,
-                        totalAmount = o.ContainsKey("total_amount") ? o["total_amount"] : 0,
-                        createdAt = o.ContainsKey("created_at") ? o["created_at"] : null,
-                        updatedAt = o.ContainsKey("updated_at") ? o["updated_at"] : null,
-                        items = itemsWithPost
-                    });
-                }
-                return Ok(list);
+                return Ok(await BuildOrderListAsync(orders));
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -343,6 +276,9 @@ namespace ServerApi.Controllers
                 var sellerId = order.ContainsKey("seller_id") ? order["seller_id"]?.ToString() : null;
                 if (sellerId != userId)
                     return Forbid();
+                var currentStatus = order.ContainsKey("status") ? order["status"]?.ToString() : null;
+                if (currentStatus != "pending_shipment")
+                    return BadRequest(new { success = false, error = "สามารถยืนยันการส่งได้เมื่อสถานะเป็นรอจัดส่งเท่านั้น" });
                 var receiptUrl = request?.ReceiptUrl?.Trim();
                 if (string.IsNullOrEmpty(receiptUrl))
                     return BadRequest(new { success = false, error = "กรุณาส่ง receiptUrl (URL รูปใบเสร็จ)" });
@@ -354,6 +290,27 @@ namespace ServerApi.Controllers
                     ["updated_at"] = DateTime.UtcNow
                 };
                 await _supabaseService.UpdateAsync("orders", id, updateData, null, true);
+
+                // แจ้งเตือนผู้ซื้อว่าสินค้าถูกจัดส่งแล้ว
+                var buyerId = order.ContainsKey("buyer_id") ? order["buyer_id"]?.ToString() : null;
+                if (!string.IsNullOrEmpty(buyerId))
+                {
+                    try
+                    {
+                        var sellerName = order.ContainsKey("seller_name") ? order["seller_name"]?.ToString() : "ผู้ขาย";
+                        await _supabaseService.CreateAsync("notifications", new Dictionary<string, object>
+                        {
+                            ["user_id"] = buyerId,
+                            ["type"] = "order_shipped",
+                            ["title"] = "สินค้าถูกจัดส่งแล้ว",
+                            ["message"] = $"ผู้ขาย {sellerName} ได้จัดส่งสินค้าและแนบใบเสร็จแล้ว กรุณาตรวจสอบและกดยืนยันเมื่อได้รับสินค้า"
+                        }, useServiceRole: true);
+                    }
+                    catch (Exception notifEx)
+                    {
+                        _logger.LogWarning(notifEx, "Failed to create shipment notification for buyer {BuyerId}", buyerId);
+                    }
+                }
 
                 return Ok(new { success = true, message = "ยืนยันการส่งแล้ว สถานะ: จัดส่งแล้ว" });
             }
@@ -388,13 +345,33 @@ namespace ServerApi.Controllers
                 if (status != "shipped")
                     return BadRequest(new { success = false, error = "สามารถกดได้รับของแล้วได้เมื่อสถานะเป็นจัดส่งแล้วเท่านั้น" });
 
-                // เปลี่ยนแค่สถานะคำสั่งซื้อเป็น "ขายแล้ว" — ไม่แตะโพสต์ (สต็อกลดตอนชำระแล้ว โพสต์เป็น sold เมื่อสต็อกหมดเท่านั้น)
                 var updateData = new Dictionary<string, object>
                 {
                     ["status"] = "sold",
                     ["updated_at"] = DateTime.UtcNow
                 };
                 await _supabaseService.UpdateAsync("orders", id, updateData, null, true);
+
+                // แจ้งเตือนผู้ขายว่าผู้ซื้อได้รับสินค้าแล้ว
+                var sellerId = order.ContainsKey("seller_id") ? order["seller_id"]?.ToString() : null;
+                if (!string.IsNullOrEmpty(sellerId))
+                {
+                    try
+                    {
+                        var buyerName = order.ContainsKey("buyer_name") ? order["buyer_name"]?.ToString() : "ผู้ซื้อ";
+                        await _supabaseService.CreateAsync("notifications", new Dictionary<string, object>
+                        {
+                            ["user_id"] = sellerId,
+                            ["type"] = "order_received",
+                            ["title"] = "ผู้ซื้อได้รับสินค้าแล้ว",
+                            ["message"] = $"{buyerName} ยืนยันว่าได้รับสินค้าเรียบร้อยแล้ว คำสั่งซื้อเสร็จสมบูรณ์"
+                        }, useServiceRole: true);
+                    }
+                    catch (Exception notifEx)
+                    {
+                        _logger.LogWarning(notifEx, "Failed to create received notification for seller {SellerId}", sellerId);
+                    }
+                }
 
                 return Ok(new { success = true, message = "ยืนยันได้รับของแล้ว เสร็จสิ้นกระบวนการ" });
             }
@@ -407,6 +384,87 @@ namespace ServerApi.Controllers
                 _logger.LogError(ex, "ConfirmReceived error");
                 return StatusCode(500, new { success = false, error = "เกิดข้อผิดพลาด", message = ex.Message });
             }
+        }
+
+        /// <summary>
+        /// Batch load order items + posts แทน N+1 — ใช้ร่วมกันระหว่าง GetMyOrders / GetSellerOrders
+        /// </summary>
+        private async Task<List<object>> BuildOrderListAsync(List<Dictionary<string, object>> orders)
+        {
+            if (orders.Count == 0) return new List<object>();
+
+            // 1) Batch load order_items ทุก order ใน 1 query
+            var orderIds = orders
+                .Select(o => o.ContainsKey("id") ? o["id"]?.ToString() : null)
+                .Where(id => !string.IsNullOrEmpty(id))
+                .Distinct()
+                .ToList()!;
+            var allItems = await _supabaseService.QueryInAsync("order_items", "order_id", orderIds!, useServiceRole: true);
+
+            // 2) Batch load posts ทั้งหมดที่อยู่ใน order_items ใน 1 query
+            var allPostIds = allItems
+                .Select(it => it.ContainsKey("post_id") ? it["post_id"]?.ToString() : null)
+                .Where(id => !string.IsNullOrEmpty(id))
+                .Distinct()
+                .ToList()!;
+            var allPosts = allPostIds!.Count > 0
+                ? await _supabaseService.QueryInAsync("posts", "id", allPostIds!, useServiceRole: true)
+                : new List<Dictionary<string, object>>();
+            var postLookup = allPosts.ToDictionary(
+                p => p.ContainsKey("id") ? p["id"]?.ToString() ?? "" : "",
+                p => p,
+                StringComparer.OrdinalIgnoreCase);
+
+            // 3) จัดกลุ่ม order_items ตาม order_id
+            var itemsByOrder = new Dictionary<string, List<Dictionary<string, object>>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var it in allItems)
+            {
+                var oid = it.ContainsKey("order_id") ? it["order_id"]?.ToString() ?? "" : "";
+                if (!itemsByOrder.ContainsKey(oid))
+                    itemsByOrder[oid] = new List<Dictionary<string, object>>();
+                itemsByOrder[oid].Add(it);
+            }
+
+            // 4) ประกอบ response
+            var list = new List<object>();
+            foreach (var o in orders)
+            {
+                var orderId = o.ContainsKey("id") ? o["id"]?.ToString() : null;
+                if (string.IsNullOrEmpty(orderId)) continue;
+                var items = itemsByOrder.TryGetValue(orderId, out var oItems) ? oItems : new List<Dictionary<string, object>>();
+                var itemsWithPost = items.Select(it =>
+                {
+                    var postId = it.ContainsKey("post_id") ? it["post_id"]?.ToString() : null;
+                    var post = !string.IsNullOrEmpty(postId) && postLookup.TryGetValue(postId, out var p) ? p : null;
+                    return new
+                    {
+                        id = it.ContainsKey("id") ? it["id"] : null,
+                        postId,
+                        cardId = it.ContainsKey("card_id") ? it["card_id"] : null,
+                        quantity = it.ContainsKey("quantity") ? it["quantity"] : 1,
+                        unitPrice = it.ContainsKey("unit_price") ? it["unit_price"] : 0,
+                        post = (object?)post
+                    };
+                }).ToList();
+
+                list.Add(new
+                {
+                    id = o["id"],
+                    buyerId = o.ContainsKey("buyer_id") ? o["buyer_id"] : null,
+                    buyerName = o.ContainsKey("buyer_name") ? o["buyer_name"] : null,
+                    sellerId = o.ContainsKey("seller_id") ? o["seller_id"] : null,
+                    sellerName = o.ContainsKey("seller_name") ? o["seller_name"] : null,
+                    status = o.ContainsKey("status") ? o["status"] : "pending_shipment",
+                    receiptUrl = o.ContainsKey("receipt_url") ? o["receipt_url"] : null,
+                    shippingAddress = o.ContainsKey("shipping_address") ? o["shipping_address"] : null,
+                    shippingPhone = o.ContainsKey("shipping_phone") ? o["shipping_phone"] : null,
+                    totalAmount = o.ContainsKey("total_amount") ? o["total_amount"] : 0,
+                    createdAt = o.ContainsKey("created_at") ? o["created_at"] : null,
+                    updatedAt = o.ContainsKey("updated_at") ? o["updated_at"] : null,
+                    items = itemsWithPost
+                });
+            }
+            return list;
         }
 
         /// <summary>
@@ -447,6 +505,43 @@ namespace ServerApi.Controllers
             var fromPost = GetNumeric(p, "individualPrice", "individualprice", "price", "Price");
             if (fromPost > 0) return fromPost;
             return 0;
+        }
+
+        /// <summary>
+        /// ตรวจสอบว่าสต็อกเพียงพอสำหรับรายการที่ต้องการซื้อ (ป้องกัน oversell)
+        /// </summary>
+        private static bool ValidateStockAvailable(Dictionary<string, object> post, List<(string? cardId, int qty)> reductions)
+        {
+            if (reductions == null || reductions.Count == 0) return true;
+            var postType = post.TryGetValue("postType", out var pt) ? pt?.ToString() : null;
+            var saleType = post.TryGetValue("saleType", out var st) ? st?.ToString() : null;
+
+            if (postType == "sale" && saleType == "individual"
+                && post.TryGetValue("individualCards", out var cardsObj) && cardsObj is System.Collections.IEnumerable cardsEnum)
+            {
+                var qtyByCard = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                foreach (var (cardId, qty) in reductions)
+                {
+                    var key = cardId ?? "";
+                    if (!qtyByCard.ContainsKey(key)) qtyByCard[key] = 0;
+                    qtyByCard[key] += qty;
+                }
+
+                foreach (var c in cardsEnum)
+                {
+                    if (c is not Dictionary<string, object> card) continue;
+                    var cid = card.TryGetValue("id", out var idVal) ? idVal?.ToString() ?? "" : "";
+                    if (!qtyByCard.TryGetValue(cid, out var needed)) continue;
+                    int currentQty = Convert.ToInt32(GetNumeric(card, "quantity", "Quantity"));
+                    if (currentQty < needed) return false;
+                }
+                return true;
+            }
+
+            int deckQtyNeeded = reductions.Where(r => string.IsNullOrEmpty(r.cardId)).Sum(r => r.qty);
+            if (deckQtyNeeded <= 0) return true;
+            int currentAvail = Convert.ToInt32(GetNumeric(post, "availableQuantity", "availablequantity"));
+            return currentAvail >= deckQtyNeeded;
         }
 
         /// <summary>

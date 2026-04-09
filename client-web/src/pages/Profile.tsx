@@ -123,6 +123,8 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
   const [confirmShipmentOrderId, setConfirmShipmentOrderId] = useState<string | null>(null);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [confirmShipmentLoading, setConfirmShipmentLoading] = useState<boolean>(false);
+  const [confirmReceivedOrderId, setConfirmReceivedOrderId] = useState<string | null>(null);
+  const [confirmReceivedLoading, setConfirmReceivedLoading] = useState<boolean>(false);
   const [passwordData, setPasswordData] = useState<PasswordData>({
     currentPassword: '',
     newPassword: '',
@@ -1022,13 +1024,13 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
                         {order.status === 'shipped' && (
                           <button
                             className="btn btn-success btn-sm gap-1"
-                            onClick={async () => {
-                              const result = await ordersAPI.confirmReceived(order.id);
-                              if (result.success) { toast.success(result.message); fetchOrders(); }
-                              else toast.error(result.error);
-                            }}
+                            disabled={confirmReceivedLoading}
+                            onClick={() => setConfirmReceivedOrderId(order.id)}
                           >
-                            ✅ ได้รับของแล้ว
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                            ได้รับของแล้ว
                           </button>
                         )}
                         {(order.status === 'shipped' || order.status === 'sold') && order.receiptUrl && (
@@ -1178,6 +1180,58 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
               }}
             >
               {confirmShipmentLoading ? (<><Spinner size="sm" /> กำลังอัปโหลด...</>) : 'ยืนยันการส่ง'}
+            </button>
+          </Modal.Footer>
+        </Modal>
+
+        {/* Confirm Received Modal */}
+        <Modal show={!!confirmReceivedOrderId} onHide={() => { if (!confirmReceivedLoading) setConfirmReceivedOrderId(null); }}>
+          <Modal.Header closeButton>
+            <Modal.Title>ยืนยันการรับสินค้า</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            <p className="text-base-content/80">คุณได้รับสินค้าเรียบร้อยแล้วใช่หรือไม่?</p>
+            <div className="flex gap-2 items-start p-3 mt-3 rounded-xl bg-warning/10 border border-warning/20">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5 text-warning">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              <p className="text-xs text-warning">เมื่อกดยืนยันแล้ว จะไม่สามารถย้อนกลับได้ กรุณาตรวจสอบสินค้าให้เรียบร้อยก่อนกดยืนยัน</p>
+            </div>
+          </Modal.Body>
+          <Modal.Footer>
+            <button className="btn btn-ghost btn-sm" onClick={() => setConfirmReceivedOrderId(null)} disabled={confirmReceivedLoading}>
+              ยกเลิก
+            </button>
+            <button
+              className="btn btn-success btn-sm gap-2"
+              disabled={confirmReceivedLoading}
+              onClick={async () => {
+                if (!confirmReceivedOrderId) return;
+                setConfirmReceivedLoading(true);
+                try {
+                  const result = await ordersAPI.confirmReceived(confirmReceivedOrderId);
+                  if (result.success) {
+                    toast.success(result.message);
+                    setConfirmReceivedOrderId(null);
+                    fetchOrders();
+                  } else {
+                    toast.error(result.error);
+                  }
+                } catch {
+                  toast.error('เกิดข้อผิดพลาดในการยืนยัน');
+                } finally {
+                  setConfirmReceivedLoading(false);
+                }
+              }}
+            >
+              {confirmReceivedLoading ? (<><Spinner size="sm" /> กำลังดำเนินการ...</>) : (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                  ยืนยันรับสินค้า
+                </>
+              )}
             </button>
           </Modal.Footer>
         </Modal>
