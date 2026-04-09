@@ -66,6 +66,7 @@ try
     builder.Services.AddScoped<RelatedPostsService>();
     builder.Services.AddScoped<ExternalReverseImageService>();
     builder.Services.AddScoped<ImageManipulationDetectionService>();
+    builder.Services.AddScoped<SightengineAiDetectionService>();
     builder.Services.AddScoped<PostModerationAiService>();
     Console.WriteLine("✅ SupabaseService registered");
 }
@@ -85,6 +86,12 @@ builder.Services.AddHttpClient("Supabase", client =>
 builder.Services.AddHttpClient("ClipWorker", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(60);
+});
+
+// Sightengine AI-generated image detection API
+builder.Services.AddHttpClient("Sightengine", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(12);
 });
 
 // Add CORS support

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
@@ -7,7 +7,7 @@ import { postsAPI, authAPI, auctionAPI, chatAPI, adminAPI } from '../api/api';
 import axios from '../utils/axiosInterceptor';
 import { toast } from 'react-toastify';
 import '../styles/auction-bids.css';
-import { Post, Message, AuctionBid, DetectedCard, FirestoreTimestamp, IndividualCardItem, AiScreeningResult, AiSourceWarningLevel, AiManipulationWarningLevel } from '../types';
+import { Post, Message, AuctionBid, DetectedCard, FirestoreTimestamp, IndividualCardItem, AiScreeningResult, AiSourceWarningLevel, AiManipulationWarningLevel, AiGeneratedWarningLevel } from '../types';
 import { recordCategoryInterest } from '../utils/categoryInterest';
 import { supabase } from '../config/supabase';
 import { canSellCards } from '../utils/roles';
@@ -94,8 +94,11 @@ const PostDetail: React.FC = () => {
   const [bidMinAmount, setBidMinAmount] = useState<number>(0);
   const [sourceScreening, setSourceScreening] = useState<AiScreeningResult | null>(null);
   const [manipulationScreening, setManipulationScreening] = useState<AiScreeningResult | null>(null);
+  const [aiScreening, setAiScreening] = useState<AiScreeningResult | null>(null);
   const [sourceAnalyzing, setSourceAnalyzing] = useState<boolean>(false);
   const [manipulationAnalyzing, setManipulationAnalyzing] = useState<boolean>(false);
+  const [aiAnalyzing, setAiAnalyzing] = useState<boolean>(false);
+  const manipApiCacheRef = useRef<AiScreeningResult | null>(null);
   const [sellerContactNote, setSellerContactNote] = useState<string>('');
 
   const [similarPosts, setSimilarPosts] = useState<Post[]>([]);
@@ -735,6 +738,19 @@ const PostDetail: React.FC = () => {
     }
   };
 
+  const aiGeneratedLevelLabel = (level?: AiGeneratedWarningLevel | null): { variant: 'danger' | 'warning' | 'success'; text: string } => {
+    switch (level) {
+      case 'danger':
+        return { variant: 'danger', text: 'อันตราย — อาจสร้างจาก AI' };
+      case 'warning':
+        return { variant: 'warning', text: 'ระวัง — มีสัญญาณ AI บางส่วน' };
+      case 'safe':
+        return { variant: 'success', text: 'ปลอดภัย — ไม่พบสัญญาณ AI' };
+      default:
+        return { variant: 'success', text: 'ปลอดภัย' };
+    }
+  };
+
   const analyzeSource = async (): Promise<void> => {
     if (!post?.id) return;
     try {
@@ -749,17 +765,38 @@ const PostDetail: React.FC = () => {
     }
   };
 
+  const fetchManipulationApi = async (): Promise<AiScreeningResult> => {
+    if (manipApiCacheRef.current) return manipApiCacheRef.current;
+    const data = await adminAPI.getPostManipulationScreening(post!.id);
+    manipApiCacheRef.current = data;
+    return data;
+  };
+
   const analyzeManipulation = async (): Promise<void> => {
     if (!post?.id) return;
     try {
       setManipulationAnalyzing(true);
-      const data = await adminAPI.getPostManipulationScreening(post.id);
+      const data = await fetchManipulationApi();
       setManipulationScreening(data);
     } catch (err) {
       console.error(err);
       toast.error('วิเคราะห์ภาพตัดต่อไม่สำเร็จ');
     } finally {
       setManipulationAnalyzing(false);
+    }
+  };
+
+  const analyzeAi = async (): Promise<void> => {
+    if (!post?.id) return;
+    try {
+      setAiAnalyzing(true);
+      const data = await fetchManipulationApi();
+      setAiScreening(data);
+    } catch (err) {
+      console.error(err);
+      toast.error('วิเคราะห์ภาพ AI ไม่สำเร็จ');
+    } finally {
+      setAiAnalyzing(false);
     }
   };
 
@@ -1015,7 +1052,10 @@ const PostDetail: React.FC = () => {
                           {sourceAnalyzing ? 'กำลังวิเคราะห์...' : 'วิเคราะห์ภาพจากแหล่งอื่น'}
                         </Button>
                         <Button size="sm" variant="outline-secondary" onClick={analyzeManipulation} disabled={manipulationAnalyzing}>
-                          {manipulationAnalyzing ? 'กำลังวิเคราะห์...' : 'วิเคราะห์ภาพตัดต่อ'}
+                          {manipulationAnalyzing ? 'กำลังวิเคราะห์...' : 'ตรวจภาพตัดต่อ'}
+                        </Button>
+                        <Button size="sm" variant="outline-secondary" onClick={analyzeAi} disabled={aiAnalyzing}>
+                          {aiAnalyzing ? 'กำลังวิเคราะห์...' : 'ตรวจภาพ AI'}
                         </Button>
                       </div>
                       {sourceScreening && (
@@ -1136,7 +1176,7 @@ const PostDetail: React.FC = () => {
                         </div>
                       )}
                       {manipulationScreening && (
-                        <div className="small">
+                        <div className="small mb-2">
                           {(() => {
                             const ml = manipulationLevelLabel(manipulationScreening.manipulationWarningLevel);
                             return (
@@ -1151,10 +1191,35 @@ const PostDetail: React.FC = () => {
                                   {ml.text}
                                 </Badge>
                                 <div className="mt-2">
-                                  <Badge bg={getRiskVariant(manipulationScreening.overallRiskPct)} className="me-2">
-                                    ความเสี่ยงภาพตัดต่อ {manipulationScreening.overallRiskPct.toFixed(0)}%
+                                  <Badge bg={getRiskVariant(manipulationScreening.manipulationRiskPct)} className="me-2">
+                                    ความเสี่ยงตัดต่อ {manipulationScreening.manipulationRiskPct.toFixed(0)}%
                                   </Badge>
-                                  <span className="text-muted">ค่าเฉลี่ยตรวจจับ {manipulationScreening.manipulationRiskPct.toFixed(0)}%</span>
+                                </div>
+                              </Alert>
+                            );
+                          })()}
+                        </div>
+                      )}
+                      {aiScreening && (
+                        <div className="small mb-2">
+                          {(() => {
+                            const al = aiGeneratedLevelLabel(aiScreening.aiGeneratedWarningLevel);
+                            return (
+                              <Alert variant={al.variant} className="py-2 mb-0">
+                                <div className="fw-semibold mb-1">ภาพ AI — ระดับเตือน</div>
+                                <Badge
+                                  bg={al.variant}
+                                  text={al.variant === 'warning' ? 'dark' : undefined}
+                                  className="me-2 text-wrap text-start"
+                                  style={{ maxWidth: '100%', whiteSpace: 'normal' }}
+                                >
+                                  {al.text}
+                                </Badge>
+                                <div className="mt-2">
+                                  <Badge bg={getRiskVariant(aiScreening.aiGeneratedRiskPct)} className="me-2">
+                                    ความเสี่ยง AI {aiScreening.aiGeneratedRiskPct.toFixed(0)}%
+                                  </Badge>
+                                  <span className="text-muted small">วิเคราะห์จากความเรียบของภาพ / การขาดสัญญาณ noise</span>
                                 </div>
                               </Alert>
                             );

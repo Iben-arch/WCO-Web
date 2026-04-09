@@ -236,6 +236,8 @@ export interface AiScreeningImageResult {
   externalSourceRiskPct: number;
   internalDuplicateRiskPct: number;
   manipulationRiskPct: number;
+  /** ความเสี่ยงที่รูปสร้างจาก AI (diffusion / GAN) — ค่า 0-100 */
+  aiGeneratedRiskPct: number;
   overallRiskPct: number;
   internalBestMatchPostId?: string | null;
   internalBestSimilarityScore?: number | null;
@@ -260,6 +262,7 @@ export interface AiScreeningImageResult {
 
 export type AiSourceWarningLevel = 'danger' | 'warning' | 'safe' | 'unknown';
 export type AiManipulationWarningLevel = 'danger' | 'warning' | 'safe';
+export type AiGeneratedWarningLevel = 'danger' | 'warning' | 'safe';
 
 export interface AiScreeningResult {
   postId: string;
@@ -267,6 +270,8 @@ export interface AiScreeningResult {
   externalSourceRiskPct: number;
   internalDuplicateRiskPct: number;
   manipulationRiskPct: number;
+  /** ความเสี่ยงเฉลี่ยที่รูปสร้างจาก AI (diffusion / GAN) ทุกรูปในโพสต์ — ค่า 0-100 */
+  aiGeneratedRiskPct: number;
   overallRiskPct: number;
   shouldWarn: boolean;
   sourceAnalysisAvailable?: boolean;
@@ -281,6 +286,8 @@ export interface AiScreeningResult {
   sourceWarningLevel?: AiSourceWarningLevel;
   /** เฉพาะโหมดวิเคราะห์ตัดต่อ / รวม */
   manipulationWarningLevel?: AiManipulationWarningLevel | null;
+  /** ระดับเตือนสำหรับ AI-generated image — เฉพาะโหมดวิเคราะห์ตัดต่อ / รวม */
+  aiGeneratedWarningLevel?: AiGeneratedWarningLevel | null;
   reasons: string[];
   images: AiScreeningImageResult[];
   /** รวม URL หน้าเว็บที่พบรูปคล้ายจาก Mercari / Yahoo! Auctions JP / Magi (ทุกรูปในโพสต์) */

@@ -37,6 +37,10 @@ namespace ServerApi.Services
         public string SourceWarningLevel { get; set; } = "unknown";
         /// <summary>danger | warning | safe — เฉพาะโหมด manipulation / all</summary>
         public string? ManipulationWarningLevel { get; set; }
+        /// <summary>danger | warning | safe — ระดับเตือนสำหรับ AI-generated image</summary>
+        public string? AiGeneratedWarningLevel { get; set; }
+        /// <summary>ความเสี่ยงเฉลี่ยที่รูปสร้างจาก AI (diffusion / GAN) ทุกรูปในโพสต์ — ค่า 0-100</summary>
+        public double AiGeneratedRiskPct { get; set; }
         public List<string> Reasons { get; set; } = new();
         public List<AiScreeningImageResult> Images { get; set; } = new();
         /// <summary>รวม URL หน้าเว็บที่พบรูปคล้ายจาก Mercari / Yahoo! Auctions JP / Magi (ทุกรูปในโพสต์)</summary>
@@ -56,6 +60,8 @@ namespace ServerApi.Services
         public double ExternalSourceRiskPct { get; set; }
         public double InternalDuplicateRiskPct { get; set; }
         public double ManipulationRiskPct { get; set; }
+        /// <summary>ความเสี่ยงที่รูปสร้างจาก AI (diffusion / GAN) — ค่า 0-100</summary>
+        public double AiGeneratedRiskPct { get; set; }
         public double OverallRiskPct { get; set; }
         public string? InternalBestMatchPostId { get; set; }
         public double? InternalBestSimilarityScore { get; set; }
@@ -84,6 +90,7 @@ namespace ServerApi.Services
         private readonly ClipEmbeddingService _clipEmbeddingService;
         private readonly ExternalReverseImageService _externalReverseImageService;
         private readonly ImageManipulationDetectionService _imageManipulationService;
+        private readonly SightengineAiDetectionService _sightengineService;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly AiModerationOptions _options;
         private readonly ILogger<PostModerationAiService> _logger;
@@ -93,6 +100,7 @@ namespace ServerApi.Services
             ClipEmbeddingService clipEmbeddingService,
             ExternalReverseImageService externalReverseImageService,
             ImageManipulationDetectionService imageManipulationService,
+            SightengineAiDetectionService sightengineService,
             IConfiguration configuration,
             IHttpClientFactory httpClientFactory,
             ILogger<PostModerationAiService> logger)
@@ -101,6 +109,7 @@ namespace ServerApi.Services
             _clipEmbeddingService = clipEmbeddingService;
             _externalReverseImageService = externalReverseImageService;
             _imageManipulationService = imageManipulationService;
+            _sightengineService = sightengineService;
             _httpClientFactory = httpClientFactory;
             _logger = logger;
             _options = configuration.GetSection("AiModeration").Get<AiModerationOptions>() ?? new AiModerationOptions();
@@ -207,6 +216,7 @@ namespace ServerApi.Services
             result.ExternalSourceRiskPct = RoundPct(result.Images.Average(x => x.ExternalSourceRiskPct));
             result.InternalDuplicateRiskPct = RoundPct(result.Images.Average(x => x.InternalDuplicateRiskPct));
             result.ManipulationRiskPct = RoundPct(result.Images.Average(x => x.ManipulationRiskPct));
+            result.AiGeneratedRiskPct = RoundPct(result.Images.Average(x => x.AiGeneratedRiskPct));
 
             if (normalizedMode == "source")
             {
@@ -223,14 +233,15 @@ namespace ServerApi.Services
             }
             else if (normalizedMode == "manipulation")
             {
-                result.OverallRiskPct = result.ManipulationRiskPct;
+                result.OverallRiskPct = RoundPct(Math.Max(result.ManipulationRiskPct, result.AiGeneratedRiskPct * 0.92));
             }
             else
             {
+                var manipComponent = Math.Max(result.ManipulationRiskPct, result.AiGeneratedRiskPct * 0.90);
                 result.OverallRiskPct = RoundPct(
                     (result.ExternalSourceRiskPct * _options.ExternalSourceWeight)
                     + (result.InternalDuplicateRiskPct * _options.InternalDuplicateWeight)
-                    + (result.ManipulationRiskPct * _options.ManipulationWeight));
+                    + (manipComponent * _options.ManipulationWeight));
             }
             result.ShouldWarn = result.OverallRiskPct >= _options.WarningThresholdPct;
 
@@ -251,14 +262,23 @@ namespace ServerApi.Services
             }
 
             if (normalizedMode == "manipulation" || normalizedMode == "all")
+            {
                 result.ManipulationWarningLevel = ComputeManipulationWarningLevel(result.ManipulationRiskPct);
+                result.AiGeneratedWarningLevel = ComputeAiGeneratedWarningLevel(result.AiGeneratedRiskPct);
+            }
 
             if (result.ExternalSourceRiskPct >= 70)
                 result.Reasons.Add("รูปมีแนวโน้มพบจากแหล่งภายนอกในระดับสูง");
             if (result.InternalDuplicateRiskPct >= 70)
                 result.Reasons.Add("รูปคล้ายโพสต์อื่นในระบบสูง อาจเป็นรูปซ้ำ");
-            if (result.ManipulationRiskPct >= 70)
-                result.Reasons.Add("รูปมีความเสี่ยงภาพตัดต่อสูง");
+            if (result.ManipulationRiskPct >= 75)
+                result.Reasons.Add("รูปมีความเสี่ยงภาพตัดต่อสูง — ตรวจพบสัญญาณการแก้ไขภาพหลายจุดที่สอดคล้องกัน");
+            else if (result.ManipulationRiskPct >= 52)
+                result.Reasons.Add("รูปมีสัญญาณบางส่วนที่อาจบ่งชี้การตัดต่อ — ควรพิจารณาเพิ่มเติม");
+            if (result.AiGeneratedRiskPct >= 58)
+                result.Reasons.Add("รูปมีสัญญาณชัดเจนว่าอาจสร้างจาก AI — ควรตรวจสอบก่อนอนุมัติ");
+            else if (result.AiGeneratedRiskPct >= 35)
+                result.Reasons.Add("รูปมีสัญญาณบางส่วนที่อาจชี้ว่าสร้างจาก AI");
             if (result.HasStrongExternalMatch)
                 result.Reasons.Add("พบรูปเหมือนหรือใกล้เคียงมากในเว็บอื่น ควรตรวจสอบก่อนอนุมัติ");
             var totalTargetForReason = result.TotalTargetMarketplaceMatchLinks;
@@ -397,13 +417,33 @@ namespace ServerApi.Services
                 {
                     try
                     {
+                        // Local heuristic: photo-editing manipulation (ELA, noise inconsistency, etc.)
                         var manipulation = await _imageManipulationService.AnalyzeAsync(bytes, cancellationToken).ConfigureAwait(false);
-                        item.ManipulationRiskPct = RoundPct(manipulation.riskPct);
+                        item.ManipulationRiskPct = RoundPct(manipulation.ManipulationRiskPct);
+                        // Start with heuristic AI-gen estimate as fallback.
+                        item.AiGeneratedRiskPct = RoundPct(manipulation.AiGeneratedRiskPct);
                     }
                     catch (Exception ex)
                     {
                         _logger.LogWarning(ex, "Manipulation analysis failed for {ImageUrl}", imageUrl);
                         item.Error = AppendError(item.Error, "manipulation-unavailable");
+                    }
+
+                    // Sightengine: dedicated ML model for AI-generated image detection.
+                    // Overrides the heuristic estimate when API keys are configured.
+                    // Modern AI generators (Midjourney, DALL·E, SD) produce realistic textures
+                    // that fool OpenCV heuristics — only a trained ML model can detect them reliably.
+                    try
+                    {
+                        var sightengineRisk = await _sightengineService
+                            .GetAiGeneratedRiskPctAsync(imageUrl, cancellationToken)
+                            .ConfigureAwait(false);
+                        if (sightengineRisk.HasValue)
+                            item.AiGeneratedRiskPct = RoundPct(sightengineRisk.Value);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Sightengine AI detection failed for {ImageUrl}", imageUrl);
                     }
                 }
 
@@ -413,14 +453,15 @@ namespace ServerApi.Services
                 }
                 else if (mode == "manipulation")
                 {
-                    item.OverallRiskPct = item.ManipulationRiskPct;
+                    item.OverallRiskPct = RoundPct(Math.Max(item.ManipulationRiskPct, item.AiGeneratedRiskPct * 0.92));
                 }
                 else
                 {
+                    var manipComponent = Math.Max(item.ManipulationRiskPct, item.AiGeneratedRiskPct * 0.90);
                     item.OverallRiskPct = RoundPct(
                         (item.ExternalSourceRiskPct * _options.ExternalSourceWeight)
                         + (item.InternalDuplicateRiskPct * _options.InternalDuplicateWeight)
-                        + (item.ManipulationRiskPct * _options.ManipulationWeight));
+                        + (manipComponent * _options.ManipulationWeight));
                 }
             }
             catch (Exception ex)
@@ -646,8 +687,15 @@ namespace ServerApi.Services
 
         private static string ComputeManipulationWarningLevel(double manipulationRiskPct)
         {
-            if (manipulationRiskPct >= 70) return "danger";
-            if (manipulationRiskPct >= 40) return "warning";
+            if (manipulationRiskPct >= 75) return "danger";
+            if (manipulationRiskPct >= 52) return "warning";
+            return "safe";
+        }
+
+        private static string ComputeAiGeneratedWarningLevel(double aiGeneratedRiskPct)
+        {
+            if (aiGeneratedRiskPct >= 58) return "danger";
+            if (aiGeneratedRiskPct >= 35) return "warning";
             return "safe";
         }
 

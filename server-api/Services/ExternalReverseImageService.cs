@@ -83,17 +83,41 @@ namespace ServerApi.Services
                 .Select(x => x.ToLowerInvariant())
                 .ToList();
 
+            const int maxAttempts = 2;
+            HttpResponseMessage? response = null;
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                try
+                {
+                    var client = _httpClientFactory.CreateClient();
+                    client.Timeout = TimeSpan.FromSeconds(timeoutSec);
+
+                    // type=exact_matches: finds pages where this EXACT image appears online —
+                    // same as tapping "ค้นหาภาพเหมือน" (Exact Matches tab) in the mobile Google Lens app.
+                    // This is fundamentally different from visual_matches (semantic similarity).
+                    var encodedImage = Uri.EscapeDataString(imageUrl);
+                    var apiUrl = $"https://serpapi.com/search.json?engine=google_lens&type=exact_matches&url={encodedImage}&api_key={Uri.EscapeDataString(apiKey)}";
+                    response = await client.GetAsync(apiUrl, cancellationToken).ConfigureAwait(false);
+                    break; // success — exit retry loop
+                }
+                catch (Exception ex) when (!cancellationToken.IsCancellationRequested &&
+                    attempt < maxAttempts &&
+                    (ex is TaskCanceledException or TimeoutException or HttpRequestException))
+                {
+                    _logger.LogWarning("External reverse image lookup attempt {Attempt} timed out or failed, retrying… ({Msg})",
+                        attempt, ex.Message);
+                    await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken).ConfigureAwait(false);
+                }
+            }
+
             try
             {
-                var client = _httpClientFactory.CreateClient();
-                client.Timeout = TimeSpan.FromSeconds(timeoutSec);
-
-                // type=exact_matches: finds pages where this EXACT image appears online —
-                // same as tapping "ค้นหาภาพเหมือน" (Exact Matches tab) in the mobile Google Lens app.
-                // This is fundamentally different from visual_matches (semantic similarity).
-                var encodedImage = Uri.EscapeDataString(imageUrl);
-                var apiUrl = $"https://serpapi.com/search.json?engine=google_lens&type=exact_matches&url={encodedImage}&api_key={Uri.EscapeDataString(apiKey)}";
-                var response = await client.GetAsync(apiUrl, cancellationToken).ConfigureAwait(false);
+                if (response == null)
+                {
+                    var stale = forceRefresh ? null : TryGetStale(cacheKey, now, staleHours);
+                    if (stale != null) return stale;
+                    return NotAvailable("serpapi(error)", "timeout-after-retries");
+                }
 
                 var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 if (!response.IsSuccessStatusCode)
