@@ -73,6 +73,8 @@ namespace ServerApi.Services
                         ["match_status"] = "active",
                         ["match_threshold"] = threshold
                     };
+                    if (!string.IsNullOrEmpty(category))
+                        rpcParams["match_category"] = category;
                     var rows = await _supabaseService.RpcAsync("match_posts_by_embedding", rpcParams, useServiceRole: true).ConfigureAwait(false);
 
                     foreach (var r in rows)
@@ -98,6 +100,12 @@ namespace ServerApi.Services
                 var post = await _supabaseService.GetAsync("posts", pid, useServiceRole: true).ConfigureAwait(false);
                 if (post == null) continue;
                 if (!IsActiveListablePost(post)) continue;
+                if (!string.IsNullOrEmpty(category))
+                {
+                    var postCat = post.TryGetValue("category", out var catVal) ? catVal?.ToString()?.Trim() : null;
+                    if (!string.Equals(postCat, category, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                }
                 NormalizePostImages(post);
                 if (postIdToScore.TryGetValue(pid, out var sc))
                     post["imageSearchScore"] = sc;

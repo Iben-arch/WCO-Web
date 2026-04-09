@@ -313,11 +313,18 @@ const AdminDashboard: React.FC = () => {
   };
 
   const formatPrice = (price: number | undefined): string => {
-    if (!price) return '0 ฿';
+    if (price == null) return '0 ฿';
     return new Intl.NumberFormat('th-TH', {
       style: 'currency',
       currency: 'THB'
     }).format(price);
+  };
+
+  const getDisplayPrice = (post: Post): number | undefined => {
+    if (post.postType === 'auction') {
+      return post.currentBid || post.startingBid || post.buyNowPrice;
+    }
+    return post.price ?? post.individualPrice;
   };
 
   const formatDate = (dateString: Date | string | undefined): string => {
@@ -658,7 +665,7 @@ const AdminDashboard: React.FC = () => {
                       </div>
                     </td>
                     <td>{post.sellerName}</td>
-                    <td>{formatPrice(post.price)}</td>
+                    <td>{formatPrice(getDisplayPrice(post))}</td>
                     <td>{getStatusBadge(post.status)}</td>
                     <td>{formatDate(post.createdAt as string)}</td>
                     <td>
@@ -873,7 +880,7 @@ const AdminDashboard: React.FC = () => {
                           </div>
                         </td>
                         <td>{post.sellerName}</td>
-                        <td>{formatPrice(post.price)}</td>
+                        <td>{formatPrice(getDisplayPrice(post))}</td>
                         <td>{formatDate(post.createdAt as string)}</td>
                         <td>
                           <div className="d-flex flex-wrap gap-2">
@@ -1176,7 +1183,7 @@ const AdminDashboard: React.FC = () => {
                     </div>
                     <div className="admin-modal-preview-desc">{previewPostForModal.description}</div>
                     <div className="admin-modal-metrics">
-                      <div><span className="admin-modal-metric-label">ราคา</span><span>{formatPrice(previewPostForModal.price)}</span></div>
+                      <div><span className="admin-modal-metric-label">ราคา</span><span>{formatPrice(getDisplayPrice(previewPostForModal))}</span></div>
                       {previewPostForModal.cardCount != null && (
                         <div><span className="admin-modal-metric-label">จำนวนการ์ด</span><span>{previewPostForModal.cardCount}</span></div>
                       )}
@@ -1213,7 +1220,7 @@ const AdminDashboard: React.FC = () => {
                   </div>
                   <div className="admin-modal-preview-desc">{selectedPost.description}</div>
                   <div className="admin-modal-metrics">
-                    <div><span className="admin-modal-metric-label">ราคา</span><span>{formatPrice(selectedPost.price)}</span></div>
+                    <div><span className="admin-modal-metric-label">ราคา</span><span>{formatPrice(getDisplayPrice(selectedPost))}</span></div>
                     {selectedPost.cardCount != null && (
                       <div><span className="admin-modal-metric-label">จำนวนการ์ด</span><span>{selectedPost.cardCount}</span></div>
                     )}

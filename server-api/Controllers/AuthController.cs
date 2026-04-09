@@ -485,6 +485,81 @@ namespace ServerApi.Controllers
         }
 
         /// <summary>
+        /// ดึงรายการประมูลที่ user เข้าร่วม (โพสต์ที่เคยวาง bid)
+        /// </summary>
+        [HttpGet("my-auctions")]
+        public async Task<IActionResult> GetMyAuctions()
+        {
+            try
+            {
+                var userId = GetUserId();
+                if (string.IsNullOrEmpty(userId))
+                    return Unauthorized(new { success = false, error = "กรุณาเข้าสู่ระบบ" });
+
+                var bids = await _supabaseService.QueryAsync("auction_bids", "bidder_id", userId, useServiceRole: true);
+                if (bids == null || bids.Count == 0)
+                    return Ok(new List<object>());
+
+                var postIds = bids
+                    .Select(b => b.TryGetValue("post_id", out var pid) ? pid?.ToString() : null)
+                    .Where(id => !string.IsNullOrEmpty(id))
+                    .Distinct()
+                    .ToList()!;
+
+                if (postIds.Count == 0)
+                    return Ok(new List<object>());
+
+                var posts = await _supabaseService.QueryInAsync("posts", "id", postIds!, useServiceRole: true);
+
+                var result = posts.Select(p =>
+                {
+                    var pId = p.TryGetValue("id", out var idv) ? idv?.ToString() : "";
+                    var myBids = bids
+                        .Where(b => (b.TryGetValue("post_id", out var bp) ? bp?.ToString() : "") == pId)
+                        .OrderByDescending(b =>
+                        {
+                            if (!b.TryGetValue("bid_amount", out var v) || v == null) return 0m;
+                            if (v is decimal dm) return dm;
+                            if (v is double db) return (decimal)db;
+                            if (v is int i) return i;
+                            decimal.TryParse(v.ToString(), out var r);
+                            return r;
+                        })
+                        .ToList();
+                    var myHighest = myBids.Count > 0
+                        ? myBids.Max(b =>
+                        {
+                            if (!b.TryGetValue("bid_amount", out var v) || v == null) return 0m;
+                            if (v is decimal dm) return dm;
+                            if (v is double db) return (decimal)db;
+                            decimal.TryParse(v?.ToString(), out var r);
+                            return r;
+                        })
+                        : 0m;
+
+                    var postDict = new Dictionary<string, object?>(p.Select(kv => new KeyValuePair<string, object?>(kv.Key, (object?)kv.Value)))
+                    {
+                        ["myHighestBid"] = myHighest,
+                        ["myBidCount"] = myBids.Count,
+                        ["isWinner"] = (p.TryGetValue("winnerId", out var wid) ? wid?.ToString() : null) == userId
+                    };
+                    return (object)postDict;
+                }).ToList();
+
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { success = false, error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching my auctions");
+                return StatusCode(500, new { success = false, error = "เกิดข้อผิดพลาดในการดึงรายการประมูล" });
+            }
+        }
+
+        /// <summary>
         /// อัปเดต User Profile
         /// </summary>
         [HttpPost("profile")]

@@ -598,10 +598,14 @@ const PostDetail: React.FC = () => {
     }
 
     try {
-      // TODO: Implement buyNow API endpoint in backend
-      // await auctionAPI.buyNow(id!);
-      toast.info('ฟีเจอร์ซื้อเลยกำลังพัฒนา');
-    } catch (error) {
+      const result = await auctionAPI.buyNow(id!);
+      if (result.success) {
+        toast.success(result.message || 'ซื้อเลยสำเร็จ! กรุณาชำระเงินในตะกร้า');
+        fetchPost();
+      } else {
+        toast.error(result.error || 'ไม่สามารถซื้อเลยได้');
+      }
+    } catch (error: any) {
       console.error('Error buying now:', error);
       if (error.response?.data?.error) {
         toast.error(error.response.data.error);

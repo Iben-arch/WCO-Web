@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using ServerApi.Services;
+using System.Text.Json;
 
 namespace ServerApi.Controllers
 {
@@ -71,6 +72,17 @@ namespace ServerApi.Controllers
                     p => p,
                     StringComparer.OrdinalIgnoreCase);
 
+                // Batch load auction_card_winners for auction posts
+                var auctionPostIds = allPosts
+                    .Where(p => p.TryGetValue("postType", out var pt) && pt?.ToString() == "auction")
+                    .Select(p => p.TryGetValue("id", out var idv) ? idv?.ToString() : null)
+                    .Where(id => !string.IsNullOrEmpty(id))
+                    .Distinct()
+                    .ToList()!;
+                var allAuctionWinners = auctionPostIds.Count > 0
+                    ? await _supabaseService.QueryInAsync("auction_card_winners", "post_id", auctionPostIds!, useServiceRole: true)
+                    : new List<Dictionary<string, object>>();
+
                 var bySeller = new Dictionary<string, List<Dictionary<string, object>>>();
                 foreach (var item in itemsToProcess)
                 {
@@ -106,7 +118,7 @@ namespace ServerApi.Controllers
                         var p = (Dictionary<string, object>?)ci["_post"];
                         var cardId = ci.ContainsKey("card_id") ? ci["card_id"]?.ToString() : null;
                         var qty = ci.ContainsKey("quantity") ? Convert.ToInt32(ci["quantity"]) : 1;
-                        double price = GetUnitPriceForOrderItem(p, cardId);
+                        double price = GetUnitPriceForOrderItem(p, cardId, allAuctionWinners);
                         total += price * qty;
                     }
 
@@ -132,7 +144,7 @@ namespace ServerApi.Controllers
                         var postId = ci.ContainsKey("post_id") ? ci["post_id"]?.ToString() : null;
                         var cardId = ci.ContainsKey("card_id") ? ci["card_id"]?.ToString() : null;
                         var qty = ci.ContainsKey("quantity") ? Convert.ToInt32(ci["quantity"]) : 1;
-                        double unitPrice = GetUnitPriceForOrderItem(p, cardId);
+                        double unitPrice = GetUnitPriceForOrderItem(p, cardId, allAuctionWinners);
                         var itemData = new Dictionary<string, object>
                         {
                             ["order_id"] = orderId,
@@ -168,11 +180,25 @@ namespace ServerApi.Controllers
                 foreach (var kv in reductionsByPost)
                 {
                     var postId = kv.Key;
-                    // Re-fetch เพื่อเช็คสต็อกล่าสุด (ป้องกัน oversell จาก concurrent checkout)
                     var freshPost = await _supabaseService.GetAsync("posts", postId, useServiceRole: true);
                     if (freshPost == null) continue;
 
-                    // ตรวจสอบว่าสต็อกเพียงพอก่อนลด
+                    var freshPostType = freshPost.TryGetValue("postType", out var fpt) ? fpt?.ToString() : null;
+
+                    if (freshPostType == "auction")
+                    {
+                        // Auction: mark as sold, don't do stock reduction
+                        var auctionUpdate = new Dictionary<string, object>
+                        {
+                            ["auctionStatus"] = "sold",
+                            ["status"] = "sold",
+                            ["updatedAt"] = DateTime.UtcNow
+                        };
+                        await _supabaseService.UpdateAsync("posts", postId, auctionUpdate, null, true);
+                        continue;
+                    }
+
+                    // Sale: ตรวจสอบสต็อกและลด
                     if (!ValidateStockAvailable(freshPost, kv.Value))
                     {
                         var postTitle = freshPost.TryGetValue("title", out var t) ? t?.ToString() : postId;
@@ -486,11 +512,52 @@ namespace ServerApi.Controllers
         }
 
         /// <summary>
-        /// ราคาต่อหน่วยสำหรับ order item: แยกใบใช้ราคาจาก individualCards[].price ไม่ใช่ individualPrice
+        /// ราคาต่อหน่วยสำหรับ order item: รองรับทั้ง sale และ auction
+        /// - auction individual: ใช้ bid_amount จาก auction_card_winners
+        /// - auction deck: ใช้ currentBid จากโพสต์
+        /// - sale individual: ใช้ราคาจาก individualCards[].price
+        /// - sale deck: ใช้ individualPrice / price ของโพสต์
         /// </summary>
-        private static double GetUnitPriceForOrderItem(Dictionary<string, object>? p, string? cardId)
+        private static double GetUnitPriceForOrderItem(
+            Dictionary<string, object>? p,
+            string? cardId,
+            List<Dictionary<string, object>>? auctionWinners = null)
         {
             if (p == null) return 0;
+
+            var postType = p.TryGetValue("postType", out var ptVal) ? ptVal?.ToString() : null;
+            var postId = p.TryGetValue("id", out var pidVal) ? pidVal?.ToString() : null;
+
+            if (postType == "auction")
+            {
+                // Individual auction: ดึง bid_amount จาก auction_card_winners
+                if (!string.IsNullOrEmpty(cardId) && auctionWinners != null)
+                {
+                    var winnerRow = auctionWinners.FirstOrDefault(w =>
+                    {
+                        var wPostId = w.TryGetValue("post_id", out var wp) ? wp?.ToString() : null;
+                        var wCardId = w.TryGetValue("card_id", out var wc) ? wc?.ToString() : null;
+                        return string.Equals(wPostId, postId, StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(wCardId, cardId, StringComparison.OrdinalIgnoreCase);
+                    });
+                    if (winnerRow != null)
+                    {
+                        var bidAmount = GetNumeric(winnerRow, "bid_amount");
+                        if (bidAmount > 0) return bidAmount;
+                    }
+                }
+
+                // Deck auction: ใช้ currentBid
+                var currentBid = GetNumeric(p, "currentBid", "currentbid");
+                if (currentBid > 0) return currentBid;
+
+                var startingBid = GetNumeric(p, "startingBid", "startingbid");
+                if (startingBid > 0) return startingBid;
+
+                return 0;
+            }
+
+            // Sale: logic เดิม
             if (!string.IsNullOrEmpty(cardId) && p.TryGetValue("individualCards", out var cardsObj) && cardsObj is System.Collections.IList cards)
             {
                 foreach (var c in cards)

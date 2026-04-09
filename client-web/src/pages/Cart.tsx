@@ -246,6 +246,14 @@ const Cart: React.FC = () => {
                 const unitPrice = getItemUnitPrice(item);
                 const qty = item.quantity ?? 1;
 
+                const isAuctionWon = item.post.postType === 'auction' && item.post.auctionStatus === 'won_pending_payment';
+
+                const formatDeadline = (d: any): string => {
+                  if (!d) return '';
+                  const date = new Date(typeof d === 'object' && 'seconds' in d ? d.seconds * 1000 : d);
+                  return date.toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+                };
+
                 return (
                   <div
                     key={itemKey}
@@ -282,6 +290,9 @@ const Cart: React.FC = () => {
                       </Link>
                       <div className="flex flex-wrap items-center gap-1.5 mb-1">
                         <span className="badge badge-ghost badge-sm">{item.post.category}</span>
+                        {item.post.postType === 'auction' && (
+                          <span className="badge badge-info badge-sm">ประมูล</span>
+                        )}
                         {item.post.status === 'sold' && (
                           <span className="badge badge-error badge-sm">ขายแล้ว</span>
                         )}
@@ -302,20 +313,34 @@ const Cart: React.FC = () => {
                       {qty > 1 && (
                         <p className="text-xs text-base-content/40">{formatPrice(unitPrice)} × {qty}</p>
                       )}
-                      <button
-                        className="btn btn-ghost btn-xs text-error hover:bg-error/10"
-                        onClick={() => handleRemoveItem(item)}
-                        disabled={isRemoving}
-                        title="ลบออกจากตะกร้า"
-                      >
-                        {isRemoving ? (
-                          <span className="loading loading-spinner loading-xs" />
-                        ) : (
-                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
-                          </svg>
-                        )}
-                      </button>
+                      {isAuctionWon ? (
+                        <div className="flex flex-col items-end gap-1">
+                          <span className="badge badge-warning badge-sm gap-1">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                            ชนะประมูล
+                          </span>
+                          {item.post.paymentDeadline && (
+                            <span className="text-[10px] text-warning">
+                              ชำระภายใน {formatDeadline(item.post.paymentDeadline)}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <button
+                          className="btn btn-ghost btn-xs text-error hover:bg-error/10"
+                          onClick={() => handleRemoveItem(item)}
+                          disabled={isRemoving}
+                          title="ลบออกจากตะกร้า"
+                        >
+                          {isRemoving ? (
+                            <span className="loading loading-spinner loading-xs" />
+                          ) : (
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                            </svg>
+                          )}
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -492,6 +517,14 @@ const Cart: React.FC = () => {
             </svg>
             <p className="text-xs text-error">การดำเนินการนี้ไม่สามารถย้อนกลับได้ รายการทั้งหมดจะถูกลบออก</p>
           </div>
+          {cartItems.some(i => i.post?.postType === 'auction' && i.post?.auctionStatus === 'won_pending_payment') && (
+            <div className="flex gap-2 items-start p-3 rounded-xl bg-warning/10 border border-warning/20">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5 text-warning">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              </svg>
+              <p className="text-xs text-warning">รายการประมูลที่ชนะแล้วจะไม่ถูกลบ ต้องชำระเงินภายในเวลาที่กำหนด</p>
+            </div>
+          )}
         </div>
 
         <div className="px-6 py-4 border-t border-base-300 flex gap-2 justify-end">

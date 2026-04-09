@@ -1064,17 +1064,34 @@ namespace ServerApi.Controllers
             {
                 if (post.TryGetValue("postType", out var pt) && pt?.ToString() == "sale")
                 {
-                    if (post.TryGetValue("saleType", out var st) && st?.ToString() == "individual" && post.TryGetValue("individualPrice", out var ip))
-                        return Convert.ToDouble(ip);
-                    if (post.TryGetValue("price", out var p))
-                        return Convert.ToDouble(p);
+                    if (post.TryGetValue("saleType", out var st) && st?.ToString() == "individual" && post.TryGetValue("individualPrice", out var ip) && ip != null)
+                    {
+                        var v = Convert.ToDouble(ip);
+                        if (v > 0) return v;
+                    }
+                    if (post.TryGetValue("price", out var p) && p != null)
+                    {
+                        var v = Convert.ToDouble(p);
+                        if (v > 0) return v;
+                    }
                 }
                 if (post.TryGetValue("postType", out var pt2) && pt2?.ToString() == "auction")
                 {
-                    if (post.TryGetValue("currentBid", out var cb))
-                        return Convert.ToDouble(cb);
-                    if (post.TryGetValue("startingBid", out var sb))
-                        return Convert.ToDouble(sb);
+                    if (post.TryGetValue("currentBid", out var cb) && cb != null)
+                    {
+                        var v = Convert.ToDouble(cb);
+                        if (v > 0) return v;
+                    }
+                    if (post.TryGetValue("startingBid", out var sb) && sb != null)
+                    {
+                        var v = Convert.ToDouble(sb);
+                        if (v > 0) return v;
+                    }
+                    if (post.TryGetValue("buyNowPrice", out var bnp) && bnp != null)
+                    {
+                        var v = Convert.ToDouble(bnp);
+                        if (v > 0) return v;
+                    }
                 }
             }
             catch { }

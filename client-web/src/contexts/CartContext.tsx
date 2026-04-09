@@ -93,7 +93,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     try {
       const result = await cartAPI.clearCart();
       if (result.success) {
-        setCartItems([]);
+        await fetchCartItems();
       }
       return result;
     } catch (error: any) {

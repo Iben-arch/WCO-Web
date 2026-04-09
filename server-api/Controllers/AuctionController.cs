@@ -202,6 +202,74 @@ namespace ServerApi.Controllers
             return Ok(result);
         }
 
+        /// <summary>ซื้อเลยในราคา buyNowPrice — จบประมูลทันที (deck only)</summary>
+        [HttpPost("{postId}/buy-now")]
+        public async Task<IActionResult> BuyNow(string postId)
+        {
+            var userId = GetUserId();
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized(new { success = false, error = "กรุณาเข้าสู่ระบบ" });
+
+            var post = await _supabase.GetAsync("posts", postId, useServiceRole: true);
+            if (post == null)
+                return NotFound(new { success = false, error = "ไม่พบโพสต์" });
+
+            if (post.TryGetValue("postType", out var pt) && pt?.ToString() != "auction")
+                return BadRequest(new { success = false, error = "โพสต์นี้ไม่ใช่การประมูล" });
+
+            var sellerId = post.TryGetValue("sellerId", out var sid) ? sid?.ToString() : null;
+            if (sellerId == userId)
+                return BadRequest(new { success = false, error = "ไม่สามารถซื้อโพสต์ของตัวเองได้" });
+
+            var status = post.TryGetValue("status", out var st) ? st?.ToString() : null;
+            var auctionStatus = post.TryGetValue("auctionStatus", out var ast) ? ast?.ToString() : null;
+            if (status == "sold" || auctionStatus == "sold")
+                return BadRequest(new { success = false, error = "โพสต์นี้ถูกขายแล้ว" });
+            if (auctionStatus == "won_pending_payment")
+                return BadRequest(new { success = false, error = "การประมูลจบแล้ว รอการชำระเงิน" });
+            if (auctionStatus == "auction_released")
+                return BadRequest(new { success = false, error = "รายการนี้หลุดแล้ว" });
+
+            var auctionEnd = GetDateTime(post, "auctionEndDate");
+            if (auctionEnd <= DateTime.UtcNow)
+            {
+                await _auctionService.FinalizeAuctionIfNeededAsync(postId);
+                return BadRequest(new { success = false, error = "การประมูลสิ้นสุดแล้ว" });
+            }
+
+            var buyNowPrice = GetDecimal(post, "buyNowPrice");
+            if (buyNowPrice <= 0)
+                return BadRequest(new { success = false, error = "โพสต์นี้ไม่มีราคาซื้อเลย" });
+
+            var saleType = post.TryGetValue("saleType", out var stype) ? stype?.ToString() : null;
+            if (saleType == "individual")
+                return BadRequest(new { success = false, error = "ฟีเจอร์ซื้อเลยใช้ได้เฉพาะประมูลแบบเหมาเท่านั้น" });
+
+            var deadline = DateTime.UtcNow.AddHours(PaymentDeadlineHours);
+            var update = new Dictionary<string, object>
+            {
+                ["winnerId"] = userId,
+                ["currentBid"] = buyNowPrice,
+                ["paymentDeadline"] = deadline,
+                ["auctionStatus"] = "won_pending_payment",
+                ["status"] = "pending",
+                ["updatedAt"] = DateTime.UtcNow
+            };
+            await _supabase.UpdateAsync("posts", postId, update, idField: "id", useServiceRole: true);
+
+            var cartData = new Dictionary<string, object> { ["user_id"] = userId, ["post_id"] = postId, ["quantity"] = 1 };
+            try { await _supabase.CreateAsync("cart_items", cartData, useServiceRole: true); }
+            catch (Exception ex) { _logger.LogWarning(ex, "BuyNow: could not add to winner cart"); }
+
+            return Ok(new
+            {
+                success = true,
+                message = "ซื้อเลยสำเร็จ! รายการถูกเพิ่มในตะกร้าแล้ว กรุณาชำระเงินภายในเวลาที่กำหนด",
+                buyNowPrice,
+                paymentDeadline = deadline
+            });
+        }
+
         /// <summary>เจ้าของโพสต์เลือกประมูลใหม่ (หลังหลุด)</summary>
         [HttpPost("{postId}/re-auction")]
         public async Task<IActionResult> ReAuction(string postId, [FromBody] ReAuctionRequest body)

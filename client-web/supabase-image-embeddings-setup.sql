@@ -45,11 +45,13 @@ DROP FUNCTION IF EXISTS match_posts_by_embedding(text, int, text);
 -- รับ query_embedding เป็น text รูปแบบ '[0.1, -0.2, ...]' (pgvector)
 -- คืน (postId, score) โดย score = 1 - cosine_distance (ยิ่งสูงยิ่งคล้าย; โดยทั่วไป ~0–1)
 -- match_threshold: กรองเฉพาะคู่ที่ similarity >= ค่านี้ (0 = ไม่กรอง เหมือนเดิม)
+-- match_category: กรองเฉพาะโพสต์ในหมวดเดียวกัน (NULL = ไม่กรอง)
 CREATE OR REPLACE FUNCTION match_posts_by_embedding(
   query_embedding text,
   match_limit int DEFAULT 20,
   match_status text DEFAULT 'active',
-  match_threshold double precision DEFAULT 0.0
+  match_threshold double precision DEFAULT 0.0,
+  match_category text DEFAULT NULL
 )
 RETURNS TABLE(
   "postId" uuid,
@@ -71,6 +73,7 @@ BEGIN
   INNER JOIN posts p ON p.id = e."postId"
   WHERE p.status = match_status
     AND (1 - (e.embedding <=> v)) >= match_threshold
+    AND (match_category IS NULL OR p.category = match_category)
   ORDER BY e.embedding <=> v
   LIMIT match_limit;
 END;

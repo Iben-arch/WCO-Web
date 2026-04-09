@@ -343,6 +343,11 @@ export const auctionAPI = {
     });
     return response.data;
   },
+
+  buyNow: async (postId: string): Promise<any> => {
+    const response = await axios.post(`/api/auction/${postId}/buy-now`);
+    return response.data;
+  },
 };
 
 // ==================== CART API ====================
@@ -392,22 +397,24 @@ export const cartAPI = {
   removeFromCart: async (id: string, cardId?: string): Promise<{ success: boolean; message: string }> => {
     try {
       const url = cardId ? `/api/cart/${id}?cardId=${encodeURIComponent(cardId)}` : `/api/cart/${id}`;
-      await axios.delete(url);
-      return { success: true, message: 'ลบออกจากตะกร้าเรียบร้อย' };
+      const response = await axios.delete(url);
+      return { success: true, message: response.data?.message || 'ลบออกจากตะกร้าเรียบร้อย' };
     } catch (error: any) {
       console.error('Error removing from cart:', error);
-      return { success: false, message: 'ไม่สามารถลบออกจากตะกร้าได้' };
+      const message = error.response?.data?.message || 'ไม่สามารถลบออกจากตะกร้าได้';
+      return { success: false, message };
     }
   },
 
   // Clear cart
   clearCart: async (): Promise<{ success: boolean; message: string }> => {
     try {
-      await axios.delete('/api/cart');
-      return { success: true, message: 'ล้างตะกร้าเรียบร้อย' };
+      const response = await axios.delete('/api/cart');
+      return { success: true, message: response.data?.message || 'ล้างตะกร้าเรียบร้อย' };
     } catch (error: any) {
       console.error('Error clearing cart:', error);
-      return { success: false, message: 'ไม่สามารถล้างตะกร้าได้' };
+      const message = error.response?.data?.message || 'ไม่สามารถล้างตะกร้าได้';
+      return { success: false, message };
     }
   },
 };

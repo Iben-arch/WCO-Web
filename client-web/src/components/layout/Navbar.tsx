@@ -129,8 +129,8 @@ const Navbar: React.FC = () => {
                   onClick={() => setProfileOpen(!profileOpen)}
                   className="btn btn-outline rounded-full pl-1 pr-3 min-h-0 h-10"
                 >
-                  <div className="avatar">
-                    <div className="w-8 rounded-full bg-primary text-primary-content flex items-center justify-center">
+                  <div className={`avatar${profileImage ? '' : ' placeholder'}`}>
+                    <div className="w-8 rounded-full bg-primary text-primary-content">
                     {profileImage ? (
                         <img src={profileImage} alt={displayName} className="w-full h-full object-cover" />
                     ) : (

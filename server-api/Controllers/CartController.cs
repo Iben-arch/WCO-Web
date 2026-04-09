@@ -22,7 +22,7 @@ namespace ServerApi.Controllers
         }
 
         /// <summary>
-        /// ดึงรายการตะกร้าของผู้ใช้
+        /// ดึงรายการตะกร้าของผู้ใช้ (batch load posts + auction winners แทน N+1)
         /// </summary>
         [HttpGet]
         public async Task<IActionResult> GetCartItems()
@@ -32,14 +32,38 @@ namespace ServerApi.Controllers
                 var userId = GetUserIdRequired();
                 var cartItems = await _supabaseService.QueryAsync("cart_items", "user_id", userId, useServiceRole: true);
 
+                if (cartItems.Count == 0) return Ok(new List<object>());
+
+                // Batch load posts
+                var allPostIds = cartItems
+                    .Select(c => c.ContainsKey("post_id") ? c["post_id"]?.ToString() : null)
+                    .Where(id => !string.IsNullOrEmpty(id))
+                    .Distinct()
+                    .ToList()!;
+                var allPosts = allPostIds.Count > 0
+                    ? await _supabaseService.QueryInAsync("posts", "id", allPostIds!, useServiceRole: true)
+                    : new List<Dictionary<string, object>>();
+                var postLookup = allPosts.ToDictionary(
+                    p => p.ContainsKey("id") ? p["id"]?.ToString() ?? "" : "",
+                    p => p,
+                    StringComparer.OrdinalIgnoreCase);
+
+                // Batch load auction_card_winners for all auction posts
+                var auctionPostIds = allPosts
+                    .Where(p => p.TryGetValue("postType", out var pt) && pt?.ToString() == "auction")
+                    .Select(p => p.TryGetValue("id", out var idv) ? idv?.ToString() : null)
+                    .Where(id => !string.IsNullOrEmpty(id))
+                    .Distinct()
+                    .ToList()!;
+                var allWinners = auctionPostIds.Count > 0
+                    ? await _supabaseService.QueryInAsync("auction_card_winners", "post_id", auctionPostIds!, useServiceRole: true)
+                    : new List<Dictionary<string, object>>();
+
                 var result = new List<object>();
                 foreach (var item in cartItems)
                 {
                     var postId = item.ContainsKey("post_id") ? item["post_id"]?.ToString() : null;
-                    if (string.IsNullOrEmpty(postId)) continue;
-
-                    var post = await _supabaseService.GetAsync("posts", postId, useServiceRole: true);
-                    if (post == null) continue;
+                    if (string.IsNullOrEmpty(postId) || !postLookup.TryGetValue(postId, out var post)) continue;
 
                     var cartItemId = item.ContainsKey("id") ? item["id"]?.ToString() : null;
                     var cardId = item.ContainsKey("card_id") ? item["card_id"]?.ToString() : null;
@@ -48,11 +72,12 @@ namespace ServerApi.Controllers
                     double? unitPrice = null;
                     var postType = post.TryGetValue("postType", out var pt) ? pt?.ToString() : null;
                     var saleType = post.TryGetValue("saleType", out var st) ? st?.ToString() : null;
+
                     if (postType == "auction" && saleType == "individual" && !string.IsNullOrEmpty(cardId))
                     {
-                        var winners = await _supabaseService.QueryAsync("auction_card_winners", "post_id", postId, useServiceRole: true);
-                        var winnerRow = winners?.FirstOrDefault(w =>
-                            string.Equals(w.TryGetValue("card_id", out var cid) ? cid?.ToString() : null, cardId, StringComparison.OrdinalIgnoreCase));
+                        var winnerRow = allWinners.FirstOrDefault(w =>
+                            string.Equals(w.TryGetValue("post_id", out var wp) ? wp?.ToString() : null, postId, StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(w.TryGetValue("card_id", out var wc) ? wc?.ToString() : null, cardId, StringComparison.OrdinalIgnoreCase));
                         if (winnerRow != null && winnerRow.TryGetValue("bid_amount", out var amt) && amt != null)
                         {
                             if (amt is decimal dm) unitPrice = (double)dm;
@@ -67,7 +92,6 @@ namespace ServerApi.Controllers
                     }
                     else if (postType == "sale")
                     {
-                        // ขายแยกใบ: ใช้ราคาจาก individualCards[].price ของการ์ดที่ตรง cardId
                         if (saleType == "individual" && !string.IsNullOrEmpty(cardId) && post.TryGetValue("individualCards", out var cardsObj) && cardsObj is System.Collections.IEnumerable cardsEnum)
                         {
                             foreach (var c in cardsEnum)
@@ -86,7 +110,6 @@ namespace ServerApi.Controllers
                                 }
                             }
                         }
-                        // ถ้ายังไม่มี unitPrice (ขายทั้งเด็ค หรือไม่พบการ์ด) ใช้ individualPrice / price ของโพสต์
                         if (unitPrice == null)
                         {
                             if (post.TryGetValue("individualPrice", out var ip) && ip != null)
@@ -254,9 +277,20 @@ namespace ServerApi.Controllers
                     return NotFound(new { success = false, message = "ไม่พบรายการในตะกร้า" });
                 }
 
+                // Block removal of auction items that are won_pending_payment
+                if (!string.IsNullOrEmpty(postId))
+                {
+                    var post = await _supabaseService.GetAsync("posts", postId, useServiceRole: true);
+                    var postType = post?.TryGetValue("postType", out var ptv) == true ? ptv?.ToString() : null;
+                    var auctionStatus = post?.TryGetValue("auctionStatus", out var asv) == true ? asv?.ToString() : null;
+                    if (postType == "auction" && auctionStatus == "won_pending_payment")
+                    {
+                        return BadRequest(new { success = false, message = "ไม่สามารถลบรายการประมูลที่ชนะแล้วได้ กรุณาชำระเงินภายในเวลาที่กำหนด" });
+                    }
+                }
+
                 await _supabaseService.DeleteAsync("cart_items", itemId, null, true);
 
-                // ถ้าไม่มีใครมีโพสต์นี้ในตะกร้าแล้ว ให้เปลี่ยนสถานะกลับเป็น active
                 if (!string.IsNullOrEmpty(postId))
                 {
                     var remainingCartItems = await _supabaseService.QueryAsync("cart_items", "post_id", postId, useServiceRole: true);
@@ -306,10 +340,34 @@ namespace ServerApi.Controllers
                 var cartItems = await _supabaseService.QueryAsync("cart_items", "user_id", userId, useServiceRole: true);
                 var postIdsToCheck = new List<string>();
 
+                // Batch load posts to identify auction items that must be kept
+                var allPostIds = cartItems
+                    .Select(c => c.ContainsKey("post_id") ? c["post_id"]?.ToString() : null)
+                    .Where(id => !string.IsNullOrEmpty(id))
+                    .Distinct().ToList()!;
+                var allPosts = allPostIds.Count > 0
+                    ? await _supabaseService.QueryInAsync("posts", "id", allPostIds!, useServiceRole: true)
+                    : new List<Dictionary<string, object>>();
+                var auctionLockedPostIds = new HashSet<string>(
+                    allPosts.Where(p =>
+                        (p.TryGetValue("postType", out var pt) ? pt?.ToString() : null) == "auction"
+                        && (p.TryGetValue("auctionStatus", out var ast) ? ast?.ToString() : null) == "won_pending_payment")
+                    .Select(p => p.TryGetValue("id", out var idv) ? idv?.ToString() ?? "" : ""),
+                    StringComparer.OrdinalIgnoreCase);
+
+                int skippedCount = 0;
                 foreach (var item in cartItems)
                 {
                     var itemId = item.ContainsKey("id") ? item["id"]?.ToString() : null;
                     var postId = item.ContainsKey("post_id") ? item["post_id"]?.ToString() : null;
+
+                    // Skip auction items that are won_pending_payment
+                    if (!string.IsNullOrEmpty(postId) && auctionLockedPostIds.Contains(postId))
+                    {
+                        skippedCount++;
+                        continue;
+                    }
+
                     if (!string.IsNullOrEmpty(itemId))
                     {
                         await _supabaseService.DeleteAsync("cart_items", itemId, null, true);
@@ -318,7 +376,6 @@ namespace ServerApi.Controllers
                     }
                 }
 
-                // ตรวจสอบโพสต์ที่ไม่มีใครมีในตะกร้าแล้ว ให้เปลี่ยนสถานะกลับเป็น active
                 foreach (var postId in postIdsToCheck.Distinct())
                 {
                     var remainingCartItems = await _supabaseService.QueryAsync("cart_items", "post_id", postId, useServiceRole: true);
@@ -338,7 +395,10 @@ namespace ServerApi.Controllers
                     }
                 }
 
-                return Ok(new { success = true, message = "ล้างตะกร้าเรียบร้อย" });
+                var message = skippedCount > 0
+                    ? $"ล้างตะกร้าเรียบร้อย (มี {skippedCount} รายการประมูลที่ชนะแล้วยังคงอยู่ ต้องชำระเงิน)"
+                    : "ล้างตะกร้าเรียบร้อย";
+                return Ok(new { success = true, message, skippedAuctionItems = skippedCount });
             }
             catch (UnauthorizedAccessException ex)
             {

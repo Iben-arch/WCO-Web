@@ -742,6 +742,64 @@ namespace ServerApi.Controllers
         }
 
         /// <summary>
+        /// เจ้าของโพสต์ mark เป็น sold (ขายแล้ว / จบการประมูล)
+        /// </summary>
+        [HttpPost("{id}/sold")]
+        public async Task<IActionResult> MarkAsSold(string id)
+        {
+            try
+            {
+                var userId = GetUserId();
+                var post = await _supabaseService.GetAsync("posts", id, useServiceRole: true);
+                if (post == null)
+                    return NotFound(new { success = false, error = "ไม่พบโพสต์ที่ระบุ" });
+
+                var sellerId = post.TryGetValue("sellerId", out var sid) ? sid?.ToString() : null;
+                if (string.IsNullOrEmpty(userId) || sellerId != userId)
+                    return Forbid();
+
+                var postType = post.TryGetValue("postType", out var pt) ? pt?.ToString() : null;
+                var currentStatus = post.TryGetValue("status", out var st) ? st?.ToString() : null;
+
+                if (currentStatus == "sold")
+                    return BadRequest(new { success = false, error = "โพสต์นี้ถูกขายแล้ว" });
+
+                var updateData = new Dictionary<string, object>
+                {
+                    ["status"] = "sold",
+                    ["updatedAt"] = DateTime.UtcNow
+                };
+
+                if (postType == "auction")
+                {
+                    // Finalize auction first if needed
+                    await _auctionService.FinalizeAuctionIfNeededAsync(id);
+                    updateData["auctionStatus"] = "sold";
+                }
+
+                await _supabaseService.UpdateAsync("posts", id, updateData, useServiceRole: true);
+                var updatedPost = await _supabaseService.GetAsync("posts", id, useServiceRole: true);
+
+                return Ok(new
+                {
+                    success = true,
+                    message = postType == "auction" ? "จบการประมูลสำเร็จ" : "ทำเครื่องหมายขายแล้วสำเร็จ",
+                    data = updatedPost
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error marking post as sold");
+                return StatusCode(500, new
+                {
+                    success = false,
+                    error = "เกิดข้อผิดพลาดในการอัปเดตสถานะโพสต์",
+                    message = ex.Message
+                });
+            }
+        }
+
+        /// <summary>
         /// ลบ Post
         /// </summary>
         [HttpDelete("{id}")]

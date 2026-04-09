@@ -60,6 +60,7 @@ try
 {
     builder.Services.AddScoped<SupabaseService>();
     builder.Services.AddScoped<AuctionService>();
+    builder.Services.AddHostedService<AuctionBackgroundService>();
     builder.Services.AddScoped<CardDetectionService>();
     builder.Services.AddScoped<ClipEmbeddingService>();
     builder.Services.AddScoped<PostEmbeddingIndexingService>();
