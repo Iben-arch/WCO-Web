@@ -29,7 +29,12 @@ namespace ServerApi.Controllers
         {
             try
             {
-                var userId = GetUserIdRequired();
+                var userId = GetUserId();
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Ok(new List<object>());
+                }
+
                 var cartItems = await _supabaseService.QueryAsync("cart_items", "user_id", userId, useServiceRole: true);
 
                 if (cartItems.Count == 0) return Ok(new List<object>());

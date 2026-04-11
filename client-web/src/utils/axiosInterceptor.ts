@@ -33,6 +33,7 @@ axiosInstance.interceptors.request.use(
       // ใช้ timeout ป้องกัน getSession ค้าง (เช่น Supabase ช้า/ไม่ตอบ)
       const SESSION_TIMEOUT_MS = 5000;
       let result: { data: { session: { access_token?: string; user?: { id?: string }; expires_at?: number } | null }; error: unknown };
+      let sessionLookupTimedOut = false;
       try {
         result = await Promise.race([
           supabase.auth.getSession(),
@@ -42,10 +43,14 @@ axiosInstance.interceptors.request.use(
         ]);
       } catch (e) {
         console.warn('Session check timed out - proceeding without auth');
+        sessionLookupTimedOut = true;
         result = { data: { session: null }, error: null };
       }
       const { data: { session }, error: sessionError } = result;
-      sessionCache = { session: session ?? null, timestamp: now };
+      // อย่าแคช session=null จาก timeout — จะทำให้ request ถัดไป 5 วินาทีไม่มี Authorization ทั้งที่ยังล็อกอินอยู่
+      if (!sessionLookupTimedOut) {
+        sessionCache = { session: session ?? null, timestamp: now };
+      }
       
       if (sessionError) {
         console.warn('Error getting session in request interceptor:', sessionError);

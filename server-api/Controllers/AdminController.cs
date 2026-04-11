@@ -29,7 +29,7 @@ namespace ServerApi.Controllers
         }
 
         /// <summary>
-        /// ตรวจสอบว่า request มาจากแอดมิน (X-User-Id + profiles.role = admin). คืน 401/403 ถ้าไม่ผ่าน.
+        /// ตรวจสอบว่า request มาจากแอดมิน (JWT sub + profiles.role = admin). คืน 401/403 ถ้าไม่ผ่าน.
         /// </summary>
         private async Task<Dictionary<string, object>?> EnsureAdminAsync()
         {

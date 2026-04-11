@@ -8,7 +8,7 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, adminOnly = false }) => {
-  const { currentUser, userProfile, loading } = useAuth();
+  const { currentUser, userProfile, profile, loading, profileReady } = useAuth();
 
   // Show loading spinner while checking auth state
   if (loading) {
@@ -26,8 +26,21 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, adminOnly = f
     return <Navigate to="/login" replace />;
   }
 
-  // Check admin access
-  if (adminOnly && userProfile?.role !== 'admin' && userProfile?.isAdmin !== true) {
+  // รอโหลด profile ก่อนตัดสิทธิ์ admin — ไม่งั้นแอดมินถูกส่งกลับหน้าแรกชั่วคราวขณะ userProfile ยังเป็น null
+  if (adminOnly && !profileReady) {
+    return (
+      <div className="d-flex justify-content-center align-items-center" style={{ height: '50vh' }}>
+        <div className="spinner-border text-primary" role="status">
+          <span className="visually-hidden">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Check admin access (ใช้ทั้ง profile / userProfile หลังโหลดเสร็จ)
+  const role = profile?.role ?? userProfile?.role;
+  const isAdmin = role === 'admin' || userProfile?.isAdmin === true;
+  if (adminOnly && !isAdmin) {
     return <Navigate to="/" replace />;
   }
 

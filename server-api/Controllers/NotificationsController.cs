@@ -27,7 +27,7 @@ namespace ServerApi.Controllers
         {
             var userId = GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new { success = false, error = "ไม่พบผู้ใช้" });
+                return Ok(new { success = true, notifications = Array.Empty<object>() });
 
             try
             {

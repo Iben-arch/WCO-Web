@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { User, UserProfile, Profile, AuthContextType } from '../types';
 import { supabase } from '../config/supabase';
 import { clearSessionCache } from '../utils/axiosInterceptor';
@@ -24,9 +24,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [profileReady, setProfileReady] = useState<boolean>(false);
+  const profileFetchGenRef = useRef(0);
 
   // Fetch profile from profiles table
   const fetchProfile = async (userId: string): Promise<void> => {
+    const gen = ++profileFetchGenRef.current;
+    setProfileReady(false);
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -68,6 +72,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.error('Error fetching profile:', error);
       setProfile(null);
       setUserProfile(null);
+    } finally {
+      if (profileFetchGenRef.current === gen) {
+        setProfileReady(true);
+      }
     }
   };
 
@@ -177,6 +185,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const logout = async (): Promise<void> => {
     try {
+      profileFetchGenRef.current += 1;
+      setProfileReady(true);
       clearSessionCache();
       const { error } = await supabase.auth.signOut();
       if (error) {
@@ -331,6 +341,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setCurrentUser(null);
         setUserProfile(null);
         setProfile(null);
+        setProfileReady(true);
         setLoading(false);
         return;
       }
@@ -345,6 +356,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setCurrentUser(null);
         setUserProfile(null);
         setProfile(null);
+        setProfileReady(true);
       }
       setLoading(false);
     });
@@ -369,8 +381,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             console.error('Error fetching profile on auth change:', err);
           });
         } else {
-          // Only clear user on explicit sign out or session expiration
-          if (event === 'SIGNED_OUT' || event === 'USER_UPDATED') {
+          // เคลียร์เฉพาะเมื่อออกจากระบบ — USER_UPDATED ไม่ได้หมายถึง logout
+          if (event === 'SIGNED_OUT') {
+            profileFetchGenRef.current += 1;
+            setProfileReady(true);
             setCurrentUser(null);
             setUserProfile(null);
             setProfile(null);
@@ -391,6 +405,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     currentUser,
     userProfile,
     profile,
+    profileReady,
     login,
     loginWithGoogle,
     register,

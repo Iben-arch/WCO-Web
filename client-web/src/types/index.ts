@@ -118,6 +118,8 @@ export interface AuthContextType {
   currentUser: User | null;
   userProfile: UserProfile | null;
   profile: Profile | null;
+  /** true เมื่อโหลด/ลองโหลด profiles สำหรับ currentUser เสร็จแล้ว (ใช้กัน race หน้า admin) */
+  profileReady: boolean;
   login: (email: string, password: string) => Promise<User>;
   loginWithGoogle: () => Promise<void>;
   register: (email: string, password: string, username: string) => Promise<User>;
