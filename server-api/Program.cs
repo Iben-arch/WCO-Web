@@ -108,10 +108,25 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             IssuerSigningKeyResolver = (tokenString, securityToken, kid, _) =>
             {
-                if (securityToken is not JwtSecurityToken jwt)
-                    return Array.Empty<SecurityKey>();
+                string? alg = null;
 
-                var alg = jwt.Header.Alg;
+                if (securityToken is JwtSecurityToken jwtSecToken)
+                {
+                    alg = jwtSecToken.Header.Alg;
+                }
+                else if (securityToken is Microsoft.IdentityModel.JsonWebTokens.JsonWebToken jsonWebToken)
+                {
+                    alg = jsonWebToken.Alg;
+                }
+                else
+                {
+                    // If fallback needed, return all keys
+                    var allKeys = new List<SecurityKey>();
+                    if (jwtValidationState.SymmetricKey != null) allKeys.Add(jwtValidationState.SymmetricKey);
+                    allKeys.AddRange(jwtValidationState.JwksKeys);
+                    return allKeys;
+                }
+
                 if (string.Equals(alg, SecurityAlgorithms.HmacSha256, StringComparison.Ordinal))
                 {
                     if (jwtValidationState.SymmetricKey != null)

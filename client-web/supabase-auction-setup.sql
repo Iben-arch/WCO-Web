@@ -35,7 +35,8 @@ ALTER TABLE posts
   ADD COLUMN IF NOT EXISTS "bidCount" INTEGER DEFAULT 0,
   ADD COLUMN IF NOT EXISTS "winnerId" UUID,
   ADD COLUMN IF NOT EXISTS "paymentDeadline" TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS "auctionStatus" TEXT;
+  ADD COLUMN IF NOT EXISTS "auctionStatus" TEXT,
+  ADD COLUMN IF NOT EXISTS "defaultedBidders" JSONB;
 
 -- auctionStatus: 'active' = กำลังประมูล, 'won_pending_payment' = มีผู้ชนะรอชำระ, 'sold' = ชำระแล้ว, 'auction_released' = หลุด(ไม่ชำระภายในเวลา) รอเจ้าของตัดสินใจประมูลใหม่
 

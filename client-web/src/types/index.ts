@@ -80,6 +80,7 @@ export interface Post {
   auctionStatus?: 'active' | 'won_pending_payment' | 'sold' | 'auction_released';
   winnerId?: string;
   paymentDeadline?: Date | FirestoreTimestamp | string;
+  defaultedBidders?: string[];
 }
 
 // Sort Types
