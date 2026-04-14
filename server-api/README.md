@@ -1,280 +1,64 @@
-# Server API - Supabase Middleware
+# WCO Thailand - Server API (Backend)
 
-API ที่ทำหน้าที่เป็น Middleware ระหว่าง Client กับ Supabase
+API Backend และ Middleware ของโปรเจกต์ WCO Thailand พัฒนาด้วย ASP.NET Core 8.0 ทำหน้าที่เชื่อมต่อ Business Logic ต่างๆ ระหว่าง Frontend และฐานข้อมูล Supabase
 
-## คุณสมบัติ
+## 🌟 คุณสมบัติ (Features)
 
-- ✅ **Supabase Integration** - เชื่อมต่อกับ Supabase สำหรับเก็บข้อมูลและ Storage
-- ✅ **Authentication** - รองรับ Firebase Authentication (JWT)
-- ✅ **Posts Management** - จัดการ Posts (Create, Read, Update, Delete)
-- ✅ **Profile Management** - จัดการ User Profiles และอัปโหลดรูปโปรไฟล์
-- ✅ **Image Upload** - อัปโหลดรูปภาพหลายรูปพร้อมกัน
-- ✅ **Queue System** - Queue-based processing สำหรับ Create และ Edit operations
+- ✅ **Supabase Integration** - เชื่อมต่อกับฐานข้อมูล PostgreSQL และ Storage บน Supabase แทรกกลางเพื่อตรวจสอบข้อมูล
+- ✅ **Authentication (Supabase JWT)** - ตรวจสอบสิทธิ์ผู้ใช้งานจาก Token ของ Supabase และจัดการสิทธิการใช้งาน (Role-based: Admin/User)
+- ✅ **Auction & Posts Management** - จัดการระบบโพสต์และประมูลสินค้า
+- ✅ **Profile Management** - ดึงและจัดการข้อมูลผู้ใช้งานจากตาราง `profiles` ของ Supabase
+- ✅ **AI Services Integration** - เชื่อมต่อกับ `clip-worker` (ค้นหาด้วยรูป) และบริการตรวจสอบภาพ AI-generated (Sightengine)
 
-## โครงสร้างไฟล์
+## 📁 โครงสร้างโปรเจกต์ (Project Structure)
 
 ```
 server-api/
 ├── Controllers/
-│   ├── PostsController.cs      # จัดการ Posts (CRUD)
-│   ├── AuthController.cs       # จัดการ Authentication และ Profile
-│   └── QueueApiController.cs   # Queue/Middleware สำหรับ Create/Edit
+│   ├── AuthController.cs       # ดูแลการตรวจสอบ Token และสิทธิ์ของ Admin
+│   ├── PostsController.cs      # ระบบจัดการร้านค้า/โพสต์ทั่วไป
+│   ├── CartController.cs       # ระบบจัดการตะกร้าสินค้า 
+│   ├── ...                     # Controller อื่นๆ
 ├── Services/
-│   └── SupabaseService.cs      # Service สำหรับเชื่อมต่อ Supabase
-├── Program.cs                  # Application configuration
-├── ServerApi.csproj           # Project file
-└── appsettings.json           # Configuration file
+│   └── SupabaseService.cs      # Service หลักสำหรับ query และเรียกใช้ Supabase
+├── Program.cs                  # กำหนด Middleware, Swagger และ Configuration
+├── appsettings.json            # ไฟล์สำหรับตั้งค่า Environment 
+└── ServerApi.csproj            # ไฟล์คอนฟิกโปรเจกต์ .NET
 ```
 
-## การติดตั้ง
+## 🚀 การติดตั้งและใช้งาน (Getting Started)
 
-### Prerequisites
-- .NET 8.0 SDK หรือสูงกว่า
-- Supabase Project (สำหรับ Database และ Storage)
-
-### 1. ติดตั้ง Dependencies
-
-```bash
-cd server-api
-dotnet restore
-```
-
-### 2. ตั้งค่า Supabase
-
-1. สร้าง Supabase Project ที่ [Supabase](https://supabase.com/)
-2. ดู Supabase URL, Service Role Key จาก Project Settings
-3. แก้ไข `appsettings.json`:
-   ```json
-   {
-     "Supabase": {
-       "Url": "https://your-project.supabase.co",
-       "ServiceRoleKey": "your-service-role-key",
-       "JwtSecret": "your-jwt-secret"
-     }
-   }
-   ```
-
-### 3. รัน Application
-
-```bash
-dotnet run
-```
-
-API จะรันที่ `https://localhost:5001` หรือ `http://localhost:5000`
-
-**ค้นหาด้วยรูป (image search):** ต้องรัน clip-worker แยกอีกเทอร์มินัล (ที่ `clip-worker/` รัน `uvicorn main:app --host 0.0.0.0 --port 5000`). อย่าตั้ง `ClipWorker:BaseUrl` เป็นพอร์ตเดียวกับ API (เช่น 5001) เพราะจะทำให้เรียกผิดเซิร์ฟเวอร์และได้ 404.
-
-## API Endpoints
-
-### Posts API
-
-#### สร้าง Post ใหม่
-```http
-POST /api/posts
-Content-Type: multipart/form-data
-Authorization: Bearer {token}
-
-{
-  "title": "การ์ดเกม",
-  "description": "รายละเอียด",
-  "category": "Pokemon",
-  "postType": "sale",
-  "price": "1000",
-  "images": [file1, file2, ...]
-}
-```
-
-#### อ่าน Posts ทั้งหมด
-```http
-GET /api/posts?category=Pokemon&search=keyword
-```
-
-#### อ่าน Post ตาม ID
-```http
-GET /api/posts/{id}
-```
-
-#### อัปเดต Post
-```http
-PUT /api/posts/{id}
-Authorization: Bearer {token}
-Content-Type: application/json
-
-{
-  "title": "การ์ดเกม (แก้ไข)",
-  "price": 1200
-}
-```
-
-#### ลบ Post
-```http
-DELETE /api/posts/{id}
-Authorization: Bearer {token}
-```
-
-#### ดึงโพสต์ของ User
-```http
-GET /api/posts/my-posts
-Authorization: Bearer {token}
-```
-
-### Image search (CLIP + pgvector)
-
-ค้นหาด้วยรูปภาพ (lens-like) ใช้ CLIP embedding และ pgvector ใน Supabase (ไม่เสียค่าใช้จ่าย)
-
-1. **Supabase**: รัน SQL ใน `client-web/supabase-image-embeddings-setup.sql` (เปิด extension vector, สร้างตาราง `post_image_embeddings` และ RPC `match_posts_by_embedding`)
-2. **CLIP worker**: รัน Python worker ในโฟลเดอร์ `clip-worker/` (ดู `clip-worker/README.md`) แล้วตั้งค่า `ClipWorker:BaseUrl` ใน appsettings
-3. **Backfill**: หลัง deploy เรียก `POST /api/admin/backfill-embeddings?limit=50` (แอดมินเท่านั้น) เพื่อสร้าง embeddings ให้โพสต์เก่า
-
-```http
-POST /api/card-detection/search
-Content-Type: multipart/form-data
-
-images: [file1, file2, ...]
-maxResults: (optional) จำนวนผลลัพธ์สูงสุด
-```
-
-### Auth API
-
-#### สร้าง/อัปเดต Profile
-```http
-POST /api/auth/profile
-Authorization: Bearer {token}
-Content-Type: application/json
-
-{
-  "displayName": "ชื่อผู้ใช้",
-  "email": "user@example.com"
-}
-```
-
-#### ดึงข้อมูล Profile
-```http
-GET /api/auth/profile
-Authorization: Bearer {token}
-```
-
-#### อัปโหลดรูป Profile
-```http
-POST /api/auth/upload-profile-image
-Authorization: Bearer {token}
-Content-Type: multipart/form-data
-
-profileImage: [file]
-```
-
-#### ตรวจสอบ Like Status
-```http
-GET /api/auth/check-like/{postId}
-Authorization: Bearer {token}
-```
-
-#### Toggle Like
-```http
-POST /api/auth/like/{postId}
-Authorization: Bearer {token}
-```
-
-### Queue API
-
-#### สร้างข้อมูลผ่าน Queue
-```http
-POST /api/QueueApi/create
-Content-Type: application/json
-
-{
-  "entityType": "POST",
-  "data": { ... }
-}
-```
-
-#### แก้ไขข้อมูลผ่าน Queue
-```http
-PUT /api/QueueApi/edit/{id}
-Content-Type: application/json
-
-{
-  "entityType": "POST",
-  "data": { ... }
-}
-```
-
-## Authentication
-
-API ใช้ Firebase Authentication (JWT) สำหรับการยืนยันตัวตน
-
-### การส่ง Token
-
-ส่ง Token ใน Header:
-```
-Authorization: Bearer {firebase-id-token}
-```
-
-### การได้ Token
-
-Client ต้องใช้ Firebase SDK เพื่อ Login และได้ ID Token:
-
-```typescript
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from './config/firebase';
-
-const userCredential = await signInWithEmailAndPassword(auth, email, password);
-const token = await userCredential.user.getIdToken();
-```
-
-## ข้อมูลที่ Server ส่งไปยัง Firebase
-
-### Posts Collection
-- `title` - ชื่อโพสต์
-- `description` - รายละเอียด
-- `category` - หมวดหมู่
-- `images` - Array ของ Image URLs
-- `sellerId` - User ID ของผู้ขาย
-- `sellerName` - ชื่อผู้ขาย
-- `status` - สถานะ (pending, active, sold, inactive, rejected)
-- `postType` - ประเภท (sale, auction)
-- `price` - ราคา
-- `createdAt` - วันที่สร้าง
-- `updatedAt` - วันที่อัปเดตล่าสุด
-
-### Users Collection
-- `uid` - User ID
-- `displayName` - ชื่อที่แสดง
-- `email` - อีเมล
-- `photoURL` - URL ของรูปโปรไฟล์
-- `createdAt` - วันที่สร้าง
-- `updatedAt` - วันที่อัปเดตล่าสุด
-
-## Environment Variables
-
-สร้างไฟล์ `.env` หรือตั้งค่า Environment Variables:
-
-```bash
-GOOGLE_APPLICATION_CREDENTIALS=path/to/service-account-key.json
-```
-
-หรือแก้ไข `appsettings.json`:
+### 1. การตั้งค่า Environment (`appsettings.json`)
+จำเป็นต้องระบุ URL และ Service Key ของ Supabase:
 
 ```json
 {
   "Supabase": {
     "Url": "https://your-project.supabase.co",
-    "ServiceRoleKey": "your-service-role-key",
-    "JwtSecret": "your-jwt-secret"
+    "ServiceRoleKey": "your-supabase-service-role-key",
+    "JwtSecret": "your-jwt-secret-from-supabase"
+  },
+  "ClipWorker": {
+    "BaseUrl": "http://localhost:5002"
   }
 }
 ```
 
-## Swagger UI
+### 2. รัน Server
+รันคำสั่ง:
+```bash
+dotnet restore
+dotnet run
+```
+API จะรันที่ `https://localhost:5001` หรือ `http://localhost:5000`
 
-เมื่อรันใน Development mode สามารถเข้าดู Swagger UI ได้ที่:
-- `https://localhost:5001/swagger`
+### 3. ดู API Docs (Swagger UI)
+เมื่อรันใน Development Mode สามารถเปิด Swagger UI ได้ที่ `http://localhost:5000/swagger`
 
-## TODO
-
-- [ ] เพิ่ม Rate Limiting
-- [ ] เพิ่ม Caching สำหรับข้อมูลที่อ่านบ่อย
-- [ ] เพิ่ม Background Jobs สำหรับประมวลผล Queue
-- [ ] เพิ่ม Logging และ Monitoring
-- [ ] เพิ่ม Unit Tests
-- [ ] เพิ่ม Integration Tests
+## 🔐 Authentication
+ระบบปัจจุบันใช้ **Supabase JWT** (เลิกใช้ Firebase แล้ว)
+ทุกครั้งที่เรียก API ที่ต้องการสิทธิ์ ให้ส่ง Header:
+```http
+Authorization: Bearer {SUPABASE_ACCESS_TOKEN}
+```
+สำหรับ API ของผู้ดูแลระบบ บาง endpoint จะเช็ค Header `X-User-Id` ร่วมกับ Token ด้วย
