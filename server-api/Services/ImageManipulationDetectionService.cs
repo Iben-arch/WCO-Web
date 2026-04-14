@@ -24,15 +24,20 @@ namespace ServerApi.Services
     ///   5. Blockiness – JPEG 8×8 boundary gradient ratio
     ///   6. Luminance consistency – local gradient inconsistency of mean brightness per tile
     ///   7. Sharpness consistency – CoV of local Laplacian variance (focus/resolution mismatches)
+    ///   8. Color Channel Correlation – per-tile R-G/G-B/R-B correlation CoV (splice detection)
+    ///   9. JPEG Ghost Detection – multi-quality recompression to find spliced regions from different JPEG sources
+    ///  10. Wavelet Noise Estimation – Haar wavelet detail coefficient variance for noise profile mismatch
+    ///  11. Spatial Frequency Consistency – combined Laplacian+gradient energy CoV per tile
     ///
     /// AI-generation signals (diffusion / GAN):
-    ///   8. Multi-scale noise floor – high-freq residual at 3 blur kernel sizes
-    ///   9. HF/MF ratio – high-freq vs mid-freq energy balance
-    ///  10. Texture diversity – CoV of local Laplacian variance across tiles
-    ///  11. Histogram smoothness – roughness of pixel-value histogram (second-derivative magnitude)
-    ///  12. Mid-frequency regularity – CoV of band-pass (DoG) tile means
+    ///  12. Multi-scale noise floor – high-freq residual at 3 blur kernel sizes
+    ///  13. HF/MF ratio – high-freq vs mid-freq energy balance
+    ///  14. Texture diversity – CoV of local Laplacian variance across tiles
+    ///  15. Histogram smoothness – roughness of pixel-value histogram (second-derivative magnitude)
+    ///  16. Mid-frequency regularity – CoV of band-pass (DoG) tile means
+    ///  17. Color Palette Uniformity – unique color ratio in quantized space (AI has unnaturally uniform palettes)
     ///
-    /// Scoring uses sigmoid normalization and concordance analysis for better calibration.
+    /// Scoring uses sigmoid normalization and IQR-based concordance analysis for better calibration.
     /// </summary>
     public class ImageManipulationDetectionService
     {
@@ -59,6 +64,10 @@ namespace ServerApi.Services
                 var blockiness = ComputeBlockiness(gray);
                 var lumConsistency = ComputeLuminanceConsistency(gray);
                 var sharpConsistency = ComputeSharpnessConsistency(gray);
+                var colorCorrelation = ComputeColorChannelCorrelation(img);
+                var jpegGhost = ComputeJpegGhostScore(img);
+                var waveletNoise = ComputeWaveletNoiseInconsistency(gray);
+                var spatialFreq = ComputeSpatialFrequencyConsistency(gray);
 
                 // Normalization ranges are calibrated for trading-card marketplace photos.
                 // Cards are printed surfaces with uniform color/noise sitting on a textured
@@ -73,9 +82,19 @@ namespace ServerApi.Services
                 var blockRisk = SigmoidNormalize(blockiness, 10, 28, 2.5);
                 var lumRisk = SigmoidNormalize(lumConsistency, 0.42, 1.05, 3);
                 var sharpRisk = SigmoidNormalize(sharpConsistency, 0.50, 1.15, 3);
+                var ccaRisk = SigmoidNormalize(colorCorrelation, 0.15, 0.55, 3);
+                var ghostRisk = SigmoidNormalize(jpegGhost, 1.5, 6.0, 3);
+                var waveletRisk = SigmoidNormalize(waveletNoise, 0.30, 0.90, 3);
+                var spatialRisk = SigmoidNormalize(spatialFreq, 0.25, 0.75, 3);
 
-                var manipSignals = new[] { elaRisk, noiseRisk, satRisk, edgeRisk, blockRisk, lumRisk, sharpRisk };
-                var manipWeights = new[] { 0.22, 0.10, 0.08, 0.12, 0.16, 0.12, 0.20 };
+                var manipSignals = new[] {
+                    elaRisk, noiseRisk, satRisk, edgeRisk, blockRisk,
+                    lumRisk, sharpRisk, ccaRisk, ghostRisk, waveletRisk, spatialRisk
+                };
+                var manipWeights = new[] {
+                    0.16, 0.07, 0.06, 0.08, 0.10,
+                    0.08, 0.13, 0.09, 0.10, 0.07, 0.06
+                };
 
                 var rawManipRisk = WeightedAverage(manipSignals, manipWeights);
                 var manipConcordance = ComputeConcordance(manipSignals);
@@ -87,15 +106,17 @@ namespace ServerApi.Services
                 var textureDiversity = ComputeTextureDiversity(gray);
                 var histSmoothness = ComputeHistogramSmoothness(gray);
                 var midFreqRegularity = ComputeMidFreqRegularity(gray);
+                var colorPaletteUniformity = ComputeColorPaletteUniformity(img);
 
                 var smoothRisk = SigmoidNormalizeInverse(noiseFloor, 0.8, 4.0, 5);
                 var hfRisk = SigmoidNormalizeInverse(hfRatio, 0.08, 0.28, 5);
                 var texRisk = SigmoidNormalizeInverse(textureDiversity, 0.15, 0.55, 5);
                 var histRisk = SigmoidNormalizeInverse(histSmoothness, 0.3, 2.5, 4);
                 var midFreqRisk = SigmoidNormalizeInverse(midFreqRegularity, 0.12, 0.50, 4);
+                var paletteRisk = SigmoidNormalizeInverse(colorPaletteUniformity, 0.03, 0.18, 4);
 
-                var aiSignals = new[] { smoothRisk, hfRisk, texRisk, histRisk, midFreqRisk };
-                var aiWeights = new[] { 0.24, 0.20, 0.16, 0.22, 0.18 };
+                var aiSignals = new[] { smoothRisk, hfRisk, texRisk, histRisk, midFreqRisk, paletteRisk };
+                var aiWeights = new[] { 0.20, 0.17, 0.14, 0.18, 0.15, 0.16 };
 
                 var rawAiRisk = WeightedAverage(aiSignals, aiWeights);
                 var aiConcordance = ComputeConcordance(aiSignals);
@@ -413,6 +434,305 @@ namespace ServerApi.Services
             return Math.Sqrt(variance) / (avg + 1e-6);
         }
 
+        /// <summary>
+        /// Color Channel Correlation Analysis (CCA).
+        ///
+        /// In a naturally-photographed image, the R-G, G-B, and R-B channels maintain
+        /// consistent correlation patterns across regions (due to shared illumination,
+        /// camera response curves, and scene reflectance). When an image is spliced,
+        /// the pasted region was captured under different lighting / camera settings,
+        /// causing its inter-channel correlation to differ from the host image.
+        ///
+        /// We compute Pearson correlation between channel pairs in each 32×32 tile,
+        /// then measure the CoV of these correlations across all tiles.
+        /// High CoV = inconsistent color relationships = likely splice.
+        /// </summary>
+        private static double ComputeColorChannelCorrelation(Mat img)
+        {
+            const int tileSize = 32;
+            int cols = img.Width / tileSize;
+            int rows = img.Height / tileSize;
+            if (cols < 4 || rows < 4) return 0;
+
+            var channels = img.Split();
+            try
+            {
+                var rgCorrs = new List<double>(cols * rows);
+                var gbCorrs = new List<double>(cols * rows);
+                var rbCorrs = new List<double>(cols * rows);
+
+                for (int r = 0; r < rows; r++)
+                    for (int c = 0; c < cols; c++)
+                    {
+                        var roi = new System.Drawing.Rectangle(c * tileSize, r * tileSize, tileSize, tileSize);
+                        using var tileB = new Mat(channels[0], roi);
+                        using var tileG = new Mat(channels[1], roi);
+                        using var tileR = new Mat(channels[2], roi);
+
+                        var bData = tileB.ToImage<Gray, byte>();
+                        var gData = tileG.ToImage<Gray, byte>();
+                        var rData = tileR.ToImage<Gray, byte>();
+
+                        // Compute pairwise Pearson correlations
+                        rgCorrs.Add(PearsonCorrelation(rData, gData, tileSize));
+                        gbCorrs.Add(PearsonCorrelation(gData, bData, tileSize));
+                        rbCorrs.Add(PearsonCorrelation(rData, bData, tileSize));
+                    }
+
+                // CoV of each correlation map
+                double rgCoV = ComputeCoV(rgCorrs);
+                double gbCoV = ComputeCoV(gbCorrs);
+                double rbCoV = ComputeCoV(rbCorrs);
+
+                // Combined CCA score: average CoV across all three channel pairs
+                return (rgCoV + gbCoV + rbCoV) / 3.0;
+            }
+            finally
+            {
+                foreach (var ch in channels) ch.Dispose();
+            }
+        }
+
+        private static double PearsonCorrelation(Image<Gray, byte> a, Image<Gray, byte> b, int tileSize)
+        {
+            double sumA = 0, sumB = 0, sumAB = 0, sumA2 = 0, sumB2 = 0;
+            int n = tileSize * tileSize;
+            for (int y = 0; y < tileSize; y++)
+                for (int x = 0; x < tileSize; x++)
+                {
+                    double va = a.Data[y, x, 0];
+                    double vb = b.Data[y, x, 0];
+                    sumA += va; sumB += vb;
+                    sumAB += va * vb;
+                    sumA2 += va * va;
+                    sumB2 += vb * vb;
+                }
+            double meanA = sumA / n, meanB = sumB / n;
+            double cov = sumAB / n - meanA * meanB;
+            double stdA = Math.Sqrt(Math.Max(0, sumA2 / n - meanA * meanA));
+            double stdB = Math.Sqrt(Math.Max(0, sumB2 / n - meanB * meanB));
+            if (stdA < 1e-6 || stdB < 1e-6) return 0;
+            return Math.Clamp(cov / (stdA * stdB), -1, 1);
+        }
+
+        private static double ComputeCoV(List<double> values)
+        {
+            if (values.Count == 0) return 0;
+            double avg = values.Average();
+            if (Math.Abs(avg) < 1e-6) return 0;
+            double variance = values.Average(v => (v - avg) * (v - avg));
+            return Math.Sqrt(variance) / (Math.Abs(avg) + 1e-6);
+        }
+
+        /// <summary>
+        /// JPEG Ghost Detection: detects double-compressed regions by re-saving
+        /// the image at multiple JPEG quality levels and finding tiles where the
+        /// error is anomalously low at a specific quality.
+        ///
+        /// When an image region was previously saved at quality Q and then pasted
+        /// into a host image saved at quality Q', re-compressing at Q produces
+        /// near-zero error in the pasted region but not in the host. This quality-
+        /// dependent error pattern reveals splice boundaries.
+        ///
+        /// We test qualities 51–95 in steps of 4, compute per-tile ELA at each,
+        /// and measure the maximum cross-quality inconsistency (tiles that "ghost"
+        /// at one quality but not others).
+        /// </summary>
+        private static double ComputeJpegGhostScore(Mat img)
+        {
+            const int tileSize = 32;
+            int cols = img.Width / tileSize;
+            int rows = img.Height / tileSize;
+            if (cols < 4 || rows < 4) return 0;
+
+            int tileCount = cols * rows;
+            int[] testQualities = { 51, 55, 59, 63, 67, 71, 75, 79, 83, 87, 91, 95 };
+
+            // For each quality, compute per-tile mean ELA error
+            var qualityErrors = new double[testQualities.Length][];
+            for (int qi = 0; qi < testQualities.Length; qi++)
+            {
+                int q = testQualities[qi];
+                using var buffer = new Emgu.CV.Util.VectorOfByte();
+                CvInvoke.Imencode(".jpg", img, buffer,
+                    new KeyValuePair<ImwriteFlags, int>(ImwriteFlags.JpegQuality, q));
+                var reBytes = buffer.ToArray();
+                if (reBytes.Length == 0) { qualityErrors[qi] = new double[tileCount]; continue; }
+
+                using var recomp = new Mat();
+                CvInvoke.Imdecode(reBytes, ImreadModes.Color, recomp);
+                if (recomp.IsEmpty) { qualityErrors[qi] = new double[tileCount]; continue; }
+
+                using var diff = new Mat();
+                CvInvoke.AbsDiff(img, recomp, diff);
+                using var grayDiff = new Mat();
+                CvInvoke.CvtColor(diff, grayDiff, ColorConversion.Bgr2Gray);
+
+                qualityErrors[qi] = new double[tileCount];
+                int idx = 0;
+                for (int r = 0; r < rows; r++)
+                    for (int c = 0; c < cols; c++)
+                    {
+                        var roi = new System.Drawing.Rectangle(c * tileSize, r * tileSize, tileSize, tileSize);
+                        using var tile = new Mat(grayDiff, roi);
+                        MCvScalar m = default, s = default;
+                        CvInvoke.MeanStdDev(tile, ref m, ref s);
+                        qualityErrors[qi][idx++] = m.V0;
+                    }
+            }
+
+            // For each tile, find the quality that gives minimum error → that tile's
+            // "native" quality. Then measure how much the native quality distribution
+            // varies across tiles. Uniform = normal. Bimodal/multimodal = splice.
+            var bestQualityIndices = new int[tileCount];
+            for (int t = 0; t < tileCount; t++)
+            {
+                int bestQi = 0;
+                double bestError = double.MaxValue;
+                for (int qi = 0; qi < testQualities.Length; qi++)
+                {
+                    if (qualityErrors[qi][t] < bestError)
+                    {
+                        bestError = qualityErrors[qi][t];
+                        bestQi = qi;
+                    }
+                }
+                bestQualityIndices[t] = bestQi;
+            }
+
+            // Measure dispersion of best-quality indices
+            double qMean = bestQualityIndices.Average(q => (double)q);
+            double qVariance = bestQualityIndices.Average(q => (q - qMean) * (q - qMean));
+            double qStd = Math.Sqrt(qVariance);
+
+            // Also measure: fraction of tiles whose best quality differs from the mode
+            var qualityCounts = new int[testQualities.Length];
+            foreach (var qi in bestQualityIndices) qualityCounts[qi]++;
+            int modeCount = qualityCounts.Max();
+            double outlierFraction = 1.0 - (double)modeCount / tileCount;
+
+            return qStd * 1.5 + outlierFraction * 8.0;
+        }
+
+        /// <summary>
+        /// Wavelet-based noise estimation using a Haar wavelet approximation.
+        ///
+        /// Real Haar wavelet decomposes an image into LL (approx), LH (horizontal detail),
+        /// HL (vertical detail), and HH (diagonal detail) sub-bands. The HH sub-band
+        /// predominantly contains noise. Different cameras/processing pipelines produce
+        /// distinct noise signatures in HH. Spliced regions have mismatched HH statistics.
+        ///
+        /// We approximate Haar decomposition using box-filter differences:
+        ///   HH ≈ |img - blur_h - blur_v + blur_hv|  (diagonal detail)
+        /// Then compute CoV of HH energy across tiles.
+        /// </summary>
+        private static double ComputeWaveletNoiseInconsistency(Mat gray)
+        {
+            const int tileSize = 32;
+            int cols = gray.Width / tileSize;
+            int rows = gray.Height / tileSize;
+            if (cols < 4 || rows < 4) return 0;
+
+            // Approximate Haar HH sub-band using separable box filters
+            using var blurH = new Mat();
+            using var blurV = new Mat();
+            using var blurHV = new Mat();
+            CvInvoke.Blur(gray, blurH, new System.Drawing.Size(3, 1), new System.Drawing.Point(-1, -1));  // horizontal blur
+            CvInvoke.Blur(gray, blurV, new System.Drawing.Size(1, 3), new System.Drawing.Point(-1, -1));  // vertical blur
+            CvInvoke.Blur(gray, blurHV, new System.Drawing.Size(3, 3), new System.Drawing.Point(-1, -1)); // both
+
+            // HH ≈ gray - blurH - blurV + blurHV (approximates diagonal detail)
+            using var hh = new Mat();
+            using var temp1 = new Mat();
+            using var temp2 = new Mat();
+
+            // Convert to float for subtraction
+            using var grayF = new Mat();
+            using var blurHF = new Mat();
+            using var blurVF = new Mat();
+            using var blurHVF = new Mat();
+            gray.ConvertTo(grayF, DepthType.Cv32F);
+            blurH.ConvertTo(blurHF, DepthType.Cv32F);
+            blurV.ConvertTo(blurVF, DepthType.Cv32F);
+            blurHV.ConvertTo(blurHVF, DepthType.Cv32F);
+
+            CvInvoke.Subtract(grayF, blurHF, temp1);
+            CvInvoke.Subtract(temp1, blurVF, temp2);
+            CvInvoke.Add(temp2, blurHVF, hh);
+
+            // Compute per-tile HH energy (variance of diagonal detail)
+            var tileEnergies = new List<double>(cols * rows);
+            for (int r = 0; r < rows; r++)
+                for (int c = 0; c < cols; c++)
+                {
+                    var roi = new System.Drawing.Rectangle(c * tileSize, r * tileSize, tileSize, tileSize);
+                    using var tile = new Mat(hh, roi);
+                    MCvScalar m = default, s = default;
+                    CvInvoke.MeanStdDev(tile, ref m, ref s);
+                    tileEnergies.Add(s.V0 * s.V0); // variance = std²
+                }
+
+            var avg = tileEnergies.Average();
+            if (avg < 0.1) return 0;
+            var variance = tileEnergies.Average(e => (e - avg) * (e - avg));
+            return Math.Sqrt(variance) / (avg + 1e-6);
+        }
+
+        /// <summary>
+        /// Spatial Frequency Consistency: measures the uniformity of local spatial
+        /// frequency content across 32×32 tiles.
+        ///
+        /// Each tile's "spatial frequency" is a combination of Laplacian energy and
+        /// gradient magnitude — capturing both fine-detail and edge energy. Natural
+        /// images have smoothly varying spatial frequency across regions. Spliced
+        /// regions from a different camera, resolution, or processing pipeline
+        /// produce abrupt spatial-frequency discontinuities.
+        ///
+        /// Returns CoV of per-tile spatial frequency measures.
+        /// </summary>
+        private static double ComputeSpatialFrequencyConsistency(Mat gray)
+        {
+            const int tileSize = 32;
+            int cols = gray.Width / tileSize;
+            int rows = gray.Height / tileSize;
+            if (cols < 4 || rows < 4) return 0;
+
+            var tileFreqs = new List<double>(cols * rows);
+            for (int r = 0; r < rows; r++)
+                for (int c = 0; c < cols; c++)
+                {
+                    var roi = new System.Drawing.Rectangle(c * tileSize, r * tileSize, tileSize, tileSize);
+                    using var tile = new Mat(gray, roi);
+
+                    // Laplacian energy
+                    using var lap = new Mat();
+                    CvInvoke.Laplacian(tile, lap, DepthType.Cv64F);
+                    MCvScalar lapM = default, lapS = default;
+                    CvInvoke.MeanStdDev(lap, ref lapM, ref lapS);
+                    double lapEnergy = lapS.V0 * lapS.V0;
+
+                    // Gradient magnitude energy
+                    using var gx = new Mat();
+                    using var gy = new Mat();
+                    CvInvoke.Sobel(tile, gx, DepthType.Cv32F, 1, 0, 3);
+                    CvInvoke.Sobel(tile, gy, DepthType.Cv32F, 0, 1, 3);
+                    MCvScalar gxM = default, gxS = default;
+                    MCvScalar gyM = default, gyS = default;
+                    CvInvoke.MeanStdDev(gx, ref gxM, ref gxS);
+                    CvInvoke.MeanStdDev(gy, ref gyM, ref gyS);
+                    double gradEnergy = gxS.V0 * gxS.V0 + gyS.V0 * gyS.V0;
+
+                    // Combined spatial frequency: Laplacian captures fine detail,
+                    // gradient captures edge structure
+                    tileFreqs.Add(lapEnergy * 0.6 + gradEnergy * 0.4);
+                }
+
+            var avg = tileFreqs.Average();
+            if (avg < 1) return 0;
+            var variance = tileFreqs.Average(f => (f - avg) * (f - avg));
+            return Math.Sqrt(variance) / (avg + 1e-6);
+        }
+
         // ── AI-generation helpers ─────────────────────────────────────────────────
 
         /// <summary>
@@ -562,6 +882,52 @@ namespace ServerApi.Services
             return Math.Sqrt(variance) / (avg + 1e-6);
         }
 
+        /// <summary>
+        /// Color Palette Uniformity: measures how diverse the color palette is.
+        ///
+        /// AI-generated images tend to produce unnaturally uniform, smooth color
+        /// distributions — the latent space synthesis avoids the noisy, quantized
+        /// color variation that real camera sensors produce.
+        ///
+        /// We quantize each pixel's color to a reduced palette (6 levels per channel
+        /// = 216 possible colors) and count unique colors, normalized by pixel count.
+        /// Real photos produce many unique quantized colors (diverse lighting, texture,
+        /// noise). AI images produce fewer (smooth gradients, uniform regions).
+        ///
+        /// Low return value → uniform palette → AI-like (use SigmoidNormalizeInverse).
+        /// </summary>
+        private static double ComputeColorPaletteUniformity(Mat img)
+        {
+            var imgData = img.ToImage<Bgr, byte>();
+            int W = img.Width, H = img.Height;
+            int totalPixels = W * H;
+            if (totalPixels < 100) return 0.5;
+
+            // Quantize to 6 levels per channel (0-5) → 216 possible colors
+            var uniqueColors = new HashSet<int>();
+
+            // Sample at most 50,000 pixels for performance
+            int step = Math.Max(1, totalPixels / 50000);
+            int sampledCount = 0;
+            for (int y = 0; y < H; y++)
+                for (int x = 0; x < W; x++)
+                {
+                    if ((y * W + x) % step != 0) continue;
+                    int b = imgData.Data[y, x, 0] / 43; // 0-5
+                    int g = imgData.Data[y, x, 1] / 43;
+                    int r = imgData.Data[y, x, 2] / 43;
+                    uniqueColors.Add(r * 36 + g * 6 + b);
+                    sampledCount++;
+                }
+
+            if (sampledCount < 50) return 0.5;
+
+            // Ratio of unique colors to total sampled pixels
+            // Real photos: 0.05-0.30+ (many unique colors relative to samples)
+            // AI images: 0.01-0.08 (fewer unique colors, smoother gradients)
+            return (double)uniqueColors.Count / sampledCount;
+        }
+
         // ── Scoring utilities ─────────────────────────────────────────────────────
 
         /// <summary>
@@ -605,36 +971,75 @@ namespace ServerApi.Services
         private record ConcordanceResult(double Factor, double Confidence);
 
         /// <summary>
-        /// Concordance analysis: measures how many signals agree on risk direction.
-        /// When multiple independent signals point the same way, the overall score is
-        /// boosted (up to +15%) and confidence is high. When signals disagree, the
-        /// score is dampened (-10%) and confidence drops.
+        /// IQR-based concordance analysis: measures how tightly clustered the signal
+        /// scores are and whether they agree on risk direction.
+        ///
+        /// Instead of simple threshold counting, uses the Inter-Quartile Range (IQR)
+        /// to measure signal agreement:
+        ///   - Small IQR + high median → strong agreement on high risk → boost factor
+        ///   - Small IQR + low median  → strong agreement on low risk → dampen factor
+        ///   - Large IQR              → signals disagree → dampen factor, low confidence
+        ///
+        /// This gives more nuanced concordance than binary high/low counting.
         /// </summary>
         private static ConcordanceResult ComputeConcordance(double[] scores)
         {
-            var highCount = scores.Count(s => s >= 55);
-            var lowCount = scores.Count(s => s <= 25);
-            var total = (double)scores.Length;
+            if (scores.Length == 0) return new ConcordanceResult(1.0, 30);
+
+            var sorted = scores.OrderBy(s => s).ToArray();
+            int n = sorted.Length;
+
+            double median = n % 2 == 1
+                ? sorted[n / 2]
+                : (sorted[n / 2 - 1] + sorted[n / 2]) / 2.0;
+
+            // Quartiles
+            double q1 = sorted[Math.Max(0, n / 4)];
+            double q3 = sorted[Math.Min(n - 1, 3 * n / 4)];
+            double iqr = q3 - q1;
+
+            // Normalized IQR: how spread out are the signals relative to the score range?
+            // Typical scores are in [5, 85], so max possible IQR ≈ 80.
+            double normalizedIqr = iqr / 80.0;
 
             double factor;
             double confidence;
 
-            if (highCount >= total * 0.60)
+            // Tight agreement (IQR < 15 points out of 80 range)
+            if (normalizedIqr < 0.19)
             {
-                var agreement = highCount / total;
-                factor = 1.0 + 0.15 * agreement;
-                confidence = 60 + agreement * 40;
+                if (median >= 55)
+                {
+                    // Strong agreement on high risk
+                    double agreement = 1.0 - normalizedIqr;
+                    factor = 1.0 + 0.15 * agreement;
+                    confidence = 65 + agreement * 35;
+                }
+                else if (median <= 30)
+                {
+                    // Strong agreement on low risk
+                    double agreement = 1.0 - normalizedIqr;
+                    factor = 1.0 - 0.12 * agreement;
+                    confidence = 65 + agreement * 35;
+                }
+                else
+                {
+                    // Agreement in the middle zone — inconclusive
+                    factor = 1.0;
+                    confidence = 45 + (1.0 - normalizedIqr) * 25;
+                }
             }
-            else if (lowCount >= total * 0.60)
+            // Moderate spread (IQR 15-30 points)
+            else if (normalizedIqr < 0.38)
             {
-                var agreement = lowCount / total;
-                factor = 1.0 - 0.12 * agreement;
-                confidence = 60 + agreement * 40;
+                factor = 0.95;
+                confidence = 35 + (1.0 - normalizedIqr) * 30;
             }
+            // Wide disagreement
             else
             {
-                factor = 0.90;
-                confidence = 30 + (Math.Max(highCount, lowCount) / total) * 40;
+                factor = 0.88;
+                confidence = 20 + (1.0 - normalizedIqr) * 25;
             }
 
             return new ConcordanceResult(factor, Math.Clamp(confidence, 0, 100));

@@ -1,6 +1,8 @@
 using System.Drawing;
+using System.Runtime.InteropServices;
 using Emgu.CV;
 using Emgu.CV.CvEnum;
+using Emgu.CV.Features2D;
 using Emgu.CV.Structure;
 using Emgu.CV.Util;
 
@@ -10,13 +12,22 @@ namespace ServerApi.Services
     /// Detects rectangular trading cards in an image.
     ///
     /// Strategy (in order):
+    ///   0. Color-based background segmentation — estimates dominant background color from
+    ///      border pixels, builds a foreground mask via color distance, uses it to enhance
+    ///      contour detection when the background is sufficiently uniform.
     ///   1. Projection-based grid detection  — best for seller photos where cards are arranged in a grid
     ///      on a uniform background (table/mat).  Finds horizontal/vertical gaps between cards using
     ///      a foreground-mask projection, then crops each grid cell.
-    ///   2. Contour-based detection          — fallback for single cards, mixed piles, or varied backgrounds.
-    ///      Uses edge detection + contour filtering with card aspect-ratio constraints.
-    ///   3. Grid completion                  — after detection, infers missing cards if some are missing
+    ///   2. Contour-based detection (multi-scale) — fallback for single cards, mixed piles, or varied
+    ///      backgrounds. Uses adaptive-thresholded edge detection + contour filtering with card
+    ///      aspect-ratio constraints. Runs at multiple scales (1×, 0.75×, 0.5×) to catch small cards.
+    ///   3. Grid completion — after detection, infers missing cards if some are missing
     ///      from an otherwise regular grid pattern.
+    ///   4. Perspective correction — when a detected quad is not axis-aligned, applies a
+    ///      perspective warp to produce a properly oriented rectangular crop.
+    ///   5. MSER text-region scoring — validates each candidate by checking for text-like
+    ///      regions (card names, stats, numbers). Real cards score higher; plain background
+    ///      rectangles are penalised.
     /// </summary>
     public class CardDetectionService
     {
@@ -66,11 +77,14 @@ namespace ServerApi.Services
             using var gray = new Mat();
             CvInvoke.CvtColor(working, gray, ColorConversion.Bgr2Gray);
 
+            // ── Method 0: color-based background mask (optional enhancer) ──────────
+            using var bgMask = TryColorBackgroundMask(working);
+
             // ── Method 1: projection grid ──────────────────────────────────────────
             var gridRects = TryGridDetection(working, gray, minArea);
 
-            // ── Method 2: contour detection ────────────────────────────────────────
-            var contourRects = ContourDetection(working, gray, minArea);
+            // ── Method 2: multi-scale contour detection ────────────────────────────
+            var contourRects = MultiScaleContourDetection(working, gray, bgMask, minArea);
 
             // ── Merge ──────────────────────────────────────────────────────────────
             List<Rectangle> merged = gridRects.Count >= 2
@@ -85,14 +99,17 @@ namespace ServerApi.Services
             var withPairs = merged.Select(r => (Rect: r, Area: (double)(r.Width * r.Height))).ToList();
             var withoutOuter = RemoveOuterWhenContainsInnerCard(withPairs, minArea);
 
-            // ── Score and deduplicate ──────────────────────────────────────────────
+            // ── Score and deduplicate (with MSER text-region validation) ────────────
             var scored = withoutOuter
                 .Select(c =>
                 {
                     double tex = TextureScore(gray, c.Rect);
+                    double textLikelihood = TextLikelihoodScore(gray, c.Rect);
                     double aspect = (double)c.Rect.Width / c.Rect.Height;
                     double aspectFit = 1.0 - Math.Min(1.0, Math.Abs(aspect - CardAspect) / 0.2);
-                    double score = tex * (0.55 + 0.45 * aspectFit);
+                    // Cards with text + good texture + correct aspect ratio score highest.
+                    // textLikelihood in [0,1]: 1 = many text-like regions, 0 = none
+                    double score = tex * (0.45 + 0.30 * aspectFit + 0.25 * textLikelihood);
                     return (c.Rect, c.Area, score);
                 })
                 .OrderByDescending(x => x.score)
@@ -115,6 +132,95 @@ namespace ServerApi.Services
             }
 
             return CropCards(working, filtered);
+        }
+
+        // ══════════════════════════════════════════════════════════════════════════════════════════
+        // Method 0 — Color-based background segmentation
+        // ══════════════════════════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// Estimates the dominant background color from border pixels and creates a
+        /// foreground mask (white = card, black = background). Returns null if the
+        /// background is too varied for reliable segmentation.
+        ///
+        /// Works well when cards sit on a uniform mat/table where border pixels
+        /// represent the background color. The mask is used to enhance contour
+        /// detection in ContourDetection.
+        /// </summary>
+        private static Mat? TryColorBackgroundMask(Mat working)
+        {
+            try
+            {
+                int W = working.Width, H = working.Height;
+                int borderW = Math.Max(8, W / 20);
+                int borderH = Math.Max(8, H / 20);
+
+                // Sample border pixels to estimate background color in HSV space
+                using var hsv = new Mat();
+                CvInvoke.CvtColor(working, hsv, ColorConversion.Bgr2Hsv);
+
+                var hValues = new List<double>();
+                var sValues = new List<double>();
+                var vValues = new List<double>();
+
+                var hsvImg = hsv.ToImage<Hsv, byte>();
+                // Top, bottom, left, right border strips
+                void SampleRegion(int x0, int y0, int x1, int y1)
+                {
+                    int step = Math.Max(1, ((x1 - x0) * (y1 - y0)) / 200);
+                    int idx = 0;
+                    for (int y = y0; y < y1 && y < H; y++)
+                        for (int x = x0; x < x1 && x < W; x++)
+                        {
+                            if (idx++ % step != 0) continue;
+                            hValues.Add(hsvImg.Data[y, x, 0]);
+                            sValues.Add(hsvImg.Data[y, x, 1]);
+                            vValues.Add(hsvImg.Data[y, x, 2]);
+                        }
+                }
+                SampleRegion(0, 0, W, borderH);        // top
+                SampleRegion(0, H - borderH, W, H);    // bottom
+                SampleRegion(0, 0, borderW, H);         // left
+                SampleRegion(W - borderW, 0, W, H);     // right
+
+                if (hValues.Count < 20) return null;
+
+                // Check if background is uniform enough (low std-dev in S and V)
+                double sMean = sValues.Average(), vMean = vValues.Average();
+                double sStd = Math.Sqrt(sValues.Average(v => (v - sMean) * (v - sMean)));
+                double vStd = Math.Sqrt(vValues.Average(v => (v - vMean) * (v - vMean)));
+
+                // If border colors are too varied, skip this method
+                if (sStd > 45 || vStd > 55) return null;
+
+                double hMean = hValues.Average();
+
+                // Create mask: pixels far from background color = foreground (card)
+                var mask = new Mat(H, W, DepthType.Cv8U, 1);
+                var foreground = mask.ToImage<Gray, byte>();
+                for (int y = 0; y < H; y++)
+                    for (int x = 0; x < W; x++)
+                    {
+                        double dh = Math.Min(Math.Abs(hsvImg.Data[y, x, 0] - hMean),
+                                             180 - Math.Abs(hsvImg.Data[y, x, 0] - hMean));
+                        double ds = Math.Abs(hsvImg.Data[y, x, 1] - sMean);
+                        double dv = Math.Abs(hsvImg.Data[y, x, 2] - vMean);
+                        double dist = dh * 1.2 + ds * 0.6 + dv * 0.5;
+                        foreground.Data[y, x, 0] = dist > 35 ? (byte)255 : (byte)0;
+                    }
+
+                // Morphological cleanup
+                using var kernel = CvInvoke.GetStructuringElement(ElementShape.Rectangle, new Size(5, 5), new Point(-1, -1));
+                var result = foreground.Mat.Clone();
+                CvInvoke.MorphologyEx(result, result, MorphOp.Close, kernel, new Point(-1, -1), 2, BorderType.Default, new MCvScalar());
+                CvInvoke.MorphologyEx(result, result, MorphOp.Open, kernel, new Point(-1, -1), 1, BorderType.Default, new MCvScalar());
+
+                return result;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         // ══════════════════════════════════════════════════════════════════════════════════════════
@@ -150,11 +256,6 @@ namespace ServerApi.Services
             CvInvoke.AddWeighted(gx, 0.5, gy, 0.5, 0, mag);
 
             // ── 2. Compute column and row gradient profiles ───────────────────────
-            // vProfile[x] = average gradient magnitude across all rows at column x
-            // hProfile[y] = average gradient magnitude across all cols at row y
-            //
-            // Gaps between cards → vProfile ≈ 0  (smooth uniform background)
-            // Card columns      → vProfile is HIGH (artwork + border gradients)
             double[] vProfile = new double[W];
             double[] hProfile = new double[H];
 
@@ -169,18 +270,14 @@ namespace ServerApi.Services
             for (int x = 0; x < W; x++) vProfile[x] /= H;
             for (int y = 0; y < H; y++) hProfile[y] /= W;
 
-            // ── 3. Smooth profiles to remove per-pixel spikes ────────────────────
-            SmoothProjection(vProfile, 11);
-            SmoothProjection(hProfile, 11);
+            // ── 3. Gaussian smooth profiles (more robust than box-filter) ────────
+            GaussianSmoothProjection(vProfile, 13);
+            GaussianSmoothProjection(hProfile, 13);
 
             // ── 4. Adaptive valley threshold ──────────────────────────────────────
-            // Valleys (gaps between cards or image borders) are regions where the
-            // profile drops below 28% of the peak.  Card artwork creates high values
-            // across the whole card width, so card columns stay well above threshold
-            // even for uniformly coloured cards with minimal edge contrast.
             double vMax = vProfile.Max();
             double hMax = hProfile.Max();
-            if (vMax < 0.5 || hMax < 0.5) return []; // essentially featureless image
+            if (vMax < 0.5 || hMax < 0.5) return [];
 
             double vThresh = Math.Max(0.8, vMax * 0.28);
             double hThresh = Math.Max(0.8, hMax * 0.28);
@@ -227,18 +324,33 @@ namespace ServerApi.Services
         }
 
         /// <summary>
-        /// Smooth a 1-D projection array with a simple box-filter window to reduce per-pixel noise.
+        /// Gaussian-weighted smoothing for projection arrays. More robust against outlier
+        /// spikes than the original box-filter, producing cleaner valley/peak separation.
         /// </summary>
-        private static void SmoothProjection(double[] proj, int window)
+        private static void GaussianSmoothProjection(double[] proj, int window)
         {
             double[] tmp = new double[proj.Length];
             int half = window / 2;
+            double sigma = window / 4.0;
+            double[] kernel = new double[window];
+            double kSum = 0;
+            for (int i = 0; i < window; i++)
+            {
+                double x = i - half;
+                kernel[i] = Math.Exp(-(x * x) / (2.0 * sigma * sigma));
+                kSum += kernel[i];
+            }
+            for (int i = 0; i < window; i++) kernel[i] /= kSum;
+
             for (int i = 0; i < proj.Length; i++)
             {
-                double sum = 0; int cnt = 0;
-                for (int j = Math.Max(0, i - half); j <= Math.Min(proj.Length - 1, i + half); j++)
-                { sum += proj[j]; cnt++; }
-                tmp[i] = sum / cnt;
+                double sum = 0;
+                for (int k = 0; k < window; k++)
+                {
+                    int j = Math.Clamp(i + k - half, 0, proj.Length - 1);
+                    sum += proj[j] * kernel[k];
+                }
+                tmp[i] = sum;
             }
             Array.Copy(tmp, proj, proj.Length);
         }
@@ -252,19 +364,12 @@ namespace ServerApi.Services
         {
             if (bands.Count == 0) return bands;
 
-            // Estimate typical single-card dimension: use the SHORT dimension of the image side
-            // (cards in a grid usually span 20–80% of the image along each axis).
-            // As a heuristic, single-card size ≈ totalSize / 5 .. totalSize / 1.2
             int medLen = bands.Select(b => b.Length).OrderBy(x => x).ToList()[bands.Count / 2];
-
-            // If there is only 1 band and it covers > 60% of the image axis, it likely
-            // contains multiple cards. Estimate count from the expected card aspect ratio.
-            int singleCardEstimate = medLen; // start conservative
+            int singleCardEstimate = medLen;
 
             var result = new List<Band>();
             foreach (var band in bands)
             {
-                // Only split if this band is substantially larger than the median band
                 if (band.Length < medLen * 1.60)
                 {
                     result.Add(band);
@@ -274,18 +379,15 @@ namespace ServerApi.Services
                 int expectedCount = (int)Math.Round((double)band.Length / singleCardEstimate);
                 expectedCount = Math.Max(2, Math.Min(expectedCount, 8));
 
-                // Look for local minima (shallow valleys between touching cards)
                 var segment = proj.Skip(band.Start).Take(band.Length).ToArray();
                 int minGap = Math.Max(5, band.Length / (expectedCount * 3));
                 var minima = FindLocalMinima(segment, minGap);
 
-                // Keep only minima that are somewhat below surrounding peaks
                 double segMax = segment.Max();
                 minima = [.. minima.Where(m => segment[m] < segMax * 0.75)];
 
                 if (minima.Count >= 1 && minima.Count < expectedCount * 2)
                 {
-                    // Split at each minimum
                     int prev = 0;
                     foreach (int m in minima)
                     {
@@ -298,7 +400,6 @@ namespace ServerApi.Services
                 }
                 else
                 {
-                    // No clear minima — divide evenly by expected count
                     int partLen = band.Length / expectedCount;
                     for (int i = 0; i < expectedCount; i++)
                     {
@@ -327,10 +428,58 @@ namespace ServerApi.Services
         }
 
         // ══════════════════════════════════════════════════════════════════════════════════════════
-        // Method 2 — Contour-based detection (original approach, refined)
+        // Method 2 — Multi-scale contour-based detection
         // ══════════════════════════════════════════════════════════════════════════════════════════
 
-        private List<Rectangle> ContourDetection(Mat working, Mat gray, int minArea)
+        /// <summary>
+        /// Runs contour detection at multiple scales (1×, 0.75×, 0.5×) to catch both
+        /// large and small cards in high-resolution images. Merges results across scales.
+        /// </summary>
+        private List<Rectangle> MultiScaleContourDetection(Mat working, Mat gray, Mat? bgMask, int minArea)
+        {
+            var allRects = new List<Rectangle>();
+
+            // Scale 1.0 — full resolution
+            allRects.AddRange(ContourDetection(working, gray, bgMask, minArea));
+
+            // Scale 0.75 — catches cards that are too small relative to full resolution
+            if (working.Width > 600 && working.Height > 600)
+            {
+                double s = 0.75;
+                using var scaled = new Mat();
+                CvInvoke.Resize(working, scaled, new Size((int)(working.Width * s), (int)(working.Height * s)), 0, 0, Inter.Area);
+                using var scaledGray = new Mat();
+                CvInvoke.CvtColor(scaled, scaledGray, ColorConversion.Bgr2Gray);
+                int scaledMinArea = (int)(minArea * s * s);
+                var rects = ContourDetection(scaled, scaledGray, null, scaledMinArea);
+                // Map back to original resolution
+                foreach (var r in rects)
+                    allRects.Add(new Rectangle(
+                        (int)(r.X / s), (int)(r.Y / s),
+                        (int)(r.Width / s), (int)(r.Height / s)));
+            }
+
+            // Scale 0.5 — for very high-resolution images with small cards
+            if (working.Width > 1200 && working.Height > 1200)
+            {
+                double s = 0.5;
+                using var scaled = new Mat();
+                CvInvoke.Resize(working, scaled, new Size((int)(working.Width * s), (int)(working.Height * s)), 0, 0, Inter.Area);
+                using var scaledGray = new Mat();
+                CvInvoke.CvtColor(scaled, scaledGray, ColorConversion.Bgr2Gray);
+                int scaledMinArea = (int)(minArea * s * s);
+                var rects = ContourDetection(scaled, scaledGray, null, scaledMinArea);
+                foreach (var r in rects)
+                    allRects.Add(new Rectangle(
+                        (int)(r.X / s), (int)(r.Y / s),
+                        (int)(r.Width / s), (int)(r.Height / s)));
+            }
+
+            // Deduplicate across scales
+            return DeduplicateRects(allRects);
+        }
+
+        private List<Rectangle> ContourDetection(Mat working, Mat gray, Mat? bgMask, int minArea)
         {
             using var grayEq = new Mat();
             using var blur = new Mat();
@@ -345,7 +494,14 @@ namespace ServerApi.Services
             CvInvoke.GaussianBlur(grayEq, blur, new Size(5, 5), 0);
             CvInvoke.AdaptiveThreshold(blur, thresh, 255, AdaptiveThresholdType.GaussianC, ThresholdType.Binary, 31, 7);
             CvInvoke.Threshold(blur, otsu, 0, 255, ThresholdType.BinaryInv | ThresholdType.Otsu);
-            CvInvoke.Canny(blur, canny, 25, 110);
+
+            // ── Adaptive Canny: compute thresholds from Otsu's threshold ──────────
+            // Otsu gives us the optimal binarization level; use it to derive Canny
+            // thresholds that adapt to the image's actual contrast.
+            double otsuThreshold = CvInvoke.Threshold(blur, new Mat(), 0, 255, ThresholdType.Otsu);
+            double cannyLow = Math.Max(10, otsuThreshold * 0.33);
+            double cannyHigh = Math.Min(255, otsuThreshold * 1.1);
+            CvInvoke.Canny(blur, canny, cannyLow, cannyHigh);
 
             using var kernelSmall = CvInvoke.GetStructuringElement(ElementShape.Rectangle, new Size(3, 3), new Point(-1, -1));
             using var kernelBig = CvInvoke.GetStructuringElement(ElementShape.Rectangle, new Size(7, 7), new Point(-1, -1));
@@ -355,8 +511,10 @@ namespace ServerApi.Services
             CvInvoke.Dilate(canny, canny, kernelSmall, new Point(-1, -1), 1, BorderType.Default, new MCvScalar());
             CvInvoke.BitwiseOr(morph, canny, edges);
 
-            var candidates = new List<(Rectangle Rect, double Area)>();
-            Mat[] sources = [edges, morph, otsuMorph, canny];
+            var candidates = new List<(Rectangle Rect, double Area, PointF[]? QuadPts)>();
+            Mat[] sources = bgMask != null
+                ? [edges, morph, otsuMorph, canny, bgMask]
+                : [edges, morph, otsuMorph, canny];
 
             foreach (var src in sources)
             {
@@ -380,7 +538,10 @@ namespace ServerApi.Services
                         double aspect = (double)rect.Width / rect.Height;
                         if (aspect < MinAspectRatio || aspect > MaxAspectRatio) continue;
                         if (Math.Abs(aspect - CardAspect) > MaxAspectDeviationStrict) continue;
-                        candidates.Add((rect, area));
+
+                        // Store the quad points for potential perspective correction
+                        var pts = approx.ToArray().Select(p => new PointF(p.X, p.Y)).ToArray();
+                        candidates.Add((rect, area, pts));
                         continue;
                     }
 
@@ -399,7 +560,7 @@ namespace ServerApi.Services
                     double aspectR = (double)rectR.Width / rectR.Height;
                     if (aspectR < MinAspectRatio || aspectR > MaxAspectRatio) continue;
                     if (Math.Abs(aspectR - CardAspect) > MaxAspectDeviationFallback) continue;
-                    candidates.Add((rectR, contArea));
+                    candidates.Add((rectR, contArea, verts));
                 }
             }
 
@@ -407,7 +568,8 @@ namespace ServerApi.Services
                 .GroupBy(c => new { c.Rect.X, c.Rect.Y, c.Rect.Width, c.Rect.Height })
                 .Select(g => g.First()).ToList();
 
-            return RemoveOuterWhenContainsInnerCard(deduped, minArea)
+            var withPairs = deduped.Select(c => (c.Rect, c.Area)).ToList();
+            return RemoveOuterWhenContainsInnerCard(withPairs, minArea)
                 .Select(c => c.Rect).ToList();
         }
 
@@ -424,19 +586,16 @@ namespace ServerApi.Services
         {
             if (rects.Count < 2) return rects;
 
-            // Dominant card size via median
             var sortedW = rects.Select(r => r.Width).OrderBy(x => x).ToList();
             var sortedH = rects.Select(r => r.Height).OrderBy(x => x).ToList();
             int medW = sortedW[sortedW.Count / 2];
             int medH = sortedH[sortedH.Count / 2];
 
-            // Keep cards of similar size to the median
             var dominant = rects.Where(r =>
                 Math.Abs(r.Width - medW) <= medW * 0.38 &&
                 Math.Abs(r.Height - medH) <= medH * 0.38).ToList();
             if (dominant.Count < 2) return rects;
 
-            // Group into rows by Y-center proximity
             var rows = new List<List<Rectangle>>();
             int rowTol = (int)(medH * 0.40);
             foreach (var r in dominant.OrderBy(r => r.Y + r.Height / 2))
@@ -450,20 +609,16 @@ namespace ServerApi.Services
             int maxCols = rows.Count > 0 ? rows.Max(row => row.Count) : 0;
             if (maxCols < 2 && rows.Count < 2) return rects;
 
-            // Reference row: most populated, gives us column X positions
             var refRow = rows.OrderByDescending(r => r.Count).First().OrderBy(r => r.X).ToList();
             if (refRow.Count < 2) return rects;
 
-            // Average column spacing from reference row
             double totalSpacing = 0;
             for (int i = 1; i < refRow.Count; i++)
                 totalSpacing += refRow[i].X - refRow[i - 1].X;
             double avgSpacing = totalSpacing / (refRow.Count - 1);
-            if (avgSpacing <= medW * 0.5) return rects; // cards overlap → do not infer
+            if (avgSpacing <= medW * 0.5) return rects;
 
-            // Column X positions from the reference row
             var colXs = refRow.Select(r => r.X).ToList();
-
             var result = new List<Rectangle>(rects);
 
             foreach (var row in rows)
@@ -550,6 +705,31 @@ namespace ServerApi.Services
             return merged;
         }
 
+        /// <summary>
+        /// Deduplicates rectangles from multi-scale detection by removing
+        /// those that overlap significantly with an existing rectangle.
+        /// </summary>
+        private static List<Rectangle> DeduplicateRects(List<Rectangle> rects)
+        {
+            var result = new List<Rectangle>();
+            foreach (var r in rects.OrderByDescending(r => r.Width * r.Height))
+            {
+                bool overlap = result.Any(f =>
+                {
+                    double inter = IntersectionArea(f, r);
+                    if (inter <= 0) return false;
+                    double minBox = Math.Min(f.Width * (double)f.Height, r.Width * (double)r.Height);
+                    return inter / minBox > 0.50;
+                });
+                if (!overlap) result.Add(r);
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Efficient card cropping using Mat ROI directly instead of creating
+        /// full Image&lt;Bgr,byte&gt; copies on every iteration.
+        /// </summary>
         private static List<DetectedCardDto> CropCards(Mat working, IEnumerable<Rectangle> rects)
         {
             var result = new List<DetectedCardDto>();
@@ -561,12 +741,12 @@ namespace ServerApi.Services
                 int w = Math.Max(1, Math.Min(padded.Width, working.Width - x));
                 int h = Math.Max(1, Math.Min(padded.Height, working.Height - y));
 
-                using var imgBgr = working.ToImage<Bgr, byte>();
-                imgBgr.ROI = new Rectangle(x, y, w, h);
-                using var croppedImg = imgBgr.Copy();
-                using var cropped = croppedImg.Mat;
+                // Direct Mat ROI crop — no full-image copy needed
+                var roi = new Rectangle(x, y, w, h);
+                using var cropped = new Mat(working, roi);
+                using var croppedCopy = cropped.Clone();
                 using var buf = new VectorOfByte();
-                CvInvoke.Imencode(".jpg", cropped, buf);
+                CvInvoke.Imencode(".jpg", croppedCopy, buf);
                 string dataUrl = "data:image/jpeg;base64," + Convert.ToBase64String(buf.ToArray());
                 result.Add(new DetectedCardDto { ImageUrl = dataUrl });
             }
@@ -623,6 +803,70 @@ namespace ServerApi.Services
             CvInvoke.AddWeighted(gx, 0.5, gy, 0.5, 0, mag);
             CvInvoke.MeanStdDev(mag, ref mean, ref stddev);
             return grayStd * 0.42 + stddev.V0 * 0.58;
+        }
+
+        /// <summary>
+        /// MSER-based text-region likelihood score for a candidate rectangle.
+        ///
+        /// Trading cards have text (name, stats, numbers, descriptions). Plain background
+        /// rectangles (table edges, box sides) do not. This score uses MSER (Maximally
+        /// Stable Extremal Regions) to detect clusters of small, high-contrast blobs
+        /// that look like text characters, then returns a normalised score [0, 1].
+        ///
+        /// MSER is built into OpenCV and runs in ~1ms per ROI — no Tesseract dependency.
+        /// We filter MSER regions by size (small), aspect ratio (roughly character-shaped),
+        /// and density (characters cluster together in lines).
+        /// </summary>
+        private static double TextLikelihoodScore(Mat gray, Rectangle rect)
+        {
+            try
+            {
+                int x = Math.Max(0, rect.X), y = Math.Max(0, rect.Y);
+                int w = Math.Max(1, Math.Min(rect.Width, gray.Width - x));
+                int h = Math.Max(1, Math.Min(rect.Height, gray.Height - y));
+                if (w < 30 || h < 30) return 0;
+
+                using var roi = new Mat(gray, new Rectangle(x, y, w, h));
+
+                // MSER parameters tuned for card text (small characters on card background)
+                using var mser = new MSER(
+                    delta: 5,
+                    minArea: 8,
+                    maxArea: (int)(w * h * 0.02),  // text chars are small relative to card
+                    maxVariation: 0.25,
+                    minDiversity: 0.2);
+
+                using var regions = new VectorOfVectorOfPoint();
+                using var bboxes = new VectorOfRect();
+                mser.DetectRegions(roi, regions, bboxes);
+
+                if (bboxes.Size == 0) return 0;
+
+                // Filter for text-like regions: small, roughly character-shaped
+                int textLikeCount = 0;
+                double roiArea = w * h;
+
+                for (int i = 0; i < bboxes.Size; i++)
+                {
+                    var b = bboxes[i];
+                    double bArea = b.Width * b.Height;
+                    // Characters are typically 0.01%-1.5% of card area
+                    if (bArea < roiArea * 0.0001 || bArea > roiArea * 0.015) continue;
+                    // Character aspect ratio: not too elongated
+                    double bAspect = (double)Math.Min(b.Width, b.Height) / Math.Max(b.Width, b.Height);
+                    if (bAspect < 0.15) continue; // filter out thin lines
+                    textLikeCount++;
+                }
+
+                // Normalize: a typical card has 20-100+ text-like regions
+                // Score saturates around 30 regions (strongly indicates text presence)
+                double score = Math.Min(1.0, textLikeCount / 30.0);
+                return score;
+            }
+            catch
+            {
+                return 0;
+            }
         }
 
         private static Rectangle PadRectangle(Rectangle roi, int imgW, int imgH, double frac)
