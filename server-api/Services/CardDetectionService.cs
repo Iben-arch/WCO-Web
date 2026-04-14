@@ -99,36 +99,92 @@ namespace ServerApi.Services
             var withPairs = merged.Select(r => (Rect: r, Area: (double)(r.Width * r.Height))).ToList();
             var withoutOuter = RemoveOuterWhenContainsInnerCard(withPairs, minArea);
 
-            // ── Score and deduplicate (with MSER text-region validation) ────────────
+            // ── Score all candidates ───────────────────────────────────────────────
             var scored = withoutOuter
                 .Select(c =>
                 {
                     double tex = TextureScore(gray, c.Rect);
                     double textLikelihood = TextLikelihoodScore(gray, c.Rect);
+                    double borderContrast = BorderContrastScore(gray, c.Rect);
                     double aspect = (double)c.Rect.Width / c.Rect.Height;
                     double aspectFit = 1.0 - Math.Min(1.0, Math.Abs(aspect - CardAspect) / 0.2);
-                    // Cards with text + good texture + correct aspect ratio score highest.
-                    // textLikelihood in [0,1]: 1 = many text-like regions, 0 = none
-                    double score = tex * (0.45 + 0.30 * aspectFit + 0.25 * textLikelihood);
-                    return (c.Rect, c.Area, score);
+
+                    // ── Text presence is a HARD GATE ────────────────────────────
+                    double textGate;
+                    if (textLikelihood >= 0.25)
+                        textGate = 1.0;
+                    else if (textLikelihood >= 0.15)
+                        textGate = 0.6;
+                    else if (textLikelihood >= 0.05)
+                        textGate = 0.25;
+                    else
+                        textGate = 0.08;
+
+                    // ── Border contrast gate ────────────────────────────────────
+                    double borderGate = borderContrast >= 0.15 ? 1.0 :
+                                        borderContrast >= 0.08 ? 0.6 : 0.35;
+
+                    double score = tex * (0.40 + 0.35 * aspectFit + 0.25 * textLikelihood)
+                                   * textGate * borderGate;
+
+                    return (c.Rect, c.Area, score, textLikelihood);
                 })
                 .OrderByDescending(x => x.score)
                 .ThenByDescending(x => x.Area)
                 .Take(MaxCardsReturned * 3)
                 .ToList();
 
+            // ── Size consistency filter ──────────────────────────────────────────
+            // If we have multiple candidates, compute the dominant (median) card
+            // size. Reject candidates that are much smaller than the dominant size
+            // — they are fragments of existing cards, not separate cards.
+            if (scored.Count >= 3)
+            {
+                var areas = scored.Select(s => s.Area).OrderByDescending(a => a).ToList();
+                // Use the area of the top-25% candidate as "expected card size"
+                double refArea = areas[Math.Max(0, areas.Count / 4)];
+                double minAcceptableArea = refArea * 0.30; // must be at least 30% of expected
+                scored = scored.Where(s => s.Area >= minAcceptableArea).ToList();
+            }
+
+            // ── Deduplicate with aggressive overlap + containment checks ────────
             var filtered = new List<Rectangle>();
             foreach (var c in scored)
             {
-                bool overlap = filtered.Any(f =>
+                // Sub-region / significant overlap check:
+                // If this candidate is mostly inside an already-accepted card, skip it.
+                // Uses IoU-like logic: if >25% of this candidate's area overlaps with
+                // an accepted card, treat it as a fragment.
+                bool isFragmentOrOverlap = filtered.Any(f =>
                 {
                     double inter = IntersectionArea(f, c.Rect);
                     if (inter <= 0) return false;
-                    double minBox = Math.Min(f.Width * (double)f.Height, c.Rect.Width * (double)c.Rect.Height);
-                    return inter / minBox > 0.45;
+
+                    double thisArea = c.Rect.Width * (double)c.Rect.Height;
+                    double filterArea = f.Width * (double)f.Height;
+
+                    // If >25% of this candidate overlaps with accepted card → fragment
+                    if (inter / thisArea > 0.25) return true;
+
+                    // If >25% of accepted card overlaps with this → near-duplicate
+                    if (inter / filterArea > 0.25) return true;
+
+                    return false;
                 });
-                if (!overlap) filtered.Add(c.Rect);
+                if (isFragmentOrOverlap) continue;
+
+                filtered.Add(c.Rect);
                 if (filtered.Count >= MaxCardsReturned) break;
+            }
+
+            // ── Final size cleanup ──────────────────────────────────────────────
+            // If we have 2+ accepted cards, remove any that are drastically smaller
+            // than the median accepted card (late-stage safety net).
+            if (filtered.Count >= 2)
+            {
+                var acceptedAreas = filtered.Select(r => (double)(r.Width * r.Height)).OrderBy(a => a).ToList();
+                double medianArea = acceptedAreas[acceptedAreas.Count / 2];
+                filtered = filtered.Where(r => r.Width * (double)r.Height >= medianArea * 0.28).ToList();
             }
 
             return CropCards(working, filtered);
@@ -862,6 +918,87 @@ namespace ServerApi.Services
                 // Score saturates around 30 regions (strongly indicates text presence)
                 double score = Math.Min(1.0, textLikeCount / 30.0);
                 return score;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// Measures the contrast between the border strip of a candidate rectangle
+        /// and the area just outside it. Real trading cards have a visible edge/border
+        /// that creates a transition from card surface to background. Fragments of
+        /// artwork that sit inside a card have NO such transition — the pixels just
+        /// outside the crop look the same as the pixels inside.
+        ///
+        /// Returns a normalised score [0, ~1]; higher = stronger border contrast.
+        /// </summary>
+        private static double BorderContrastScore(Mat gray, Rectangle rect)
+        {
+            try
+            {
+                int x = Math.Max(0, rect.X), y = Math.Max(0, rect.Y);
+                int w = Math.Max(1, Math.Min(rect.Width, gray.Width - x));
+                int h = Math.Max(1, Math.Min(rect.Height, gray.Height - y));
+                if (w < 30 || h < 30) return 0;
+
+                int stripW = Math.Max(2, w / 20);  // inner border strip width
+                int outerW = Math.Max(2, w / 15);  // outer strip width
+
+                // Sample inner border strip (just inside the rectangle edges)
+                double innerSum = 0; int innerCount = 0;
+                // Sample outer strip (just outside the rectangle edges)
+                double outerSum = 0; int outerCount = 0;
+
+                var grayImg = gray.ToImage<Gray, byte>();
+
+                // Top and bottom edges
+                for (int dx = 0; dx < w; dx += 3)
+                {
+                    int px = x + dx;
+                    if (px >= gray.Width) break;
+                    // Inner top strip
+                    for (int dy = 0; dy < stripW && y + dy < gray.Height; dy++)
+                    { innerSum += grayImg.Data[y + dy, px, 0]; innerCount++; }
+                    // Inner bottom strip
+                    for (int dy = 0; dy < stripW && y + h - 1 - dy >= 0 && y + h - 1 - dy < gray.Height; dy++)
+                    { innerSum += grayImg.Data[y + h - 1 - dy, px, 0]; innerCount++; }
+                    // Outer top strip
+                    for (int dy = 1; dy <= outerW && y - dy >= 0; dy++)
+                    { outerSum += grayImg.Data[y - dy, px, 0]; outerCount++; }
+                    // Outer bottom strip
+                    for (int dy = 1; dy <= outerW && y + h - 1 + dy < gray.Height; dy++)
+                    { outerSum += grayImg.Data[y + h - 1 + dy, px, 0]; outerCount++; }
+                }
+
+                // Left and right edges
+                for (int dy = 0; dy < h; dy += 3)
+                {
+                    int py = y + dy;
+                    if (py >= gray.Height) break;
+                    // Inner left strip
+                    for (int dx = 0; dx < stripW && x + dx < gray.Width; dx++)
+                    { innerSum += grayImg.Data[py, x + dx, 0]; innerCount++; }
+                    // Inner right strip
+                    for (int dx = 0; dx < stripW && x + w - 1 - dx >= 0 && x + w - 1 - dx < gray.Width; dx++)
+                    { innerSum += grayImg.Data[py, x + w - 1 - dx, 0]; innerCount++; }
+                    // Outer left strip
+                    for (int dx = 1; dx <= outerW && x - dx >= 0; dx++)
+                    { outerSum += grayImg.Data[py, x - dx, 0]; outerCount++; }
+                    // Outer right strip
+                    for (int dx = 1; dx <= outerW && x + w - 1 + dx < gray.Width; dx++)
+                    { outerSum += grayImg.Data[py, x + w - 1 + dx, 0]; outerCount++; }
+                }
+
+                if (innerCount == 0 || outerCount == 0) return 0;
+
+                double innerMean = innerSum / innerCount;
+                double outerMean = outerSum / outerCount;
+
+                // Normalise the absolute difference by the max possible range (255)
+                double contrast = Math.Abs(innerMean - outerMean) / 255.0;
+                return contrast;
             }
             catch
             {

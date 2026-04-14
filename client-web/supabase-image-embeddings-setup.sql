@@ -39,8 +39,10 @@ CREATE POLICY "Anyone can read post_image_embeddings" ON post_image_embeddings
 -- 4. RPC: ค้นหาโพสต์ที่คล้ายกับ query embedding หนึ่งตัว (cosine distance)
 -- ลบ overload เก่า (double precision[]) ถ้ามี เพื่อไม่ให้ PostgREST งง (PGRST203)
 DROP FUNCTION IF EXISTS match_posts_by_embedding(double precision[], int, text);
--- ลบเวอร์ชัน 3 พารามิเตอร์ (text) ก่อนสร้างใหม่ที่มี match_threshold
+-- ลบเวอร์ชัน 3 พารามิเตอร์ (text)
 DROP FUNCTION IF EXISTS match_posts_by_embedding(text, int, text);
+-- ลบเวอร์ชัน 4 พารามิเตอร์ (text) เพราะถ้าค้างไว้ร่วมกับเวอร์ชัน 5 พารามิเตอร์ จะทำให้ PostgREST แยก signature ไม่ออก (PGRST203)
+DROP FUNCTION IF EXISTS match_posts_by_embedding(text, integer, text, double precision);
 
 -- รับ query_embedding เป็น text รูปแบบ '[0.1, -0.2, ...]' (pgvector)
 -- คืน (postId, score) โดย score = 1 - cosine_distance (ยิ่งสูงยิ่งคล้าย; โดยทั่วไป ~0–1)
