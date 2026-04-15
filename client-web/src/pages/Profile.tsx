@@ -133,6 +133,7 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [showSellerApplicationModal, setShowSellerApplicationModal] = useState<boolean>(false);
+  const [displayNameError, setDisplayNameError] = useState<string | null>(null);
 
   useEffect(() => {
     const st = location.state as { openSellerApplication?: boolean } | null | undefined;
@@ -277,6 +278,7 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
     } else {
       // ยกเลิกการแก้ไข - คืนค่าข้อมูลเดิม
       setFormData({ ...originalFormData });
+      setDisplayNameError(null);
       setIsEditMode(false);
     }
   };
@@ -325,8 +327,10 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
         setTimeout(() => {
           window.location.href = '/login';
         }, 2000);
+      } else if (error.code === '23505' || error.message?.includes('duplicate key') || error.message?.includes('unique constraint')) {
+        setDisplayNameError('ชื่อที่แสดงนี้ซ้ำกับผู้ใช้อื่น กรุณาเปลี่ยนชื่อใหม่');
       } else {
-        const errorMessage = error.response?.data?.error || 'เกิดข้อผิดพลาดในการบันทึกข้อมูล';
+        const errorMessage = error.response?.data?.error || error.message || 'เกิดข้อผิดพลาดในการบันทึกข้อมูล';
         toast.error(errorMessage);
       }
     } finally {
@@ -666,11 +670,19 @@ const Profile: React.FC<ProfileProps> = ({ initialTab = 'personal-info' }) => {
                 type="text"
                 className={cx('input input-bordered w-full', !isEditMode && 'bg-base-200/50 cursor-default')}
                 value={formData.displayName}
-                onChange={(e) => setFormData({ ...formData, displayName: e.target.value })}
+                onChange={(e) => {
+                  setFormData({ ...formData, displayName: e.target.value });
+                  if (displayNameError) setDisplayNameError(null);
+                }}
                 placeholder="กรอกชื่อ - นามสกุล"
                 disabled={!isEditMode}
                 readOnly={!isEditMode}
               />
+              {displayNameError && (
+                <div className="label pt-1 pb-0">
+                  <span className="label-text-alt text-error text-sm">{displayNameError}</span>
+                </div>
+              )}
             </div>
 
             {/* Phone */}
