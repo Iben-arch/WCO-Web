@@ -59,30 +59,269 @@
 
 ---
 
-## บทที่ 3: การวิเคราะห์และออกแบบระบบ (System Analysis and Design)
+## บทที่ 3: วิธีดำเนินงาน (Methodology)
 
-### 3.1 ขั้นตอนการดำเนินงาน (SDLC)
-เลือกใช้แบบจำลองกระบวนการทำงานแบบ **Agile Methodology** ที่มีการแบ่งส่วนพัฒนาและส่งมอบ (Sprint) อย่างต่อเนื่อง ได้แก่ การแยกทำส่วน Backend และ Frontend เพื่อเชื่อมต่อโมดูลเข้าด้วยกันในภายหลัง
+บทนี้นำเสนอขั้นตอนการดำเนินงานของโครงงาน WCO-Web ตั้งแต่กระบวนการออกแบบสถาปัตยกรรมระบบ การเลือกเครื่องมือและเทคโนโลยีที่ใช้พัฒนา ไปจนถึงการสร้างและทดสอบโมดูลสำคัญแต่ละส่วน โดยยึดกรอบแนวคิดการพัฒนาซอฟต์แวร์แบบ **Agile** ในการแบ่งงานออกเป็น Sprint เพื่อควบคุมคุณภาพและส่งมอบฟีเจอร์ได้อย่างต่อเนื่อง
 
-### 3.2 การวิเคราะห์ความต้องการ (Requirement Analysis)
-*   **Functional Requirement:** ระบบเปิดให้สมาชิกเข้าสู่ระบบ, สร้างโพสต์, ดันราคาประมูล (Bid), ตรวจสอบรูปก่อนโพสต์ว่ามาจาก AI ไหม, ครอปการ์ด, และใช้รูปเสิร์ชหาสินค้าได้
-*   **Non-functional Requirement:** สิทธิ์การเข้าถึงข้อมูลผ่านระบบ JWT Token Authentication ความรวดเร็วของการแสดงผลหน้าจอ (Performance)
+---
 
-### 3.3 การออกแบบเชิงตรรกะ (Logical Design)
+### 3.1 กระบวนการดำเนินงานโดยรวม (Overall Development Process)
+
+โครงงานนี้แบ่งการพัฒนาออกเป็น **4 ระยะ (Phase)** หลัก โดยแต่ละระยะจะดำเนินการต่อเนื่องกันและมีผลลัพธ์ที่วัดได้ชัดเจน ดังนี้:
+
+| ระยะ | กิจกรรมหลัก | ผลลัพธ์ที่ได้ |
+|---|---|---|
+| Phase 1 | รวบรวมความต้องการ, ออกแบบ ER-Diagram, เลือกสแตค | Architecture Blueprint |
+| Phase 2 | พัฒนา Frontend (React), Backend (ASP.NET Core), ฐานข้อมูล (Supabase) | ระบบตลาด-ประมูลที่ใช้งานได้ |
+| Phase 3 | พัฒนา Python CLIP Worker, CardDetection, Image Moderation | โมดูล AI ครบ 3 ชุด |
+| Phase 4 | Black-box / White-box Testing, SUS Usability Survey | รายงานผลทดสอบ |
+
+---
+
+### 3.2 สภาพแวดล้อมการพัฒนาและเครื่องมือ (Development Environment & Tools)
+
+#### 3.2.1 ซอฟต์แวร์และ Framework ที่เลือกใช้
+
+| บทบาท | เทคโนโลยีที่เลือกใช้ | เหตุผลในการเลือก |
+|---|---|---|
+| **Frontend** | React 18 + TypeScript + Vite | Component-based, Hot-reload เร็ว, Ecosystem กว้าง |
+| **UI Library** | TailwindCSS + DaisyUI | Utility-first, ลด CSS custom ให้น้อยลง |
+| **Backend** | ASP.NET Core 8 (C#) | Performance สูง, Middleware Pipeline ยืดหยุ่น, Strongly-typed |
+| **Computer Vision** | Emgu.CV 4.x (OpenCV .NET Binding) | ครอบคลุม Algorithm CV ครบ, รันบน Server ไม่ต้องการ GPU |
+| **AI Worker** | Python 3.11 + FastAPI + open_clip | CLIP model รัน CPU/GPU ได้, FastAPI async สูง |
+| **ฐานข้อมูล** | Supabase (PostgreSQL 15 + pgvector) | Managed DB, Auth built-in, Extension pgvector สำหรับ Vector Search |
+| **External API** | SerpAPI (Google Lens), Sightengine | Reverse Image Search และตรวจ AI-Generated Image |
+
+#### 3.2.2 โครงสร้างโฟลเดอร์โปรเจค (Repository Structure)
+
+โครงงานแบ่งโค้ดออกเป็น 3 Workspace หลักที่ทำงานเป็นอิสระแต่ติดต่อกันผ่าน HTTP API ตามสถาปัตยกรรม **Microservices**:
+
+```
+WCO-Web/
+├── client-web/          ← React Frontend (Port 5173)
+│   ├── src/pages/       ← หน้าเว็บแต่ละส่วน (Home, PostDetail, Search ฯลฯ)
+│   └── src/api/         ← ฟังก์ชัน Axios เชื่อมต่อ Backend
+│
+├── server-api/          ← ASP.NET Core Backend (Port 7001)
+│   ├── Controllers/     ← Endpoint รับ HTTP Request
+│   └── Services/        ← Business Logic (CardDetection, ClipEmbedding ฯลฯ)
+│
+└── clip-worker/         ← Python FastAPI AI Worker (Port 5000)
+    └── main.py          ← โหลด CLIP Model และ expose /embed endpoint
+```
+
+---
+
+### 3.3 การออกแบบสถาปัตยกรรมระบบ (System Architecture Design)
+
+#### 3.3.1 ภาพรวมสถาปัตยกรรม (High-Level Architecture)
+
+ระบบออกแบบตามแนวคิด **3-Tier Architecture** ที่มีโมดูล AI เพิ่มเติมเป็น Microservice แยกต่างหาก โดยแต่ละ Service มีความรับผิดชอบเฉพาะ (Separation of Concerns) และ Backend ออกแบบให้ Stateless ใช้ JWT ยืนยันตัวตนใน Header ทุก Request
 
 **1. Use Case Diagram:**
-*   **User/Buyer:** สามารถ Login, ดูสินค้า, ประมูล (Bid), สั่งซื้อ, ใช้รูปค้นหา
-*   **Seller:** เหมือน User แต่สามารถ สร้างโปรไฟล์โพสต์สินค้า, จัดการออร์เดอร์ตะกร้า
+*   **User/Buyer:** สามารถ Login, ดูสินค้า, ประมูล (Bid), สั่งซื้อ, ค้นหาด้วยรูปภาพ
+*   **Seller:** เหมือน User แต่สามารถสร้างโพสต์สินค้า, จัดการ Order และตะกร้า
 *   **Admin:** ตรวจสอบผู้ใช้งาน, จัดการ Role, กำกับดูแลโพสต์ที่เข้าข่ายมิจฉาชีพ
 
 **2. Sequence Diagram (ระบบค้นหาด้วยภาพ):**
-*   `Client` อัปโหลดภาพ ส่งไป `Backend` → `Backend` ตัดภาพด้วย `Emgu.CV` และรันเช็คต้านภาพปลอมผ่าน `Sightengine` → ส่งต่อไปยัง `Python Worker` ทำการสกัดเวกเตอร์ขนาด 512 มิติ $\mathbb{R}^{512}$ → `Backend` ส่งชุดเวกเตอร์ยิงคำสั่ง RPC ปรึกษา `Supabase` → `Supabase (pgvector)` คืนค่าสินค้าที่แมทช์เรียงตาม Similarity Score → `Backend` นำมาสะท้อนกลับให้ `Client`
+*   `Client` อัปโหลดภาพ → `server-api` ตัดภาพด้วย Emgu.CV และรันตรวจภาพปลอม → `clip-worker` สกัดเวกเตอร์ 512 มิติ $\mathbb{R}^{512}$ → `Supabase (pgvector)` คืนสินค้าที่แมทช์เรียงตาม Similarity Score → `Client` แสดงผล
 
-**3. Entity Relationship Diagram (ER-Diagram):**
-*   `profiles`: เก็บรหัสผู้ใช้, Role
-*   `posts`: เก็บ id สินค้า, ชื่อ, ราคา, รูป, embeddings 512-dim
-*   `cart` / `cart_items`: จัดเก็บการเลือกสินค้า
-*   `notifications`: ข้อมูลการแจ้งเตือนต่างๆ ให้กับ User
+**3. Entity Relationship Diagram (ER-Diagram) — ตารางหลัก:**
+
+| ตาราง | คอลัมน์สำคัญ | บทบาท |
+|---|---|---|
+| `profiles` | `id`, `display_name`, `role` | ข้อมูลผู้ใช้และสิทธิ์ |
+| `posts` | `id`, `title`, `price`, `status`, `category` | ข้อมูลสินค้า |
+| `post_image_embeddings` | `post_id`, `embedding` (vector 512) | เวกเตอร์ภาพสำหรับ Visual Search |
+| `cart` / `cart_items` | `user_id`, `post_id`, `quantity` | ตะกร้าสินค้า |
+| `notifications` | `user_id`, `type`, `payload` | การแจ้งเตือน Real-time |
+
+#### 3.3.2 การออกแบบ Vector Column ด้วย pgvector
+
+ตาราง `post_image_embeddings` ออกแบบรองรับ Vector Search ด้วย Extension `pgvector` และ HNSW Index เพื่อให้การค้นหา Approximate Nearest Neighbor ทำงานในความเร็ว $O(\log n)$:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE post_image_embeddings (
+    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    "postId"      uuid REFERENCES posts(id) ON DELETE CASCADE,
+    embedding     vector(512),
+    source_image_url text,
+    card_index    int DEFAULT 0
+);
+
+-- HNSW Index: m=16 (links per node), ef_construction=64 (build candidate pool)
+CREATE INDEX idx_post_image_embeddings_embedding
+    ON post_image_embeddings
+    USING hnsw (embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 64);
+```
+
+#### 3.3.3 การออกแบบ API Endpoints (REST API Design)
+
+Backend ออกแบบ Endpoint ตามหลัก RESTful แบ่งตาม Controller:
+
+| Controller | Endpoint | บทบาท |
+|---|---|---|
+| `PostsController` | `GET /api/posts`, `POST /api/posts` | จัดการข้อมูลโพสต์สินค้า |
+| `CardDetectionController` | `POST /api/card-detection/analyze` | ครอปการ์ด + ตรวจสอบ AI |
+| `CardDetectionController` | `POST /api/card-detection/search` | ค้นหาโพสต์ด้วยภาพ (Visual Search) |
+| `CartController` | `POST /api/cart`, `DELETE /api/cart/{id}` | จัดการตะกร้าสินค้า |
+| `NotificationsController` | `GET /api/notifications` | ดึงการแจ้งเตือน |
+
+---
+
+### 3.4 การพัฒนาระบบหลัก (Core System Development)
+
+#### 3.4.1 การพัฒนา Frontend (React Web Application)
+
+**ขั้นตอนการพัฒนา:**
+1. สร้างโปรเจคด้วย Vite + React + TypeScript template และติดตั้ง Dependencies หลัก ได้แก่ `axios`, `react-router-dom`, `@supabase/supabase-js`
+2. ออกแบบ Routing ด้วย `react-router-dom` ครอบคลุมหน้า: หน้าหลัก (`/`), รายละเอียดสินค้า (`/post/:id`), ค้นหาด้วยภาพ (`/search`), สร้างโพสต์ (`/create-post`)
+3. สร้าง API Layer ใน `src/api/` รวม Logic การยิง HTTP Request ไว้ที่เดียว
+4. ระบบ Authentication ใช้ `@supabase/supabase-js` เชื่อมกับ Supabase Auth โดยตรง และนำ JWT Token แนบใน `Authorization: Bearer` Header ทุก Request ส่งไป `server-api`
+
+#### 3.4.2 การพัฒนา Backend API (ASP.NET Core)
+
+**การตั้งค่าระบบ Authentication:**
+
+Backend ตั้งค่า `AddAuthentication` ให้รู้จัก JWT ของ Supabase โดยใช้ JWKS Endpoint ดึง Public Key มาตรวจสอบ Signature พร้อมเพิ่ม Middleware สกัด `sub` Claim แปะเป็น Header `X-User-Id` ให้ Controllers ใช้งาน
+
+**การออกแบบ Service Layer:**
+
+Business Logic ทั้งหมดแยกจาก Controller ด้วยหลัก **Dependency Injection** ลงทะเบียนใน `Program.cs`:
+
+```csharp
+builder.Services.AddScoped<ICardDetectionService, CardDetectionService>();
+builder.Services.AddScoped<IClipEmbeddingService, ClipEmbeddingService>();
+builder.Services.AddScoped<IPostModerationAiService, PostModerationAiService>();
+```
+
+---
+
+### 3.5 การพัฒนาโมดูล AI ประมวลผลภาพ (AI Image Processing Modules)
+
+ส่วนนี้เป็นหัวใจหลักของโครงงาน แบ่งออกเป็น **3 โมดูล** ที่ทำงานต่อกันเป็น Pipeline:
+
+```
+รูปภาพที่ผู้ใช้อัปโหลด
+        │
+        ▼
+[โมดูล 1] CardDetectionService  →  ครอปการ์ดออกจากพื้นหลัง (Emgu.CV 6 ขั้น)
+        │
+        ▼
+[โมดูล 2] ImageManipulationDetection + Sightengine  →  ตรวจสอบภาพปลอม/ภาพ AI
+        │
+        ▼
+[โมดูล 3] CLIP Embedding + pgvector  →  สร้าง/ค้นหาเวกเตอร์ภาพ
+```
+
+#### 3.5.1 โมดูลที่ 1: การตรวจจับและครอปภาพการ์ดอัตโนมัติ (CardDetectionService.cs)
+
+โมดูลนี้ใช้ไลบรารี **Emgu.CV** ดำเนินการวิเคราะห์และสกัดพื้นที่ของการ์ดออกจากภาพถ่ายด้วย **Heuristic 6 ขั้นตอน**:
+
+*   **ขั้นที่ 0 — Color Background Segmentation:** สุ่มตัวอย่างพิกเซลจากขอบทั้ง 4 ด้านประมาณสีพื้นหลังในปริภูมิ HSV สร้าง Binary Mask โดยพิกเซลที่ระยะสีถ่วงน้ำหนักเกิน 35 หน่วยจากค่าเฉลี่ยขอบถือเป็น Foreground
+*   **ขั้นที่ 1 — Projection Grid Detection:** คำนวณ Sobel Gradient แล้วฉาย Projection Profile เพื่อหาช่องว่างระหว่างการ์ด แบ่งพิกัดเป็น Grid Cell และตรวจ Aspect Ratio ว่าตรงกับ $\approx 0.714$
+*   **ขั้นที่ 2 — Multi-Scale Contour Detection:** รันที่ 3 สเกล (100%, 75%, 50%) ด้วย Histogram Equalization → Gaussian Blur → Adaptive Threshold → Adaptive Canny → FindContours กรองสี่เหลี่ยมที่ Aspect Ratio อยู่ในช่วง 0.50–0.92
+*   **ขั้นที่ 3 — Grid Completion:** อนุมานช่องการ์ดที่หายจากช่องที่พบแล้ว ป้องกันพลาดการ์ดที่ถูกบังบางส่วน
+*   **ขั้นที่ 4 — Scoring:** ให้คะแนนผู้สมัครแต่ละรายด้วย 3 มิติ: **Texture Score** (StdDev ของ Gradient), **MSER Text-Likelihood Score** (ตรวจจับ Region คล้ายตัวอักษร), **Border Contrast Score** (ความแตกต่างสีขอบใน-นอก) สูตรรวม:
+$$\text{score} = \text{TextureScore} \times (0.40 + 0.35 \times \text{AspectFit} + 0.25 \times \text{TextLikelihood}) \times \text{TextGate} \times \text{BorderGate}$$
+*   **ขั้นที่ 5 — Deduplication & Final Crop:** ตัดกรอบที่ Overlap > 25% กรองขนาดน้อยกว่า 28% ของ Median Area เพิ่ม Padding 1.2% แล้ว Encode เป็น Base64 JPEG
+
+#### 3.5.2 โมดูลที่ 2: การตรวจสอบภาพตัดต่อและภาพ AI (Image Moderation)
+
+โมดูลนี้ทำงาน 2 ชั้นคู่ขนาน:
+
+**ชั้นที่ 1 — Local Heuristic Analysis (`ImageManipulationDetectionService.cs`):** วิเคราะห์ **17 สัญญาณสถิติ** โดยไม่ต้องใช้ GPU:
+*   *สัญญาณตรวจภาพตัดต่อ (11 ชนิด):* Multi-level ELA, Color Channel Correlation (Pearson), JPEG Ghost, Wavelet Noise Inconsistency และอื่นๆ
+*   *สัญญาณตรวจภาพ AI (6 ชนิด):* Multi-scale Noise Floor, High-Frequency Ratio, Color Palette Uniformity และอื่นๆ
+
+ค่าดิบแปลงเป็นเปอร์เซ็นต์ด้วย **Sigmoid Normalization** รวมด้วย **Weighted Average** และคูณ **Concordance Factor** (IQR-based) ปรับค่าตามระดับการเห็นตรงกันของสัญญาณ
+
+**ชั้นที่ 2 — External Deep Learning (Sightengine API):** ยืนยันซ้ำด้วยโมเดล CNN เพื่อลด False Negative
+
+**Logic การตัดสินใจ:**
+```
+aiGenRisk >= 52 AND > manipRisk + 6   →  "ai-generated"
+manipRisk >= 52 AND > aiGenRisk + 6   →  "manipulation"
+aiGenRisk >= 38 OR  manipRisk >= 38   →  "mixed-signals"
+```
+
+#### 3.5.3 โมดูลที่ 3: ระบบค้นหาด้วยรูปภาพ (Visual Search via CLIP + pgvector)
+
+**Python CLIP Worker (`clip-worker/main.py`):** FastAPI Service โหลดโมเดล **CLIP ViT-B/32** ผ่าน `open_clip` expose Endpoint `POST /embed` รับ List ของ Base64 Image คืน float[512] ต่อรูป โดย L2 Normalize ทุก Vector ก่อนส่งกลับ ทำให้ Cosine Similarity ลดรูปเป็น Dot Product:
+$$\text{Cosine Similarity}(A, B) = A \cdot B \quad \text{(เมื่อ } \|A\| = \|B\| = 1\text{)}$$
+
+**ขั้นตอนสร้าง Index (เมื่อผู้ขายสร้างโพสต์):** Background Task ดาวน์โหลดรูป → ครอปการ์ด → ส่ง CLIP Worker → Insert float[512] ลงตาราง `post_image_embeddings`
+
+**ขั้นตอนค้นหา (เมื่อผู้ใช้ค้นหา):** ครอปการ์ดจากรูปผู้ใช้ → CLIP Worker → RPC `match_posts_by_embedding` (threshold=0.70) → Supabase HNSW ค้นหา Nearest Neighbor → เรียง Score → ส่งกลับ Frontend
+
+**ฟังก์ชัน PostgreSQL สำหรับ Vector Search:**
+```sql
+RETURN QUERY
+SELECT e."postId",
+       (1 - (e.embedding <=> v))::double precision AS score
+FROM post_image_embeddings e
+INNER JOIN posts p ON p.id = e."postId"
+WHERE p.status = match_status
+  AND (1 - (e.embedding <=> v)) >= match_threshold
+ORDER BY e.embedding <=> v
+LIMIT match_limit;
+```
+
+#### 3.5.4 โมดูลเสริม: Reverse Image Search ด้วย Google Lens
+
+`ExternalReverseImageService.cs` ส่ง URL รูปไปยัง **SerpAPI (Google Lens, mode = exact_matches)** ตรวจสอบว่ารูปปรากฏบน Mercari, Yahoo Auctions JP, Magi หรือไม่ ยืนยันซ้ำด้วย **dHash (Perceptual Hash)** และ **CLIP Cosine Similarity** เพื่อแยกแยะ "รูปขโมยมา" กับ "การ์ดชนิดเดียวกัน":
+*   พบบน Marketplace เป้าหมาย ≥ 1 ลิงก์ → Risk 73–85%
+*   dHash Hamming Distance ≤ 12/64 bit → ยืนยัน Exact Match
+
+---
+
+### 3.6 การผสานโมดูลและการบูรณาการระบบ (System Integration)
+
+#### 3.6.1 Pipeline เมื่อสร้างโพสต์ใหม่
+
+```
+ผู้ขายกรอกฟอร์มและแนบรูป → Frontend POST /api/card-detection/analyze
+→ CardDetectionService (Emgu.CV Crop) → ImageManipulationDetection (17 signals)
+→ Sightengine API → Google Lens/SerpAPI
+→ JSON: { manipulationWarning, aiWarning, reverseImageWarning } → Frontend ยืนยัน
+→ POST /api/posts → Background CLIP Indexing (async)
+```
+
+#### 3.6.2 Pipeline เมื่อค้นหาด้วยรูปภาพ
+
+```
+ผู้ใช้อัปโหลดรูป → POST /api/card-detection/search
+→ CardDetectionService (Crop max 12 ใบ) → ClipEmbeddingService (Batch to Python)
+→ Python CLIP ViT-B/32 (float[512] × N) → Supabase RPC match_posts_by_embedding
+→ HNSW ANN Search → (postId, score) → Fetch ข้อมูลโพสต์ เรียง Score → Frontend
+```
+
+---
+
+### 3.7 การตั้งค่าพารามิเตอร์สำคัญของระบบ (Configuration)
+
+ค่าพารามิเตอร์ Algorithm Computer Vision ที่สำคัญ:
+
+| พารามิเตอร์ | ค่า | ความหมาย |
+|---|---|---|
+| `CardAspect` | 0.714 (2.5/3.5) | อัตราส่วนมาตรฐาน Trading Card |
+| `MinAspectRatio` / `MaxAspectRatio` | 0.50 – 0.92 | ช่วงยอมรับความคลาดเคลื่อนจากมุมถ่าย |
+| `match_threshold` | 0.70 | Cosine Similarity ขั้นต่ำสำหรับ Visual Search |
+| `MaxCardsReturned` | 24 | การ์ดสูงสุดต่อรูปภาพ |
+| `CropPaddingFraction` | 1.2% | Padding ขอบการ์ดก่อน Crop |
+
+---
+
+### 3.8 เครื่องมือและขั้นตอนการทดสอบ (Testing Approach)
+
+การทดสอบระบบแบ่งออกเป็น 3 ระดับ:
+
+1. **Unit / Integration Testing:** ทดสอบฟังก์ชันหน่วยของ Backend ผ่าน Postman กับชุดรูปทดสอบ 20 รูป ตรวจสอบผลลัพธ์ CardDetection, ImageManipulation, และ CLIP Embedding
+2. **Black-box Testing:** ทดสอบจากมุมผู้ใช้งาน: ล็อกอินด้วยข้อมูลผิด → ตรวจ 401, อัปโหลดรูป Midjourney → ตรวจว่าระบบปฏิเสธ, ค้นหาด้วยรูปการ์ด → ตรวจผลลัพธ์ Sort by Score
+3. **SUS Usability Testing:** แจกแบบสอบถาม System Usability Scale (SUS) ให้กลุ่มผู้ทดสอบ เงื่อนไขบรรลุผล: SUS Score เฉลี่ย > 70 คะแนน (ระดับ Acceptable)
 
 ---
 
