@@ -1068,21 +1068,44 @@ const PostDetail: React.FC = () => {
                             const lv = sourceLevelLabel(sourceScreening.sourceWarningLevel);
                             const totalMatches = sourceScreening.images.reduce((sum, img) => sum + (img.externalMatchCount || 0), 0);
 
+                            const getDomain = (url: string) => {
+                              try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
+                            };
+
                             // dHash-confirmed = most reliable: thumbnail pixel comparison directly
-                            const dHashLinks = sourceScreening.dHashConfirmedLinks ?? [];
+                            const rawDHashLinks = sourceScreening.dHashConfirmedLinks ?? [];
+                            // Sort specifically to prefer item URLs over search URLs
+                            const getUrlScore = (u: string) => {
+                              const low = u.toLowerCase();
+                              if (low.includes('/search/') || low.includes('search?')) return -1;
+                              if (low.includes('/item/') || low.includes('/itm/') || low.includes('/auction/')) return 1;
+                              return 0;
+                            };
+                            const sortedDHashLinks = [...rawDHashLinks].sort((a, b) => {
+                              const sA = getUrlScore(a), sB = getUrlScore(b);
+                              if (sA !== sB) return sB - sA;
+                              return b.length - a.length;
+                            });
+                            const dHashLinks = sortedDHashLinks.filter((link, i, self) => 
+                              i === self.findIndex((l) => getDomain(l) === getDomain(link))
+                            );
                             const dHashPct = sourceScreening.maxDHashSimilarityPct;
                             const hasDHashConfirmed = dHashLinks.length > 0;
 
                             // All marketplace links found by Lens (less precise, for reference)
-                            const allMarketplaceLinks = sourceScreening.allExternalMatchLinks ?? [];
+                            const rawMarketplaceLinks = sourceScreening.allExternalMatchLinks ?? [];
+                            const sortedMarketplaceLinks = [...rawMarketplaceLinks].sort((a, b) => {
+                              const sA = getUrlScore(a), sB = getUrlScore(b);
+                              if (sA !== sB) return sB - sA;
+                              return b.length - a.length;
+                            });
+                            const allMarketplaceLinks = sortedMarketplaceLinks.filter((link, i, self) => 
+                              i === self.findIndex((l) => getDomain(l) === getDomain(link))
+                            );
                             const hasMarketplaceHits = allMarketplaceLinks.length > 0;
 
                             // CLIP (semantic) as supplementary
                             const clipPct = sourceScreening.maxCompositionSimilarityPct;
-
-                            const getDomain = (url: string) => {
-                              try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
-                            };
 
                             const alertVariant = hasDHashConfirmed ? lv.variant
                               : hasMarketplaceHits ? 'secondary'
@@ -1116,7 +1139,7 @@ const PostDetail: React.FC = () => {
                                           <li key={i} className="mb-1">
                                             <a href={link} target="_blank" rel="noopener noreferrer"
                                               className="text-primary" style={{ wordBreak: 'break-all', fontSize: '0.8rem' }}>
-                                              🔗 {domain}
+                                              🔗 {link}
                                             </a>
                                             {isMarketplace && (
                                               <span className="badge bg-danger ms-1" style={{ fontSize: '0.65rem' }}>marketplace</span>
@@ -1146,7 +1169,7 @@ const PostDetail: React.FC = () => {
                                           <li key={i}>
                                             <a href={link} target="_blank" rel="noopener noreferrer"
                                               className="text-muted" style={{ wordBreak: 'break-all', fontSize: '0.75rem' }}>
-                                              🔗 {getDomain(link)}
+                                              🔗 {link}
                                             </a>
                                           </li>
                                         ))}
