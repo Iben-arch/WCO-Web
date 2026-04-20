@@ -794,7 +794,8 @@ const PostDetail: React.FC = () => {
     if (!post?.id) return;
     try {
       setAiAnalyzing(true);
-      const data = await fetchManipulationApi();
+      // ยิงคนละ endpoint กับ analyzeManipulation — ไม่ share cache
+      const data = await adminAPI.getPostAiGeneratedScreening(post.id);
       setAiScreening(data);
     } catch (err) {
       console.error(err);

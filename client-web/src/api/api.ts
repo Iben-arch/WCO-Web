@@ -551,18 +551,27 @@ export const adminAPI = {
     }
   },
 
+  /** ตรวจสอบ AI ทุก mode รวม (ใช้ใน Admin approval flow) */
   getPostAiScreening: async (postId: string, forceRefresh = false): Promise<AiScreeningResult> => {
     const response = await axios.get(`/api/admin/posts/${postId}/ai-screening`, { params: { forceRefresh } });
     return response.data?.data;
   },
 
+  /** ตรวจสอบแหล่งที่มาของรูป (Reverse Image Search) */
   getPostSourceScreening: async (postId: string, forceRefresh = true): Promise<AiScreeningResult> => {
     const response = await axios.get(`/api/admin/posts/${postId}/ai-screening`, { params: { mode: 'source', forceRefresh } });
     return response.data?.data;
   },
 
+  /** ตรวจภาพตัดต่อ/ปลอมแปลง — endpoint แยกเฉพาะ ไม่ share cache กับ AI-generated */
   getPostManipulationScreening: async (postId: string, forceRefresh = false): Promise<AiScreeningResult> => {
-    const response = await axios.get(`/api/admin/posts/${postId}/ai-screening`, { params: { mode: 'manipulation', forceRefresh } });
+    const response = await axios.get(`/api/admin/posts/${postId}/ai-screening/manipulation`, { params: { forceRefresh } });
+    return response.data?.data;
+  },
+
+  /** ตรวจภาพสร้างจาก AI — endpoint แยกเฉพาะ ไม่ share cache กับ manipulation */
+  getPostAiGeneratedScreening: async (postId: string, forceRefresh = false): Promise<AiScreeningResult> => {
+    const response = await axios.get(`/api/admin/posts/${postId}/ai-screening/generated`, { params: { forceRefresh } });
     return response.data?.data;
   },
 };

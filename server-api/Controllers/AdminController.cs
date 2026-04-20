@@ -442,7 +442,7 @@ namespace ServerApi.Controllers
         }
 
         /// <summary>
-        /// GET /api/admin/posts/{id}/ai-screening - AI ช่วยประเมินความเสี่ยงรูปภาพสำหรับการอนุมัติโพสต์
+        /// GET /api/admin/posts/{id}/ai-screening - AI ช่วยประเมินความเสี่ยงรูปภาพสำหรับการอนุมัติโพสต์ (รวมทุก mode)
         /// </summary>
         [HttpGet("posts/{id}/ai-screening")]
         public async Task<IActionResult> GetPostAiScreening(
@@ -491,6 +491,88 @@ namespace ServerApi.Controllers
             {
                 _logger.LogError(ex, "Admin GetPostAiScreening error for {PostId}", id);
                 return StatusCode(500, new { success = false, error = "เกิดข้อผิดพลาดในการวิเคราะห์ AI" });
+            }
+        }
+
+        /// <summary>
+        /// GET /api/admin/posts/{id}/ai-screening/manipulation - ตรวจภาพตัดต่อ/ปลอมแปลง (Image Manipulation Detection)
+        /// แยก endpoint จาก /ai-screening/generated เพื่อให้ยิง API คนละเส้น ไม่ share cache กัน
+        /// </summary>
+        [HttpGet("posts/{id}/ai-screening/manipulation")]
+        public async Task<IActionResult> GetPostManipulationScreening(
+            string id,
+            [FromQuery] bool forceRefresh = false,
+            CancellationToken cancellationToken = default)
+        {
+            if (await EnsureAdminAsync() == null)
+            {
+                if (string.IsNullOrEmpty(GetUserId()))
+                    return Unauthorized(new { success = false, error = "ไม่พบผู้ใช้" });
+                return StatusCode(403, new { success = false, error = "ไม่มีสิทธิ์แอดมิน" });
+            }
+
+            if (string.IsNullOrWhiteSpace(id))
+                return BadRequest(new { success = false, error = "กรุณาระบุ post id" });
+
+            try
+            {
+                var existing = await _supabaseService.GetAsync("posts", id, useServiceRole: true);
+                if (existing == null)
+                    return NotFound(new { success = false, error = "ไม่พบโพสต์ที่ระบุ" });
+
+                var screening = await _postModerationAiService.AnalyzePostManipulationAsync(id, forceRefresh, cancellationToken);
+                return Ok(new { success = true, data = screening });
+            }
+            catch (OperationCanceledException)
+            {
+                return StatusCode(499, new { success = false, error = "Request cancelled" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Admin GetPostManipulationScreening error for {PostId}", id);
+                return StatusCode(500, new { success = false, error = "เกิดข้อผิดพลาดในการวิเคราะห์ภาพตัดต่อ" });
+            }
+        }
+
+        /// <summary>
+        /// GET /api/admin/posts/{id}/ai-screening/generated - ตรวจภาพสร้างจาก AI (AI-Generated Image Detection)
+        /// แยก endpoint จาก /ai-screening/manipulation เพื่อให้ยิง API คนละเส้น ไม่ share cache กัน
+        /// </summary>
+        [HttpGet("posts/{id}/ai-screening/generated")]
+        public async Task<IActionResult> GetPostAiGeneratedScreening(
+            string id,
+            [FromQuery] bool forceRefresh = false,
+            CancellationToken cancellationToken = default)
+        {
+            if (await EnsureAdminAsync() == null)
+            {
+                if (string.IsNullOrEmpty(GetUserId()))
+                    return Unauthorized(new { success = false, error = "ไม่พบผู้ใช้" });
+                return StatusCode(403, new { success = false, error = "ไม่มีสิทธิ์แอดมิน" });
+            }
+
+            if (string.IsNullOrWhiteSpace(id))
+                return BadRequest(new { success = false, error = "กรุณาระบุ post id" });
+
+            try
+            {
+                var existing = await _supabaseService.GetAsync("posts", id, useServiceRole: true);
+                if (existing == null)
+                    return NotFound(new { success = false, error = "ไม่พบโพสต์ที่ระบุ" });
+
+                // AnalyzePostAsync รันทุก signal รวม aiGenerated — ดึงเฉพาะ AI-generated portion
+                // ส่งคืน full result เพื่อให้ frontend เลือก field ที่ต้องการ (aiGeneratedWarningLevel ฯลฯ)
+                var screening = await _postModerationAiService.AnalyzePostAsync(id, forceRefresh, cancellationToken);
+                return Ok(new { success = true, data = screening });
+            }
+            catch (OperationCanceledException)
+            {
+                return StatusCode(499, new { success = false, error = "Request cancelled" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Admin GetPostAiGeneratedScreening error for {PostId}", id);
+                return StatusCode(500, new { success = false, error = "เกิดข้อผิดพลาดในการวิเคราะห์ภาพ AI" });
             }
         }
 
