@@ -208,24 +208,34 @@ const Register: React.FC = () => {
         </div>
       </div>
 
-      {/* Success Modal */}
+      {/* Success Modal — Email Verification Required */}
       {showSuccessModal && (
         <div className="fixed inset-0 z-[9999] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="card bg-base-100 shadow-2xl max-w-sm w-full text-center animate-[fadeInUp_0.25s_ease-out]">
             <div className="card-body p-8">
-              <div className="text-6xl mb-2">✅</div>
+              <div className="text-6xl mb-2">📧</div>
               <h3 className="text-2xl font-bold mb-2">
-              สมัครสมาชิกสำเร็จ!
+                ตรวจสอบอีเมลของคุณ!
               </h3>
-              <p className="text-sm text-base-content/70 mb-6 leading-relaxed">
-                ยินดีต้อนรับสู่ <strong className="text-primary">WCO Thailand</strong>
-                <br />คุณเข้าสู่ระบบแล้ว สามารถเริ่มใช้งานได้เลย
+              <p className="text-sm text-base-content/70 mb-2 leading-relaxed">
+                เราได้ส่งลิงก์ยืนยันอีเมลไปที่
               </p>
+              <p className="font-semibold text-primary text-sm mb-4 break-all">
+                {formData.email}
+              </p>
+              <p className="text-sm text-base-content/60 mb-6 leading-relaxed">
+                กรุณาคลิกลิงก์ในอีเมลเพื่อยืนยันตัวตน<br />
+                แล้วจึงจะสามารถเข้าสู่ระบบได้
+              </p>
+              <div className="alert alert-info text-xs text-left mb-4 py-2">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className="stroke-current shrink-0 w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <span>ตรวจสอบในโฟลเดอร์ spam/junk หากไม่พบในกล่องขาเข้า</span>
+              </div>
               <button
-                onClick={() => { setShowSuccessModal(false); navigate('/'); }}
+                onClick={() => { setShowSuccessModal(false); navigate('/login'); }}
                 className="btn btn-primary"
               >
-                เริ่มใช้งาน →
+                ไปหน้าเข้าสู่ระบบ →
               </button>
             </div>
           </div>

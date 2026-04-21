@@ -125,7 +125,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const register = async (email: string, password: string, username: string): Promise<User> => {
     try {
-      // Sign up with Supabase Auth
+      // Sign up with Supabase Auth — Supabase will send a confirmation email automatically
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -152,7 +152,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         throw new Error('ไม่สามารถสร้างบัญชีได้');
       }
 
-      // Create profile row
+      // Create profile row (non-blocking — the trigger should handle this too)
       try {
         const { error: profileError } = await supabase
           .from('profiles')
@@ -163,19 +163,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           });
 
         if (profileError) {
-          // If profile creation fails, log but don't fail registration
-          // The trigger should handle this, but we try manually as backup
           console.warn('Could not create profile automatically:', profileError);
         }
       } catch (profileError: any) {
         console.warn('Profile creation error (non-critical):', profileError);
       }
 
-      setCurrentUser(data.user);
-      
-      // โหลด profile ในพื้นหลัง ไม่บล็อกการ navigate
-      fetchProfile(data.user.id).catch((err) => console.error('Profile fetch after register:', err));
-
+      // *** ไม่ setCurrentUser *** เพราะต้องให้ user verify email ก่อน
+      // Supabase จะส่ง confirmation email ไปให้ user
+      // หลังจาก verify แล้วถึงจะเข้าสู่ระบบได้
       return data.user;
     } catch (error: any) {
       console.error('Register error:', error);
