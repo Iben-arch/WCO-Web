@@ -315,11 +315,17 @@ namespace ServerApi.Services
             double[] vProfile = new double[W];
             double[] hProfile = new double[H];
 
+            // Use Otsu threshold on the magnitude image to determine a dynamic noise floor.
+            // Drops all gradients belonging to table scratches/textures so gaps between cards are mathematically clean.
+            double noiseThresh = CvInvoke.Threshold(mag, new Mat(), 0, 255, ThresholdType.Otsu);
+
             using var magImg = mag.ToImage<Gray, byte>();
             for (int y = 0; y < H; y++)
                 for (int x = 0; x < W; x++)
                 {
                     double v = magImg[y, x].Intensity;
+                    if (v < noiseThresh * 0.5) continue; // Ignore low-contrast texture noise
+                    
                     vProfile[x] += v;
                     hProfile[y] += v;
                 }
@@ -361,10 +367,59 @@ namespace ServerApi.Services
                 {
                     int cw = col.Length, ch = row.Length;
                     if (cw < 20 || ch < 20) continue;
-                    if (cw * (double)ch < minArea * 0.20) continue;
-                    double aspect = (double)cw / ch;
-                    if (aspect < MinAspectRatio * 0.65 || aspect > MaxAspectRatio * 1.55) continue;
-                    cells.Add(new Rectangle(col.Start, row.Start, cw, ch));
+
+                    // ── Robust Local Cell Tightening ──
+                    // Reduces the oversized grid bounding box caused by diagonally staggered cards
+                    double[] cellV = new double[cw];
+                    double[] cellH = new double[ch];
+                    // magImg is an image of OpenCV byte intensities representing gradient magnitude
+                    var magImgData = magImg.Data; 
+                    for (int cy = 0; cy < ch; cy++)
+                    {
+                        for (int cx = 0; cx < cw; cx++)
+                        {
+                            double v = magImgData[row.Start + cy, col.Start + cx, 0];
+                            cellV[cx] += v;
+                            cellH[cy] += v;
+                        }
+                    }
+                    for (int cx = 0; cx < cw; cx++) cellV[cx] /= ch;
+                    for (int cy = 0; cy < ch; cy++) cellH[cy] /= cw;
+
+                    // Card edges have very strong gradients compared to the table background.
+                    // By setting the threshold relative ONLY to the local peak, we safely 
+                    // bypass background texture/noise that confused the global threshold.
+                    double localVMax = cellV.Max();
+                    double localHMax = cellH.Max();
+                    
+                    double tightVThresh = localVMax * 0.15; // 15% of peak horizontal gradient
+                    double tightHThresh = localHMax * 0.15; // 15% of peak vertical gradient
+
+                    int startX = 0, endX = cw - 1;
+                    while (startX < cw && cellV[startX] < tightVThresh) startX++;
+                    while (endX >= 0 && cellV[endX] < tightVThresh) endX--;
+
+                    int startY = 0, endY = ch - 1;
+                    while (startY < ch && cellH[startY] < tightHThresh) startY++;
+                    while (endY >= 0 && cellH[endY] < tightHThresh) endY--;
+
+                    int finalX = col.Start, finalY = row.Start;
+                    int finalW = cw, finalH = ch;
+
+                    if (startX <= endX && startY <= endY)
+                    {
+                        finalX += startX;
+                        finalY += startY;
+                        finalW = endX - startX + 1;
+                        finalH = endY - startY + 1;
+                    }
+
+                    if (finalW * (double)finalH < minArea * 0.20) continue;
+                    double aspect = (double)finalW / finalH;
+                    // Strict aspect ratio check because we are now confident in our tight bounds
+                    if (aspect < MinAspectRatio * 0.70 || aspect > MaxAspectRatio * 1.40) continue;
+
+                    cells.Add(new Rectangle(finalX, finalY, finalW, finalH));
                 }
 
             if (cells.Count < 2) return [];
@@ -593,7 +648,8 @@ namespace ServerApi.Services
                         if (rect.Width < 20 || rect.Height < 20) continue;
                         double aspect = (double)rect.Width / rect.Height;
                         if (aspect < MinAspectRatio || aspect > MaxAspectRatio) continue;
-                        if (Math.Abs(aspect - CardAspect) > MaxAspectDeviationStrict) continue;
+                        // Relaxed deviation to allow slightly rotated full contours
+                        if (Math.Abs(aspect - CardAspect) > MaxAspectDeviationStrict * 1.5) continue;
 
                         // Store the quad points for potential perspective correction
                         var pts = approx.ToArray().Select(p => new PointF(p.X, p.Y)).ToArray();
@@ -609,13 +665,12 @@ namespace ServerApi.Services
                     double ratio = Math.Min(w, h) / Math.Max(w, h);
                     if (ratio < 0.45 || ratio > 0.90) continue;
                     double rrArea = w * h;
-                    if (rrArea <= 1 || contArea / rrArea < 0.55) continue;
+                    if (rrArea <= 1 || contArea / rrArea < 0.50) continue;
                     PointF[] verts = rr.GetVertices();
                     Rectangle rectR = BoundingRect(verts);
                     if (rectR.Width < 20 || rectR.Height < 20) continue;
-                    double aspectR = (double)rectR.Width / rectR.Height;
-                    if (aspectR < MinAspectRatio || aspectR > MaxAspectRatio) continue;
-                    if (Math.Abs(aspectR - CardAspect) > MaxAspectDeviationFallback) continue;
+                    // We REMOVED the strict aspectR check on the bounding box here 
+                    // because naturally rotated cards generate wider bounding boxes that fail it.
                     candidates.Add((rectR, contArea, verts));
                 }
             }
@@ -746,19 +801,37 @@ namespace ServerApi.Services
 
         private static List<Rectangle> MergeRectLists(List<Rectangle> primary, List<Rectangle> secondary)
         {
-            var merged = new List<Rectangle>(primary);
-            foreach (var r in secondary)
+            var combined = new List<Rectangle>(primary);
+            combined.AddRange(secondary);
+
+            var result = new List<Rectangle>();
+            foreach (var r in combined)
             {
-                bool overlaps = primary.Any(p =>
+                int overlapIdx = result.FindIndex(f =>
                 {
-                    double inter = IntersectionArea(p, r);
+                    double inter = IntersectionArea(f, r);
                     if (inter <= 0) return false;
-                    double minBox = Math.Min(p.Width * (double)p.Height, r.Width * (double)r.Height);
+                    double minBox = Math.Min(f.Width * (double)f.Height, r.Width * (double)r.Height);
                     return inter / minBox > 0.40;
                 });
-                if (!overlaps) merged.Add(r);
+
+                if (overlapIdx >= 0)
+                {
+                    // If they overlap, keep the one with the aspect ratio closer to standard CardAspect
+                    double aspectF = (double)result[overlapIdx].Width / result[overlapIdx].Height;
+                    double aspectR = (double)r.Width / r.Height;
+                    double distF = Math.Abs(aspectF - CardAspect);
+                    double distR = Math.Abs(aspectR - CardAspect);
+
+                    if (distR < distF)
+                        result[overlapIdx] = r;
+                }
+                else
+                {
+                    result.Add(r);
+                }
             }
-            return merged;
+            return result;
         }
 
         /// <summary>

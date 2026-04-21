@@ -741,7 +741,7 @@ private static string BuildCacheKey(string imageUrl)
 - Smooth ด้วย **Gaussian Kernel** (window=13, σ=window/4) — ใช้ Gaussian แทน Box Filter เพราะทนต่อ Spike ของพิกเซลกวนได้ดีกว่า
 - หาช่วง **Band** (profile ≥ threshold) = ตำแหน่งคอลัมน์/แถวของการ์ด, ช่วงที่ต่ำกว่า threshold = ช่องว่างระหว่างการ์ด
 - ถ้า Band ใหญ่เกินไป (การ์ดชนกัน) → ใช้ `SplitOversizedBands` หา Local Minima เพื่อแบ่งย่อย
-- ตัดเป็นกริดเซลล์ (Column × Row) → ตรวจ Aspect Ratio + Size Uniformity
+- ตัดเป็นกริดเซลล์ (Column × Row) → ประยุกต์ใช้ **Robust Local Cell Tightening** โดยหาระดับ Gradient สูงสุด (Peak) ภายในเซลล์ย่อยนั้นๆ เพื่อใช้เป็น Local Threshold (15% ของค่า Peak) ในการบีบกรอบซ้ายขวาบนล่างให้แนบสนิทกับขอบการ์ดมากที่สุด แก้ปัญหาไขว้กันของตาราง ก่อนนำไปตรวจ Aspect Ratio + Size Uniformity
 
 **ผลลัพธ์:** รายการ Rectangle ของการ์ดที่จำได้จากกริด (≥ 2 ใบถึงจะใช้ผลนี้)
 
@@ -759,8 +759,8 @@ private static string BuildCacheKey(string imageUrl)
   4. ถ้ามี background mask จากขั้นที่ 0 → ใส่เป็น source เสริมอีก 1 ช่องทาง
   5. **FindContours** บนแหล่ง edge ทั้งหมด → กรอง:
      - สี่เหลี่ยม 4 จุด (Convex Quad) ที่ Aspect Ratio ตรง → เก็บจุดมุม 4 จุดไว้สำหรับ Perspective Correction
-     - Contour ทรงอื่นที่ `MinAreaRect` ให้ Ratio/Area ผ่านเกณฑ์
-- Deduplicate ข้ามสเกลด้วยค่า Overlap > 50%
+     - Contour ปิดทรงอื่นที่หาได้จากกรอบสี่เหลี่ยมแบบล้อมรอบตามองศาเอียง (RotatedRect) ซึ่งมี Ratio และ Area ผ่านเกณฑ์ โดยระบบจะ**ยกเลิกข้อจำกัด Aspect Ratio ขั้นต่ำ** ของกรอบขอบขนาน (Bounding Box) แบบปกติ เพื่อรองรับการ์ดที่วางตัวเอียงหรือหมุนมุมทแยงโดยไม่ถูกโยนทิ้ง
+- Deduplicate ข้ามสเกลด้วยข้อกำหนดทาง Overlap ที่เข้มงวดมากกว่าเดิม (ลดปัญหาภาพซ้อน)
 
 **ผลลัพธ์:** รายการ Rectangle ของการ์ดทั้งหมดที่หาพบจากทุกสเกล
 

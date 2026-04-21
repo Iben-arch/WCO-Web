@@ -238,10 +238,10 @@ app.Use(async (context, next) =>
 ระบบสุ่มตัวอย่างพิกเซลจากขอบทั้ง 4 ด้านของภาพเพื่อประมาณสีพื้นหลังในปริภูมิ HSV จากนั้นสร้าง Binary Mask โดยพิกเซลที่ระยะสีถ่วงน้ำหนักเกิน 35 หน่วยจากค่าเฉลี่ยขอบถือเป็น Foreground นำไปใช้เป็นข้อมูลเสริมในขั้นต่อไป
 
 **ขั้นตอนที่ 1 — Projection-based Grid Detection:**
-เหมาะสำหรับภาพที่มีการ์ดวางเรียงเป็นตาราง ระบบคำนวณ Sobel Gradient แนวนอนและแนวตั้ง แล้วฉายค่ากลาง (Projection Profile) เพื่อหาช่วงที่ Gradient ต่ำ ซึ่งเป็นช่องว่างระหว่างการ์ด จากนั้นแบ่งพิกัดเป็น Grid Cell และตรวจ Aspect Ratio ว่าตรงกับอัตราส่วนมาตรฐาน Trading Card ($\approx 0.714$)
+เหมาะสำหรับภาพที่มีการ์ดวางเรียงเป็นตาราง ระบบคำนวณ Sobel Gradient แนวนอนและแนวตั้ง แล้วฉายค่ากลาง (Projection Profile) เพื่อหาช่วงที่ Gradient ต่ำ ซึ่งเป็นช่องว่างระหว่างการ์ด จากนั้นแบ่งพิกัดเป็น Grid Cell โดยมีการประยุกต์ใช้ **Robust Local Cell Tightening** หาระดับ Gradient สูงสุดภายในเซลล์ย่อยเพื่อบีบกรอบให้แนบขอบการ์ดมากที่สุด ก่อนจะตรวจ Aspect Ratio ว่าตรงกับอัตราส่วนมาตรฐาน Trading Card ($\approx 0.714$)
 
 **ขั้นตอนที่ 2 — Multi-Scale Contour Detection:**
-รันการหาเส้นขอบที่ **3 สเกล** (100%, 75%, 50%) เพื่อจับการ์ดขนาดต่างกัน ในแต่ละสเกลดำเนินการ: Histogram Equalization → Gaussian Blur → Adaptive Threshold → Otsu's Threshold → Adaptive Canny → Morphological Close/Dilate → FindContours กรองเฉพาะสี่เหลี่ยมที่ Aspect Ratio อยู่ในช่วง 0.50–0.92
+รันการหาเส้นขอบที่ **3 สเกล** (100%, 75%, 50%) เพื่อจับการ์ดขนาดต่างกัน ในแต่ละสเกลดำเนินการ: Histogram Equalization → Gaussian Blur → Adaptive Threshold → Otsu's Threshold → Adaptive Canny → Morphological Close/Dilate → FindContours กรองรูปทรงโดยอาศัย Rotated Rect เพื่อรองรับการ์ดหมุนเอียง และระงับการเช็ค Aspect Ratio อย่างเข้มงวดของ Bounding Box ระนาบตรง เพื่อให้รักษาการ์ดที่วางมุมทแยงไว้ได้
 
 **ขั้นตอนที่ 3 — Grid Completion:**
 ถ้าการ์ดที่พบวางเรียงแต่บางช่องหายไป ระบบคำนวณขนาดและตำแหน่งของช่องที่ขาดใหม่โดยอนุมานจากช่องที่พบแล้ว ช่วยให้ไม่พลาดการ์ดที่ถูกบังบางส่วน
@@ -363,19 +363,27 @@ LIMIT match_limit;
 
 ## 3.6 การผสานโมดูลและการบูรณาการระบบ (System Integration)
 
-### 3.6.1 ขั้นตอนการรัน Pipeline เมื่อสร้างโพสต์ใหม่
+### 3.6.1 ขั้นตอนการรัน Pipeline ภายในระบบ
 
+กระบวนการทำงานตั้งแต่การสร้างโพสต์ไปจนถึงการแยกส่วนตรวจสอบความเสี่ยง ถูกแบ่งออกเป็น 2 ระยะสำคัญเพื่อลดคอขวดระหว่างผู้ใช้และกระบวนการทำงานเบื้องหลัง:
+
+**ระยะที่ 1: การสร้างโพสต์ของผู้ขาย (Post Creation)**
 ```
-1. ผู้ขายกรอกฟอร์มและแนบรูปใน Frontend
-2. Frontend ส่ง multipart/form-data → POST /api/card-detection/analyze
-3. Backend รัน CardDetectionService  →  ได้ Cropped Image(s)
-4. Backend รัน ImageManipulationDetectionService (17 signals)
-5. Backend เรียก Sightengine API (ยืนยัน AI-Generated)
-6. Backend เรียก ExternalReverseImageService (Google Lens)
-7. Backend ประมวลผลผลลัพธ์รวม → ส่งกลับ JSON:
-   { manipulationWarning, aiGeneratedWarning, reverseImageWarning }
-8. ถ้า Frontend ยืนยันโพสต์ → POST /api/posts สร้างโพสต์ในฐานข้อมูล
-9. BackgroundService รัน CLIP Embedding แบบ Async → Insert ลง post_image_embeddings
+1. ผู้ขายกรอกข้อมูลฟอร์มและแนบรูปถ่ายในส่วน Frontend
+2. ระบบช่วยครอบการ์ดอัตโนมัติเบื้องต้นโดยยิง POST /api/card-detection/detect ส่งต่อไปยัง CardDetectionService
+3. เมื่อผู้ขายกดยืนยันโพสต์ → ยิง POST /api/posts บันทึกโพสต์ลงฐานข้อมูล (สถานะ Pending)
+4. ระบบ Background Task ทำการคำนวณเวกเตอร์รูปภาพ (CLIP Embedding) ในแบ็กกราวด์ และ Insert ลง Post_Image_Embeddings
+```
+
+**ระยะที่ 2: การตรวจสอบความเสี่ยงของแอดมิน (Admin AI Screening)**
+การคัดกรองจะถูกแยกส่วน (Decoupled) ออกเป็น Endpoint ย่อยตามจุดประสงค์การค้นหา เพื่อให้สามารถทำงานได้รวดเร็วและใช้แคชแยกกันได้ แอดมินสามารถกดยืนยันให้ระบบ AI ประเมินได้จากหน้า Dashboard:
+```
+1. แอดมินเรียกดูโพสต์ที่รออนุมัติ (Status: Pending)
+2. เมื่อต้องการตรวจสอบ AI ระบบจะยิง API ย่อยที่แยกส่วนประมวลผล (PostModerationAiService) ได้แก่:
+   - ตรวจหาภาพตัดต่อ (17 Signals): GET /api/admin/posts/{id}/ai-screening/manipulation
+   - ตรวจหาภาพวาดจาก AI (Sightengine): GET /api/admin/posts/{id}/ai-screening/generated
+   - ตรวจการขโมยรูป (Lens/dHash/CLIP): GET /api/admin/posts/{id}/ai-screening?mode=source
+3. ระบบจะคืนค่าประเมินความเสี่ยงพร้อมเหตุผล ให้แอดมินพิจารณาตัดสินใจเปลี่ยนสถานะเป็น Active หรือ Rejected
 ```
 
 ### 3.6.2 ขั้นตอนการรัน Pipeline เมื่อค้นหาด้วยรูปภาพ
