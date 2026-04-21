@@ -534,7 +534,7 @@ export const adminAPI = {
   // Approve post
   approvePost: async (postId: string): Promise<void> => {
     try {
-      await axios.post(`/api/admin/posts/${postId}/approve`);
+      await axios.put(`/api/admin/posts/${postId}/status`, { status: 'active' });
     } catch (error: any) {
       console.error('Error approving post:', error);
       throw error;
@@ -544,7 +544,7 @@ export const adminAPI = {
   // Reject post
   rejectPost: async (postId: string, reason?: string): Promise<void> => {
     try {
-      await axios.post(`/api/admin/posts/${postId}/reject`, { reason });
+      await axios.put(`/api/admin/posts/${postId}/status`, { status: 'rejected', reason });
     } catch (error: any) {
       console.error('Error rejecting post:', error);
       throw error;

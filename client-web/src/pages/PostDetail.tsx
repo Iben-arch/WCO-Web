@@ -633,6 +633,30 @@ const PostDetail: React.FC = () => {
     }
   };
 
+  const handleApprovePost = async (): Promise<void> => {
+    if (!post?.id) return;
+    try {
+      await adminAPI.approvePost(post.id);
+      toast.success('อนุมัติโพสต์ส่งขายสำเร็จ');
+      fetchPost();
+    } catch (err: any) {
+      toast.error('เกิดข้อผิดพลาดในการอนุมัติ: ' + (err?.response?.data?.message || err?.message || 'Unknown error'));
+    }
+  };
+
+  const handleRejectPost = async (): Promise<void> => {
+    if (!post?.id) return;
+    const reason = window.prompt('กรุณาระบุเหตุผลที่ปฏิเสธโพสต์:');
+    if (reason === null) return;
+    try {
+      await adminAPI.rejectPost(post.id, reason);
+      toast.success('ปฏิเสธโพสต์สำเร็จ');
+      fetchPost();
+    } catch (err: any) {
+      toast.error('เกิดข้อผิดพลาดในการปฏิเสธ: ' + (err?.response?.data?.message || err?.message || 'Unknown error'));
+    }
+  };
+
   const handleCardProcessed = (cards: IndividualCardItem[]): void => {
     // Convert IndividualCardItem to DetectedCard for state
     const detectedCards: DetectedCard[] = cards.map(card => ({
@@ -1263,6 +1287,29 @@ const PostDetail: React.FC = () => {
                       )}
                     </div>
                   )}
+
+                  {isAdminViewer && post.status === 'pending' && (
+                    <div className="admin-actions-block mb-3 p-3 border rounded shadow-sm" style={{ backgroundColor: '#f8f9fa' }}>
+                      <h6 className="text-primary mb-3"><i className="fas fa-shield-alt me-2" aria-hidden="true" />สำหรับผู้ดูแลระบบ</h6>
+                      <div className="d-flex" style={{ gap: '10px' }}>
+                        <button
+                          type="button"
+                          className="btn btn-success flex-grow-1"
+                          onClick={handleApprovePost}
+                        >
+                          <i className="fas fa-check me-2" aria-hidden="true" /> อนุมัติโพสต์
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-danger flex-grow-1"
+                          onClick={handleRejectPost}
+                        >
+                          <i className="fas fa-times me-2" aria-hidden="true" /> ปฏิเสธโพสต์
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {!currentUser ? (
                     <div className="pd-contact-note">
                       <div className="pd-contact-note-header">
