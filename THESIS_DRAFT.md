@@ -198,6 +198,183 @@ builder.Services.AddScoped<IClipEmbeddingService, ClipEmbeddingService>();
 builder.Services.AddScoped<IPostModerationAiService, PostModerationAiService>();
 ```
 
+#### 3.4.3 Flow หลักของระบบ (Main System Flows)
+
+ระบบ WCO-Web มี Flow การทำงานหลัก 8 กระบวนการ ดังต่อไปนี้:
+
+**Flow 1 — สมัครสมาชิก (User Registration)**
+```
+ผู้ใช้เข้าหน้า /register
+    │
+    ├─ กรอก Display Name, Email, Password
+    │
+    ├─ [Validation] ตรวจชื่อซ้ำ → GET profiles (Supabase)
+    │       ├─ ซ้ำ → แสดง Error "ชื่อนี้ถูกใช้แล้ว"
+    │       └─ ไม่ซ้ำ → ดำเนินการต่อ
+    │
+    ├─ POST /api/auth/register → Supabase Auth Sign Up
+    │       ├─ สำเร็จ → สร้าง Profile ในตาราง profiles
+    │       └─ ล้มเหลว → แสดง Error (email ซ้ำ, password อ่อน)
+    │
+    └─ Redirect → /login
+```
+
+**Flow 2 — เข้าสู่ระบบ (User Login)**
+```
+ผู้ใช้เข้าหน้า /login
+    │
+    ├─ กรอก Email + Password
+    │
+    ├─ POST /api/auth/login → Supabase Auth Sign In
+    │       ├─ สำเร็จ → ได้รับ JWT (access_token + refresh_token)
+    │       │       ├─ เก็บ Token ใน localStorage
+    │       │       └─ ดึง Profile → set AuthContext
+    │       └─ ล้มเหลว → 401 Unauthorized → แสดง Toast Error
+    │
+    └─ Redirect → / (หน้าหลัก)
+```
+
+**Flow 3 — เรียกดูสินค้าและรายละเอียด (Browse & View)**
+```
+ผู้ใช้เข้าหน้า / (Home)
+    │
+    ├─ Frontend → Supabase SDK: SELECT posts WHERE status = 'approved'
+    │       └─ แสดงรายการการ์ดเป็น Grid (รูป, ชื่อ, ราคา, เวลาประมูล)
+    │
+    ├─ [กรองข้อมูล] เลือก Category, ช่วงราคา, Sort by
+    │       └─ Re-query → แสดงผลใหม่
+    │
+    └─ คลิกการ์ด → /post/:id
+            │
+            ├─ GET /api/posts/{id} → ดึงรายละเอียดโพสต์
+            ├─ GET /api/posts/{id}/related → ดึงโพสต์ที่เกี่ยวข้อง
+            ├─ GET /api/auction/{id}/bids → ดึงประวัติการเสนอราคา
+            └─ แสดง: รูปภาพ, คำอธิบาย, ราคา, ปุ่ม Bid/Buy/Add to Cart
+```
+
+**Flow 4 — สร้างโพสต์สินค้า (Create Post with AI Card Detection)**
+```
+ผู้ขายเข้าหน้า /create-post (ต้อง Login + Role: Seller)
+    │
+    ├─ Step 1: กรอกข้อมูล (ชื่อ, คำอธิบาย, category, ราคา, ประเภท ขาย/ประมูล)
+    │
+    ├─ Step 2: อัปโหลดรูปภาพการ์ด
+    │       │
+    │       ├─ POST /api/card-detection/detect → Emgu.CV Heuristic 6 ขั้นตอน
+    │       │       ├─ สำเร็จ → คืน Base64 JPEG ของการ์ดที่ครอปแล้ว
+    │       │       └─ ไม่พบการ์ด → ใช้รูปต้นฉบับ
+    │       │
+    │       └─ แสดง Preview: ผู้ขายเลือกใช้รูปครอป หรือรูปต้นฉบับ
+    │
+    ├─ Step 3: ยืนยัน → POST /api/posts
+    │       ├─ Upload รูปไป Supabase Storage
+    │       ├─ Insert ข้อมูลโพสต์ลง posts table (status = 'pending')
+    │       └─ Trigger Background CLIP Indexing (async)
+    │               ├─ ดาวน์โหลดรูปจาก Storage
+    │               ├─ ครอปการ์ดด้วย CardDetectionService
+    │               ├─ ส่งรูปครอปไป POST clip-worker:5002/embed
+    │               └─ INSERT float[512] → post_image_embeddings
+    │
+    └─ Redirect → /my-posts (สถานะ: รอ Admin อนุมัติ)
+```
+
+**Flow 5 — ประมูลสินค้า (Bidding / Auction)**
+```
+ผู้ซื้อเข้าหน้า /post/:id (โพสต์ประเภท Auction)
+    │
+    ├─ ดูราคาปัจจุบัน + ประวัติ Bid
+    │       └─ GET /api/auction/{postId}/bids
+    │
+    ├─ [เสนอราคา] กรอกจำนวนเงิน (ต้อง > ราคาปัจจุบัน + ขั้นต่ำ)
+    │       │
+    │       ├─ POST /api/auction/{postId}/bid
+    │       │       ├─ Validation: ราคา > current_price, ไม่ใช่เจ้าของ, ไม่ถูก Ban
+    │       │       ├─ สำเร็จ → Update current_price + Insert bid record
+    │       │       │       └─ สร้าง Notification แจ้ง Outbid ให้ผู้เสนอราคาก่อนหน้า
+    │       │       └─ ล้มเหลว → แสดง Error (เช่น ราคาต่ำเกินไป)
+    │       │
+    │       └─ [Buy Now] POST /api/auction/{postId}/buy-now
+    │               ├─ ซื้อทันทีในราคา Buy Now Price
+    │               └─ เปลี่ยนสถานะโพสต์ → 'sold'
+    │
+    └─ [หมดเวลาประมูล] → ผู้ชนะจะถูกบันทึกอัตโนมัติ
+            └─ GET /api/auction/{postId}/card-winners → แสดงผู้ชนะ
+```
+
+**Flow 6 — ตะกร้าสินค้าและชำระเงิน (Cart & Checkout)**
+```
+ผู้ซื้อกดปุ่ม "Add to Cart" บนหน้า /post/:id
+    │
+    ├─ POST /api/cart → เพิ่มสินค้าลงตะกร้า
+    │       ├─ ตรวจสอบ: สินค้ายังมีอยู่, ไม่ซ้ำในตะกร้า
+    │       └─ Insert → cart_items table
+    │
+    ├─ ผู้ซื้อเข้าหน้า /cart
+    │       ├─ GET /api/cart → ดึงรายการในตะกร้า
+    │       ├─ แสดง: รายการสินค้า, ราคารวม
+    │       └─ [ลบรายการ] DELETE /api/cart/{id}
+    │
+    └─ กดปุ่ม "Checkout"
+            │
+            ├─ POST /api/orders/checkout
+            │       ├─ สร้าง Order record (status = 'pending_payment')
+            │       ├─ เปลี่ยนสถานะโพสต์ → 'sold'
+            │       └─ สร้าง Notification แจ้งผู้ขาย
+            │
+            └─ [ผู้ขายยืนยันการจัดส่ง] POST /api/orders/{id}/confirm-shipment
+                    └─ [ผู้ซื้อยืนยันรับสินค้า] POST /api/orders/{id}/confirm-received
+                            └─ Order status → 'completed'
+```
+
+**Flow 7 — ค้นหาสินค้าด้วยรูปภาพ (Visual Search)**
+```
+ผู้ใช้เข้าหน้า / → กดปุ่ม "ค้นหาด้วยรูป"
+    │
+    ├─ อัปโหลดรูปภาพการ์ดที่ต้องการค้นหา
+    │
+    ├─ POST /api/card-detection/search
+    │       │
+    │       ├─ [Step 1] CardDetectionService → ครอปการ์ด (สูงสุด 12 ใบ)
+    │       │
+    │       ├─ [Step 2] ClipEmbeddingService → ส่ง Base64 ไป clip-worker:5002
+    │       │       └─ Python CLIP ViT-B/32 → L2 Normalize → float[512] × N
+    │       │
+    │       ├─ [Step 3] Supabase RPC: match_posts_by_embedding
+    │       │       ├─ HNSW ANN Search (vector_cosine_ops)
+    │       │       └─ WHERE cosine_similarity >= 0.70
+    │       │
+    │       └─ [Step 4] Fetch ข้อมูลโพสต์ → เรียงตาม Score (สูง → ต่ำ)
+    │
+    └─ Frontend แสดงผล: รายการโพสต์ที่ตรง + % ความคล้ายคลึง
+```
+
+**Flow 8 — ตรวจสอบภาพโดย Admin (Admin Image Moderation)**
+```
+Admin เข้าหน้า /admin → ดูรายการโพสต์ที่รอตรวจสอบ
+    │
+    ├─ คลิกโพสต์ → /post/:id
+    │
+    ├─ [ตรวจภาพตัดต่อ] กดปุ่ม "ตรวจสอบภาพตัดต่อ"
+    │       ├─ GET /api/admin/posts/{id}/ai-screening/manipulation
+    │       ├─ ImageManipulationDetection → 17 Signals → Sigmoid → Weighted Average
+    │       └─ แสดง: manipulationRisk % + verdict
+    │
+    ├─ [ตรวจภาพ AI] กดปุ่ม "ตรวจสอบภาพ AI"
+    │       ├─ GET /api/admin/posts/{id}/ai-screening/generated
+    │       ├─ Sightengine CNN + Local Heuristic
+    │       └─ แสดง: aiGeneratedRisk % + verdict
+    │
+    ├─ [ตรวจแหล่งที่มา] กดปุ่ม "ตรวจสอบแหล่งที่มา"
+    │       ├─ GET /api/admin/posts/{id}/ai-screening
+    │       ├─ SerpAPI Google Lens → dHash + CLIP Similarity ยืนยัน
+    │       └─ แสดง: reverseImageRisk % + matched links
+    │
+    └─ Admin ตัดสินใจ
+            ├─ [อนุมัติ] PUT /api/admin/posts/{id}/status → 'approved'
+            └─ [ปฏิเสธ] PUT /api/admin/posts/{id}/status → 'rejected'
+                    └─ สร้าง Notification แจ้งผู้ขาย
+```
+
 ---
 
 ### 3.5 การพัฒนาโมดูล AI ประมวลผลภาพ (AI Image Processing Modules)
