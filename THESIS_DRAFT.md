@@ -202,8 +202,9 @@ builder.Services.AddScoped<IPostModerationAiService, PostModerationAiService>();
 
 ### 3.5 การพัฒนาโมดูล AI ประมวลผลภาพ (AI Image Processing Modules)
 
-ส่วนนี้เป็นหัวใจหลักของโครงงาน แบ่งออกเป็น **3 โมดูล** ที่ทำงานต่อกันเป็น Pipeline:
+ส่วนนี้เป็นหัวใจหลักของโครงงาน แบ่งออกเป็น **3 โมดูล** ใน **2 กระบวนการ** ที่แยกอิสระจากกัน:
 
+**กระบวนการที่ 1 — Pipeline อัตโนมัติ (สร้างโพสต์ & ค้นหาด้วยรูปภาพ):**
 ```
 รูปภาพที่ผู้ใช้อัปโหลด
         │
@@ -211,11 +212,21 @@ builder.Services.AddScoped<IPostModerationAiService, PostModerationAiService>();
 [โมดูล 1] CardDetectionService  →  ครอปการ์ดออกจากพื้นหลัง (Emgu.CV 6 ขั้น)
         │
         ▼
-[โมดูล 2] ImageManipulationDetection + Sightengine  →  ตรวจสอบภาพปลอม/ภาพ AI
-        │
-        ▼
 [โมดูล 3] CLIP Embedding + pgvector  →  สร้าง/ค้นหาเวกเตอร์ภาพ
 ```
+
+**กระบวนการที่ 2 — เครื่องมือ Admin (เรียกใช้ด้วยการกดปุ่ม):**
+```
+Admin พบโพสต์ที่น่าสงสัย → กดปุ่มตรวจสอบบนหน้า PostDetail
+        │
+        ▼
+[โมดูล 2] ImageManipulationDetection + Sightengine + Reverse Image Search
+        │
+        ▼
+แสดงผลเปอร์เซ็นต์ความเสี่ยง → Admin ตัดสินใจอนุมัติ/ปฏิเสธโพสต์
+```
+
+> **หมายเหตุ:** โมดูลที่ 2 (Image Moderation) ไม่ได้ทำงานอัตโนมัติในขั้นตอนสร้างโพสต์ แต่ออกแบบเป็นเครื่องมือเฉพาะสำหรับผู้ดูแลระบบในการกลั่นกรองโพสต์ที่น่าสงสัย
 
 #### 3.5.1 โมดูลที่ 1: การตรวจจับและครอปภาพการ์ดอัตโนมัติ (CardDetectionService.cs)
 
