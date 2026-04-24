@@ -19,7 +19,7 @@ namespace ServerApi.Controllers
         private const int MaxQueryCards = 12;
         private const int DefaultMaxResults = 12;
         private const int RpcMatchLimitPerEmbedding = 30;
-        private const double DefaultMinSimilarityScore = 0.92;
+        private const double DefaultMinSimilarityScore = 0.85;
 
         public CardDetectionController(
             CardDetectionService cardDetection,
@@ -105,12 +105,29 @@ namespace ServerApi.Controllers
                 {
                     if (image == null || image.Length == 0) continue;
                     await using var stream = image.OpenReadStream();
-                    var detectedCards = await _cardDetection.DetectAndCropAsync(stream, cancellationToken).ConfigureAwait(false);
-                    foreach (var card in detectedCards)
+
+                    // อ่าน bytes ก่อน เผื่อต้องใช้ fallback
+                    using var memStream = new MemoryStream();
+                    await stream.CopyToAsync(memStream, cancellationToken).ConfigureAwait(false);
+                    var imageBytes = memStream.ToArray();
+
+                    using var detectStream = new MemoryStream(imageBytes);
+                    var detectedCards = await _cardDetection.DetectAndCropAsync(detectStream, cancellationToken).ConfigureAwait(false);
+
+                    if (detectedCards.Count > 0)
                     {
-                        if (card.ImageUrl == null) continue;
-                        dataUrls.Add(card.ImageUrl);
-                        if (dataUrls.Count >= MaxQueryCards) break;
+                        foreach (var card in detectedCards)
+                        {
+                            if (card.ImageUrl == null) continue;
+                            dataUrls.Add(card.ImageUrl);
+                            if (dataUrls.Count >= MaxQueryCards) break;
+                        }
+                    }
+                    else
+                    {
+                        // Fallback: รูปเป็นการ์ดเดี่ยว (ไม่มี background) ครอปไม่เจอ → ใช้ทั้งรูปเป็น query
+                        var dataUrl = "data:image/jpeg;base64," + Convert.ToBase64String(imageBytes);
+                        dataUrls.Add(dataUrl);
                     }
                     if (dataUrls.Count >= MaxQueryCards) break;
                 }

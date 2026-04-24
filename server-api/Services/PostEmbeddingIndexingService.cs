@@ -31,8 +31,11 @@ namespace ServerApi.Services
         /// <summary>
         /// For each image URL: download -> detect/crop cards -> get CLIP embeddings -> insert into post_image_embeddings.
         /// Call this in a background task after post create (do not block response).
+        /// 
+        /// preCroppedUrls: URLs ของรูปที่ครอปมาแล้ว (เช่น individualCards[].imageUrl จากโพสต์แยกใบ)
+        /// จะถูกส่งตรงไปยัง CLIP Worker โดยไม่ผ่าน CardDetectionService เพื่อให้ได้ embedding ที่แม่นยำกว่า
         /// </summary>
-        public async Task IndexPostImagesAsync(string postId, IReadOnlyList<string> imageUrls, CancellationToken cancellationToken = default)
+        public async Task IndexPostImagesAsync(string postId, IReadOnlyList<string> imageUrls, IReadOnlyList<string>? preCroppedUrls = null, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrEmpty(postId) || imageUrls == null || imageUrls.Count == 0)
             {
@@ -40,7 +43,18 @@ namespace ServerApi.Services
                 return;
             }
 
-            _logger.LogInformation("Indexing post {PostId} with {Count} image URL(s)", postId, imageUrls.Count);
+            // รวบรวม pre-cropped URLs เป็น HashSet สำหรับ O(1) lookup
+            var preCroppedSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (preCroppedUrls != null)
+            {
+                foreach (var u in preCroppedUrls)
+                {
+                    if (!string.IsNullOrWhiteSpace(u)) preCroppedSet.Add(u);
+                }
+            }
+
+            _logger.LogInformation("Indexing post {PostId} with {Count} image URL(s), {PreCropped} pre-cropped",
+                postId, imageUrls.Count, preCroppedSet.Count);
 
             var dataUrls = new List<string>();
             var meta = new List<(string SourceImageUrl, int CardIndex)>();
@@ -63,6 +77,18 @@ namespace ServerApi.Services
                     _logger.LogWarning("Empty response for image: {Url}", imageUrl.Length > 80 ? imageUrl[..80] + "..." : imageUrl);
                     continue;
                 }
+
+                // ── Pre-cropped: ส่งตรงไป CLIP ไม่ต้องผ่าน Card Detection ──
+                if (preCroppedSet.Contains(imageUrl))
+                {
+                    var dataUrl = "data:image/jpeg;base64," + Convert.ToBase64String(bytes);
+                    dataUrls.Add(dataUrl);
+                    meta.Add((imageUrl, 0));
+                    _logger.LogInformation("  Pre-cropped card → CLIP directly (skip card detection)");
+                    continue;
+                }
+
+                // ── Main images: ผ่าน Card Detection ตามปกติ ──
                 await using var ms = new MemoryStream(bytes);
                 var cards = await _cardDetection.DetectAndCropAsync(ms, cancellationToken).ConfigureAwait(false);
                 if (cards.Count > 0)
@@ -77,7 +103,7 @@ namespace ServerApi.Services
                 }
                 else
                 {
-                    // รูปการ์ดเดี่ยว (เช่นจาก individualCards) อาจ crop ไม่เจอ — ใช้ทั้งรูปเป็น 1 การ์ด
+                    // รูปการ์ดเดี่ยว อาจ crop ไม่เจอ — ใช้ทั้งรูปเป็น 1 การ์ด
                     var dataUrl = "data:image/jpeg;base64," + Convert.ToBase64String(bytes);
                     dataUrls.Add(dataUrl);
                     meta.Add((imageUrl, 0));

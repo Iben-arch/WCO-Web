@@ -15,7 +15,16 @@
 * **หน้าที่หลัก:** เปรียบเสมือนศูนย์กลางจราจร (Hub) ของเว็บไซต์ เขียนด้วยภาษา C# (ASP.NET Core) ชี้เป้าและคัดแยกรูปภาพ ทำงานตั้งแต่รับภาพ, ตรวจสิทธิ์ผู้ใช้งาน (Auth JWT), และคิวรี่ข้อมูลส่งกลับไปกลับมาเซิร์ฟเวอร์
 * **ไฟล์โค้ดสำคัญ:**
   * `Controllers/PostsController.cs` (และ Controllers อื่นๆ): ด่านหน้ารับ URL Request จากผู้ใช้งาน
-  * `Services/CardDetectionService.cs`: โค้ดสำคัญที่มีฟังก์ชันใช้ไลบรารี **Emgu.CV** ดำเนินการสแกนรูปภาพและใช้คณิตศาสตร์ตัดขอบรูปการ์ดเกมออกมาแบบอัตโนมัติ
+  * `Controllers/CardDetectionController.cs`: Endpoint สำหรับ detect/crop การ์ดและ search ด้วยรูปภาพ (CLIP + pgvector)
+  * `Controllers/AdminController.cs`: Endpoint สำหรับ Admin อนุมัติ/ปฏิเสธโพสต์ พร้อมระบบ AI screening หลากหลายโหมด
+  * `Services/CardDetectionService.cs` (~1,119 บรรทัด): โค้ดสำคัญที่มีฟังก์ชันใช้ไลบรารี **Emgu.CV** ดำเนินการสแกนรูปภาพและใช้คณิตศาสตร์ตัดขอบรูปการ์ดเกมออกมาแบบอัตโนมัติ (6-step heuristic)
+  * `Services/ClipEmbeddingService.cs`: HTTP Client เชื่อม Python CLIP Worker เพื่อรับเวกเตอร์ 512 มิติ
+  * `Services/PostEmbeddingIndexingService.cs`: Background Task สำหรับ index เวกเตอร์เข้าฐานข้อมูลเมื่อสร้างโพสต์ใหม่
+  * `Services/PostModerationAiService.cs`: Orchestrator หลักของระบบ AI Moderation ที่รวม source check (SerpAPI + dHash + CLIP), manipulation check, และ AI-generated check
+  * `Services/ImageManipulationDetectionService.cs`: ระบบตรวจจับภาพตัดต่อและ AI ด้วย 17 สัญญาณ heuristic (ไม่ใช้ GPU)
+  * `Services/ExternalReverseImageService.cs`: ค้นหาภาพจาก Google Lens ผ่าน SerpAPI (exact_matches mode)
+  * `Services/SightengineAiDetectionService.cs`: เรียก Sightengine ML API ตรวจจับภาพ AI-generated
+  * `Services/RelatedPostsService.cs`: ค้นหาโพสต์ที่เกี่ยวข้องด้วย CLIP embedding (ใช้เกณฑ์ต่างจากการค้นหาด้วยรูป)
   * `Services/SupabaseService.cs`: โค้ดใช้เชื่อมต่อกับฐานข้อมูล Supabase แทรกลงตารางหรือเรียกบันทึกข้อมูลสินค้าไปเก็บบน Cloud DB หรือ Storage
 * **ผลลัพธ์ (Output):** ตอบกลับ JSON Response ข้อมูลประมวลผลให้ Frontend ตลอดจนการลบ เซฟ อัปเดตข้อมูลบน Database
 
@@ -27,18 +36,47 @@
 ---
 
 ## 2. 🔄 Flow ขั้นตอนการทำงานและผลลัพธ์ (Workflow & Expected Outputs)
-เมื่อผู้ใช้งานอัปโหลดรูปภาพเพื่อ **"ตรวจหาสินค้าปลอม"** หรือ **"ค้นหาสินค้าด้วยภาพ"** ระบบจะมีการรับส่งข้อมูลแบบสายพาน (Pipeline Data Flow) ดังนี้:
 
-1. **ส่งภาพเข้าระบบ:** Frontend (`client-web`) ส่งภาพสถานที่จริงเต็มใบ (Raw Image) มาหา `server-api` ผ่าน Endpoint API
-2. **ครอปสกัดรูปเฉพาะจุด (Computer Vision):** `server-api` โยนภาพเข้าไฟล์ `CardDetectionService.cs` เพื่อตีเส้นทฤษฎีหาขอบการ์ดและตัดสภาพแวดล้อมฉากหลังรกรุงรังออกม้วนเดียวจบ
-   - **(Output):** ภาพการ์ดโฟกัสเน้นๆ ปราศจากพื้นโต๊ะ (Cropped Image Blob)
-3. **ตรวจสอบการตัดต่อและภาพ AI (Heuristic Ensemble & Sightengine):** `server-api` รันโค้ด `ImageManipulationDetectionService.cs` เพื่อวิเคราะห์สัญญาณค่าทางสถิติ 17 สัญญาณในการจับร่องรอยการตัดต่อ (Spliced Image) และภาพสร้างจาก AI พร้อมกับส่งเช็คด้วย Sightengine ยืนยันอีกชั้น
-   - **(Output):** ค่าความเสี่ยง (0-100%) ของการตัดต่อ (Manipulation Risk) และภาพ AI (AI-Generated Risk) เพื่อเตรียมนำไปแจ้งเตือนหรือบล็อคโพสต์ปลอม
-4. **ทำเกาเหลาลวดลายภาพ (clip-worker):** ส่งรูปทะลุไปยังฝั่งค่าย Python Worker ให้อ่านองค์ประกอบของศิลปะลายเส้น (Feature Vector)
+ระบบ AI ของ WCO-Web แบ่งออกเป็น **2 กระบวนการหลัก** ที่ทำงานแยกกันโดยสิ้นเชิง:
+
+### Process A: 🚀 Automatic Post-Creation Pipeline (อัตโนมัติเมื่อสร้างโพสต์)
+เมื่อผู้ขายสร้างโพสต์สินค้าใหม่ ระบบจะรัน AI indexing ใน **background task** (fire-and-forget ไม่ block response) อัตโนมัติ:
+
+1. **ส่งภาพเข้าระบบ:** Frontend (`client-web`) ส่งภาพสถานที่จริงเต็มใบ (Raw Image) มาหา `server-api` ผ่าน Endpoint `POST /api/posts`
+2. **ครอปสกัดรูปเฉพาะจุด (Computer Vision):** `PostEmbeddingIndexingService` ดาวน์โหลดรูปจาก Supabase Storage แล้วโยนเข้า `CardDetectionService.cs` เพื่อหาขอบการ์ดและตัดพื้นหลังออก
+   - **(Output):** ภาพการ์ดโฟกัสเน้นๆ ปราศจากพื้นโต๊ะ (Cropped Image Blob) แต่ละใบแยกกัน
+3. **สร้างเวกเตอร์พิกัดภาพ (clip-worker):** ส่งรูปที่ crop แล้วไปยัง Python Worker ให้รัน CLIP ViT-B/32 อ่านองค์ประกอบของศิลปะลายเส้น
    - **(Output):** อาร์เรย์ชุดพิกัด 512 ตำแหน่ง ยกตัวอย่างหน้าตาข้อมูลเช่น `[0.081, -0.421, 0.992, ...]`
    - **หมายเหตุ:** เวกเตอร์ทุกตัวจะถูก L2 Normalize ก่อนส่งกลับ (ความยาวเท่ากับ 1.0) ทำให้สามารถคำนวณ Cosine Similarity ด้วย Dot Product ตรงๆ ได้เลย
-5. **หาคู่เหมือนฝาแฝด (pgvector ใน Supabase):** Backend นำเลขอาร์เรย์นี้ลงตาราง Supabase และส่งคำสั่งฟังก์ชัน RPC ให้วัดระยะองศา (Vector Similarity) เพื่อไปหาสินค้ารหัสเดิมๆ ที่มี 512 ตัวเลขนี้ตกค้างคล้ายๆ กันให้มากที่สุด
-   - **(Output):** รายการลิสต์แถวสินค้าที่หน้าตาซ้ำกับภาพที่หา คลี่นำมาโชว์ตอบกลับผู้ใช้งาน
+4. **Index เข้าฐานข้อมูล:** `PostEmbeddingIndexingService` บันทึกเวกเตอร์ลงตาราง `post_image_embeddings` ใน Supabase (1 โพสต์ = หลาย embedding ถ้าพบหลายการ์ด)
+   - **(Output):** ข้อมูลพร้อมให้ค้นหาด้วย pgvector HNSW index
+
+### Process B: 🛡️ Admin-Triggered AI Moderation (Admin กดตรวจสอบ)
+เมื่อ Admin กดปุ่มตรวจสอบภาพโพสต์บน Dashboard ระบบจะรัน **3 ระบบย่อย** พร้อมกัน ผ่าน `PostModerationAiService.cs`:
+
+1. **Source Analysis (Reverse Image Search):**
+   - ส่ง URL ภาพไป `ExternalReverseImageService` → ค้นหาด้วย SerpAPI Google Lens (`exact_matches` mode)
+   - ยืนยันผลด้วย **dHash** (Perceptual Hash) เพื่อพิสูจน์ว่าเป็นภาพเดิมจริงๆ ไม่ใช่แค่การ์ดชนิดเดียวกัน
+   - เปรียบเทียบด้วย **CLIP Embedding** (composition similarity) เพิ่มเติมเพือดูความคล้ายทั้งภาพ
+   - **(Output):** `ExternalSourceRiskPct` (0-100%) + `SourceWarningLevel` (danger/warning/safe)
+
+2. **Manipulation Detection (ตรวจจับภาพตัดต่อ):**
+   - `ImageManipulationDetectionService` วิเคราะห์ **11 สัญญาณ** ด้วย Sigmoid Normalization + Concordance Analysis
+   - **(Output):** `ManipulationRiskPct` (0-100%) + `ManipulationWarningLevel` (danger ≥75% / warning ≥52% / safe)
+
+3. **AI-Generated Detection (ตรวจจับภาพ AI):**
+   - `ImageManipulationDetectionService` วิเคราะห์ **6 สัญญาณ** (noise floor, HF ratio, texture, etc.) เป็น fallback
+   - `SightengineAiDetectionService` เรียก ML API ภายนอก override ค่า heuristic เมื่อมี API key
+   - **(Output):** `AiGeneratedRiskPct` (0-100%) + `AiGeneratedWarningLevel` (danger ≥58% / warning ≥35% / safe)
+
+### Process C: 🔍 Image Search (ผู้ใช้ค้นหาด้วยรูปภาพ)
+เมื่อผู้ใช้งานอัปโหลดรูปภาพเพื่อ **"ค้นหาสินค้าด้วยภาพ"** ระบบจะมีการรับส่งข้อมูลแบบสายพาน (Pipeline Data Flow) ดังนี้:
+
+1. **ส่งภาพเข้าระบบ:** Frontend ส่งภาพผ่าน `POST /api/card-detection/search` (รับ max 30 MB)
+2. **ครอปสกัดรูปเฉพาะจุด:** `CardDetectionService` ตัดการ์ดออกมา (สูงสุด 12 ใบ)
+3. **สร้างเวกเตอร์:** `ClipEmbeddingService` ส่ง HTTP POST ไป Python Worker → ได้ `float[512]` ต่อการ์ด
+4. **หาคู่เหมือนฝาแฝด:** RPC `match_posts_by_embedding` ใน pgvector ด้วย cosine similarity ≥ **0.92** (configurable ผ่าน `ImageSearch:MinSimilarityScore`)
+   - **(Output):** รายการโพสต์ที่คล้ายกันเรียงตาม similarity score สูงสุด (สูงสุด 12 โพสต์)
 
 ---
 
@@ -216,7 +254,7 @@ public async Task<IActionResult> SearchSimilar([FromForm] List<IFormFile>? image
             ["query_embedding"] = vectorStr,
             ["match_limit"]     = 30,       // ดึงสูงสุด 30 โพสต์ ต่อ 1 embedding
             ["match_status"]    = "active",
-            ["match_threshold"] = 0.7       // cosine similarity >= 0.70
+            ["match_threshold"] = MinSimilarityScore  // default 0.92 (configurable via ImageSearch:MinSimilarityScore)
         };
 
         var rows = await _supabaseService.RpcAsync(
@@ -714,7 +752,7 @@ private static string BuildCacheKey(string imageUrl)
 ---
 
 ### 3.4 การตรวจจับและครอปรูปภาพการ์ดอัตโนมัติ (Automated Card Detection & Cropping)
-ระบบฝั่งโค้ด `CardDetectionService.cs` (ปัจจุบัน ~1,046 บรรทัด) มีโครงสร้างใช้ไลบรารี **Emgu.CV** เข้ามาช่วยมาร์คจุดและคว้านครอปตัวการ์ดก่อนส่งต่อให้โมเดล AI ตัวอื่น โดยมีกลยุทธ์ทำงานแบบขั้นบันได (Heuristic Approach) **6 ขั้นตอน** ดังนี้:
+ระบบฝั่งโค้ด `CardDetectionService.cs` (ปัจจุบัน ~1,119 บรรทัด) มีโครงสร้างใช้ไลบรารี **Emgu.CV** เข้ามาช่วยมาร์คจุดและคว้านครอปตัวการ์ดก่อนส่งต่อให้โมเดล AI ตัวอื่น โดยมีกลยุทธ์ทำงานแบบขั้นบันได (Heuristic Approach) **6 ขั้นตอน** ดังนี้:
 
 #### ขั้นที่ 0: Color-based Background Segmentation (ฟังก์ชัน `TryColorBackgroundMask`)
 **แนวคิด:** ก่อนจะหาขอบการ์ด ระบบจะพยายามแยก "พื้นหลัง" (โต๊ะ/แผ่นรอง) ออกจาก "วัตถุ" (การ์ด) ก่อนเป็นอันดับแรก
@@ -833,5 +871,54 @@ score = TextureScore × (0.40 + 0.35 × AspectFit + 0.25 × TextLikelihood)
 
 ---
 
+### 3.6 ระบบโพสต์ที่เกี่ยวข้อง (Related Posts — `RelatedPostsService.cs`)
+เมื่อผู้ใช้เปิดดูหน้า PostDetail ระบบจะแสดง **โพสต์ที่เกี่ยวข้อง** โดยใช้ CLIP Embedding เดิมที่ index ไว้ในขั้นตอน Post-Creation Pipeline:
+
+**วิธีการ:**
+1. ดึง embedding ของโพสต์ปัจจุบันจากตาราง `post_image_embeddings` (สูงสุด 3 embeddings)
+2. เรียก RPC `match_posts_by_embedding` ด้วย **threshold ต่ำกว่า** การค้นหาด้วยรูป:
+   - **Image Search:** `MinSimilarityScore = 0.92` (ตั้งค่าผ่าน `ImageSearch:MinSimilarityScore`) → ต้องตรงกันเกือบเป๊ะ
+   - **Related Posts:** `MinSimilarityScore = 0.65` (ตั้งค่าผ่าน `RelatedPosts:MinSimilarityScore`) → ยอมรับความคล้ายในระดับกลาง
+3. ถ้าผลลัพธ์จาก CLIP ไม่พอ → เติมด้วยโพสต์ในหมวดหมู่เดียวกัน (category-based fallback)
+4. กรองเฉพาะโพสต์ที่ `status = "active"` และอยู่ในหมวดหมู่เดียวกัน
+
+```csharp
+// RelatedPostsService.cs — threshold ต่ำกว่า ImageSearch
+private const double DefaultRelatedMinSimilarity = 0.65;
+
+// ดึง embedding ของโพสต์ปัจจุบัน → RPC match → เรียงตาม score
+var rpcParams = new Dictionary<string, object>
+{
+    ["query_embedding"] = vectorStr,
+    ["match_limit"]     = effectiveLimit + 8,
+    ["match_status"]    = "active",
+    ["match_threshold"] = threshold,           // 0.65 default
+    ["match_category"]  = category             // กรองหมวดหมู่เดียวกัน
+};
+```
+
+> **ทำไม threshold ต่างกัน?** Image Search ต้องการความแม่นยำสูง (precision-oriented) — ผู้ใช้ต้องการหาโพสต์ที่มีการ์ดเหมือนกัน ส่วน Related Posts ต้องการ recall สูง — แสดงโพสต์ที่ "คล้ายคลึง" เพื่อเพิ่มการค้นพบสินค้าใหม่ๆ
+
+---
+
+### 3.7 สรุปตารางพอร์ตและ Endpoint สำคัญ (Ports & Key Endpoints)
+
+| Service | Port | หน้าที่หลัก |
+|---|---|---|
+| `client-web` (React/Vite) | `5173` | Frontend UI สำหรับผู้ใช้งานและ Admin |
+| `server-api` (ASP.NET Core) | `5072` | Backend API: auth, posts, cards, moderation, orders |
+| `clip-worker` (FastAPI/Python) | `5000` | CLIP ViT-B/32 embedding: `/embed` endpoint |
+
+| Endpoint | Method | หน้าที่ |
+|---|---|---|
+| `/api/card-detection/detect` | POST | Detect/crop การ์ดจากรูปภาพ |
+| `/api/card-detection/search` | POST | ค้นหาโพสต์ด้วยรูปภาพ (CLIP + pgvector) |
+| `/api/admin/ai-screening/{postId}` | GET | AI moderation แบบรวม (source + manipulation + AI-gen) |
+| `/api/admin/ai-screening/{postId}/source` | GET | ตรวจจับแหล่งที่มาภาพ (Reverse Image Search) |
+| `/api/admin/ai-screening/{postId}/manipulation` | GET | ตรวจจับภาพตัดต่อ + ภาพ AI |
+| `/embed` (clip-worker) | POST | รับ base64 images → ส่งคืน 512-dim embeddings |
+
+---
+
 > [!NOTE]
-> ด้วยคู่มือกะทัดรัดฉบับนี้ เราจะได้เห็นว่ากลยุทธ์ฟีเจอร์ AI รูปภาพในโปรเจกต์ กรองตั้งแต่การสกัดตัดเสียงสัญญาณกวนทิ้ง (Emgu.CV — 6 ขั้นตอน ตั้งแต่แยกสีพื้นหลัง, กริด, Contour, เติมช่อง, ให้คะแนน MSER/Border, จนถึงครอปสุดท้าย) คัดกรองภาพปลอม (Sightengine) และหา DNA คล้ายคลึงในอาร์เรย์เวกเตอร์ 512 มิติ (CLIP) ถือเป็นสถาปัตยกรรมเบื้องหลังที่ยึดหลักคณิตศาสตร์ด้านเรขาคณิตผสาน Vector Database จนมีประสิทธิภาพฉับไวและแม่นยำสูงเหนือชั้นกว่าเสิร์ชคำปกติ
+> ด้วยคู่มือกะทัดรัดฉบับนี้ เราจะได้เห็นว่ากลยุทธ์ฟีเจอร์ AI รูปภาพในโปรเจกต์ ทำงานผ่าน **2 กระบวนการอิสระ** — (A) Post-Creation Pipeline ที่สร้าง embedding อัตโนมัติเมื่อผู้ขายลงโพสต์ กับ (B) Admin-Triggered Moderation ที่รันระบบ AI Screening 3 ด้าน (source/manipulation/AI-gen) เมื่อ Admin กดตรวจสอบ — ตั้งแต่การสกัดตัดเสียงสัญญาณกวนทิ้ง (Emgu.CV — 6 ขั้นตอน ตั้งแต่แยกสีพื้นหลัง, กริด, Contour, เติมช่อง, ให้คะแนน MSER/Border, จนถึงครอปสุดท้าย) ยืนยันความเป็นภาพเดิมด้วย dHash (Perceptual Hash) คัดกรองภาพ AI (Sightengine + Local Heuristic 17 สัญญาณ) หาความคล้ายองค์ประกอบภาพ (CLIP Composition Similarity) และหา DNA คล้ายคลึงในอาร์เรย์เวกเตอร์ 512 มิติ (CLIP + pgvector HNSW) ถือเป็นสถาปัตยกรรมเบื้องหลังที่ยึดหลักคณิตศาสตร์ด้านเรขาคณิตผสาน Vector Database จนมีประสิทธิภาพฉับไวและแม่นยำสูงเหนือชั้นกว่าเสิร์ชคำปกติ

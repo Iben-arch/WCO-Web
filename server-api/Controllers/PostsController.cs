@@ -183,25 +183,32 @@ namespace ServerApi.Controllers
 
                 // URLs to index: main images + individual card image URLs (โพสขายแยกใบ/ประมูลแยกใบ)
                 var urlsToIndex = new List<string>(imageUrls);
+                // รูป individualCards ที่ครอปมาแล้ว → ส่ง CLIP ตรง ไม่ต้องผ่าน Card Detection
+                var preCroppedUrls = new List<string>();
                 if (request.IndividualCards != null)
                 {
                     foreach (var c in request.IndividualCards)
                     {
-                        if (!string.IsNullOrWhiteSpace(c?.ImageUrl) && !urlsToIndex.Contains(c.ImageUrl))
-                            urlsToIndex.Add(c.ImageUrl);
+                        if (!string.IsNullOrWhiteSpace(c?.ImageUrl))
+                        {
+                            if (!urlsToIndex.Contains(c.ImageUrl))
+                                urlsToIndex.Add(c.ImageUrl);
+                            preCroppedUrls.Add(c.ImageUrl);
+                        }
                     }
                 }
 
                 // Background: index images for CLIP/pgvector search (fire-and-forget)
                 var postIdCapture = postId;
                 var urlsCapture = new List<string>(urlsToIndex);
+                var preCroppedCapture = new List<string>(preCroppedUrls);
                 _ = Task.Run(async () =>
                 {
                     try
                     {
                         using var scope = _scopeFactory.CreateScope();
                         var indexing = scope.ServiceProvider.GetRequiredService<PostEmbeddingIndexingService>();
-                        await indexing.IndexPostImagesAsync(postIdCapture, urlsCapture);
+                        await indexing.IndexPostImagesAsync(postIdCapture, urlsCapture, preCroppedCapture);
                     }
                     catch (Exception ex)
                     {
@@ -613,6 +620,8 @@ namespace ServerApi.Controllers
                 {
                     var postIdCapture = id;
                     var urlsCapture = new List<string>(request.ImageUrls.Where(u => !string.IsNullOrWhiteSpace(u)));
+                    // รูป individualCards ที่ครอปมาแล้ว → ส่ง CLIP ตรง ไม่ต้องผ่าน Card Detection
+                    var preCroppedCapture = new List<string>();
                     if (updatedPost != null && updatedPost.TryGetValue("individualCards", out var icObj) && icObj != null)
                     {
                         try
@@ -627,7 +636,11 @@ namespace ServerApi.Controllers
                                         urlObj != null)
                                     {
                                         var u = urlObj.ToString();
-                                        if (!string.IsNullOrWhiteSpace(u)) urlsCapture.Add(u);
+                                        if (!string.IsNullOrWhiteSpace(u))
+                                        {
+                                            urlsCapture.Add(u);
+                                            preCroppedCapture.Add(u);
+                                        }
                                     }
                                 }
                             }
@@ -647,7 +660,7 @@ namespace ServerApi.Controllers
 
                             using var scope = _scopeFactory.CreateScope();
                             var indexing = scope.ServiceProvider.GetRequiredService<PostEmbeddingIndexingService>();
-                            await indexing.IndexPostImagesAsync(postIdCapture, urlsCapture);
+                            await indexing.IndexPostImagesAsync(postIdCapture, urlsCapture, preCroppedCapture);
                         }
                         catch (Exception ex)
                         {

@@ -252,13 +252,13 @@ namespace ServerApi.Controllers
                     var postId = idObj.ToString();
                     if (string.IsNullOrEmpty(postId)) continue;
 
-                    var imageUrls = GetImagesFromPost(post);
+                    var (imageUrls, preCroppedUrls) = GetImagesFromPost(post);
                     if (imageUrls.Count == 0) continue;
 
                     try
                     {
                         await _supabaseService.DeleteByFieldAsync("post_image_embeddings", "postId", postId, useServiceRole: true);
-                        await _embeddingIndexing.IndexPostImagesAsync(postId, imageUrls);
+                        await _embeddingIndexing.IndexPostImagesAsync(postId, imageUrls, preCroppedUrls);
                         indexed++;
                     }
                     catch (Exception ex)
@@ -279,10 +279,12 @@ namespace ServerApi.Controllers
 
         /// <summary>
         /// Collect image URLs for embedding index: post.images + post.individualCards[].imageUrl (for ขายแยกใบ).
+        /// Returns (MainImages, PreCroppedImages) — PreCroppedImages คือรูปที่ครอปมาแล้วจาก individualCards ที่ไม่ต้องผ่าน Card Detection
         /// </summary>
-        private static List<string> GetImagesFromPost(Dictionary<string, object> post)
+        private static (List<string> AllUrls, List<string> PreCroppedUrls) GetImagesFromPost(Dictionary<string, object> post)
         {
             var urls = new List<string>();
+            var preCropped = new List<string>();
 
             // 1) Main images
             if (post.TryGetValue("images", out var imagesObj) && imagesObj != null)
@@ -299,7 +301,7 @@ namespace ServerApi.Controllers
                 }
             }
 
-            // 2) Individual card image URLs (โพสขายแยกใบ/ประมูลแยกใบ)
+            // 2) Individual card image URLs (โพสขายแยกใบ/ประมูลแยกใบ) — pre-cropped, ข้าม Card Detection
             if (post.TryGetValue("individualCards", out var cardsObj) && cardsObj != null)
             {
                 if (cardsObj is List<object> cardsList)
@@ -309,7 +311,11 @@ namespace ServerApi.Controllers
                         if (c is Dictionary<string, object> dict && dict.TryGetValue("imageUrl", out var urlObj) && urlObj != null)
                         {
                             var u = urlObj.ToString();
-                            if (!string.IsNullOrWhiteSpace(u)) urls.Add(u);
+                            if (!string.IsNullOrWhiteSpace(u))
+                            {
+                                urls.Add(u);
+                                preCropped.Add(u);
+                            }
                         }
                     }
                 }
@@ -320,13 +326,17 @@ namespace ServerApi.Controllers
                         if (item.TryGetProperty("imageUrl", out var urlProp))
                         {
                             var u = urlProp.GetString();
-                            if (!string.IsNullOrWhiteSpace(u)) urls.Add(u);
+                            if (!string.IsNullOrWhiteSpace(u))
+                            {
+                                urls.Add(u);
+                                preCropped.Add(u);
+                            }
                         }
                     }
                 }
             }
 
-            return urls;
+            return (urls, preCropped);
         }
 
         /// <summary>
