@@ -19,7 +19,7 @@ namespace ServerApi.Controllers
         private const int MaxQueryCards = 12;
         private const int DefaultMaxResults = 12;
         private const int RpcMatchLimitPerEmbedding = 30;
-        private const double DefaultMinSimilarityScore = 0.85;
+        private const double DefaultMinSimilarityScore = 0.87;
 
         public CardDetectionController(
             CardDetectionService cardDetection,
