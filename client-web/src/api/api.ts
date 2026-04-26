@@ -553,25 +553,37 @@ export const adminAPI = {
 
   /** ตรวจสอบ AI ทุก mode รวม (ใช้ใน Admin approval flow) */
   getPostAiScreening: async (postId: string, forceRefresh = false): Promise<AiScreeningResult> => {
-    const response = await axios.get(`/api/admin/posts/${postId}/ai-screening`, { params: { forceRefresh } });
+    const response = await axios.get(`/api/admin/posts/${postId}/ai-screening`, {
+      params: { forceRefresh },
+      timeout: 120000, // 120 วินาที — AI screening ต้องดาวน์โหลดรูป + OpenCV + Sightengine API
+    });
     return response.data?.data;
   },
 
   /** ตรวจสอบแหล่งที่มาของรูป (Reverse Image Search) */
   getPostSourceScreening: async (postId: string, forceRefresh = true): Promise<AiScreeningResult> => {
-    const response = await axios.get(`/api/admin/posts/${postId}/ai-screening`, { params: { mode: 'source', forceRefresh } });
+    const response = await axios.get(`/api/admin/posts/${postId}/ai-screening`, {
+      params: { mode: 'source', forceRefresh },
+      timeout: 120000, // 120 วินาที — Reverse image search + dHash + CLIP ใช้เวลานาน
+    });
     return response.data?.data;
   },
 
   /** ตรวจภาพตัดต่อ/ปลอมแปลง — endpoint แยกเฉพาะ ไม่ share cache กับ AI-generated */
   getPostManipulationScreening: async (postId: string, forceRefresh = false): Promise<AiScreeningResult> => {
-    const response = await axios.get(`/api/admin/posts/${postId}/ai-screening/manipulation`, { params: { forceRefresh } });
+    const response = await axios.get(`/api/admin/posts/${postId}/ai-screening/manipulation`, {
+      params: { forceRefresh },
+      timeout: 120000, // 120 วินาที — OpenCV multi-signal analysis ใช้เวลา
+    });
     return response.data?.data;
   },
 
   /** ตรวจภาพสร้างจาก AI — endpoint แยกเฉพาะ ไม่ share cache กับ manipulation */
   getPostAiGeneratedScreening: async (postId: string, forceRefresh = false): Promise<AiScreeningResult> => {
-    const response = await axios.get(`/api/admin/posts/${postId}/ai-screening/generated`, { params: { forceRefresh } });
+    const response = await axios.get(`/api/admin/posts/${postId}/ai-screening/generated`, {
+      params: { forceRefresh },
+      timeout: 120000, // 120 วินาที — Sightengine API + OpenCV ใช้เวลา
+    });
     return response.data?.data;
   },
 };

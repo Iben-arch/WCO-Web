@@ -546,12 +546,12 @@ namespace ServerApi.Controllers
 
         /// <summary>
         /// GET /api/admin/posts/{id}/ai-screening/generated - ตรวจภาพสร้างจาก AI (AI-Generated Image Detection)
-        /// แยก endpoint จาก /ai-screening/manipulation เพื่อให้ยิง API คนละเส้น ไม่ share cache กัน
+        /// ยิงภาพหลักไปที่ Sightengine โดยตรง — ข้าม OpenCV, Reverse Image Search, dHash, CLIP ทั้งหมด
+        /// เร็วกว่า mode "all" มาก เหมาะสำหรับปุ่ม "ตรวจภาพ AI" ในหน้า admin
         /// </summary>
         [HttpGet("posts/{id}/ai-screening/generated")]
         public async Task<IActionResult> GetPostAiGeneratedScreening(
             string id,
-            [FromQuery] bool forceRefresh = false,
             CancellationToken cancellationToken = default)
         {
             if (await EnsureAdminAsync() == null)
@@ -566,13 +566,8 @@ namespace ServerApi.Controllers
 
             try
             {
-                var existing = await _supabaseService.GetAsync("posts", id, useServiceRole: true);
-                if (existing == null)
-                    return NotFound(new { success = false, error = "ไม่พบโพสต์ที่ระบุ" });
-
-                // AnalyzePostAsync รันทุก signal รวม aiGenerated — ดึงเฉพาะ AI-generated portion
-                // ส่งคืน full result เพื่อให้ frontend เลือก field ที่ต้องการ (aiGeneratedWarningLevel ฯลฯ)
-                var screening = await _postModerationAiService.AnalyzePostAsync(id, forceRefresh, cancellationToken);
+                // ยิงภาพหลักไปที่ Sightengine โดยตรง — ไม่ต้องรัน OpenCV หรือ Reverse Image Search
+                var screening = await _postModerationAiService.AnalyzeAiGeneratedOnlyAsync(id, cancellationToken);
                 return Ok(new { success = true, data = screening });
             }
             catch (OperationCanceledException)

@@ -130,6 +130,85 @@ namespace ServerApi.Services
             return await AnalyzePostByModeAsync(postId, "manipulation", forceRefresh, cancellationToken);
         }
 
+        /// <summary>
+        /// ตรวจภาพ AI-generated โดยเอาภาพหลักยิง Sightengine โดยตรง
+        /// ข้าม OpenCV, Reverse Image Search, dHash และ CLIP ทั้งหมด — เร็วมาก
+        /// ใช้สำหรับปุ่ม "ตรวจภาพ AI" โดยเฉพาะ
+        /// </summary>
+        public async Task<AiScreeningResult> AnalyzeAiGeneratedOnlyAsync(string postId, CancellationToken cancellationToken = default)
+        {
+            var result = new AiScreeningResult
+            {
+                PostId = postId,
+                WarningThresholdPct = _options.WarningThresholdPct,
+                // ไม่มี source / manipulation ใน mode นี้
+                SourceWarningLevel = "unknown",
+            };
+
+            var post = await _supabaseService.GetAsync("posts", postId, useServiceRole: true);
+            if (post == null)
+            {
+                result.Reasons.Add("ไม่พบโพสต์");
+                return result;
+            }
+
+            // ใช้ mode "manipulation" เพื่อดึงเฉพาะภาพหลัก (ไม่รวม individualCards)
+            var imageUrls = ExtractImagesFromPost(post, "manipulation")
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(Math.Max(1, _options.MaxImagesPerPost))
+                .ToList();
+
+            if (imageUrls.Count == 0)
+            {
+                result.Reasons.Add("โพสต์ไม่มีรูปภาพให้วิเคราะห์");
+                return result;
+            }
+
+            // ยิง Sightengine แบบ parallel สำหรับทุกภาพหลัก
+            var limiter = new SemaphoreSlim(Math.Max(1, _options.Parallelism));
+            var tasks = imageUrls.Select(async url =>
+            {
+                await limiter.WaitAsync(cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    var item = new AiScreeningImageResult { ImageUrl = url };
+                    try
+                    {
+                        var risk = await _sightengineService
+                            .GetAiGeneratedRiskPctAsync(url, cancellationToken)
+                            .ConfigureAwait(false);
+                        if (risk.HasValue)
+                            item.AiGeneratedRiskPct = RoundPct(risk.Value);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[AiGeneratedOnly] Sightengine failed for {ImageUrl}", url);
+                    }
+                    item.OverallRiskPct = item.AiGeneratedRiskPct;
+                    return item;
+                }
+                finally
+                {
+                    limiter.Release();
+                }
+            }).ToList();
+
+            result.Images = (await Task.WhenAll(tasks).ConfigureAwait(false)).ToList();
+            result.AiGeneratedRiskPct = RoundPct(result.Images.Average(x => x.AiGeneratedRiskPct));
+            result.OverallRiskPct = result.AiGeneratedRiskPct;
+            result.AiGeneratedWarningLevel = ComputeAiGeneratedWarningLevel(result.AiGeneratedRiskPct);
+            result.ShouldWarn = result.OverallRiskPct >= _options.WarningThresholdPct;
+
+            if (result.AiGeneratedRiskPct >= 58)
+                result.Reasons.Add("รูปมีสัญญาณชัดเจนว่าอาจสร้างจาก AI — ควรตรวจสอบก่อนอนุมัติ");
+            else if (result.AiGeneratedRiskPct >= 35)
+                result.Reasons.Add("รูปมีสัญญาณบางส่วนที่อาจชี้ว่าสร้างจาก AI");
+            else
+                result.Reasons.Add("ไม่พบสัญญาณ AI ในภาพ");
+
+            return result;
+        }
+
         private async Task<AiScreeningResult> AnalyzePostByModeAsync(string postId, string mode, bool forceRefresh, CancellationToken cancellationToken)
         {
             var normalizedMode = string.IsNullOrWhiteSpace(mode) ? "all" : mode.Trim().ToLowerInvariant();

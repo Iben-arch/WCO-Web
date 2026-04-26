@@ -51,7 +51,10 @@ namespace ServerApi.Services
             CancellationToken cancellationToken = default)
         {
             if (!IsConfigured)
+            {
+                _logger.LogWarning("[Sightengine] Service not configured — ApiUser or ApiSecret is missing. Skipping AI-generated check.");
                 return null;
+            }
 
             try
             {
@@ -63,14 +66,17 @@ namespace ServerApi.Services
                         + $"&api_user={Uri.EscapeDataString(_apiUser!)}"
                         + $"&api_secret={Uri.EscapeDataString(_apiSecret!)}";
 
+                _logger.LogInformation("[Sightengine] Calling API for {ImageUrl}", imageUrl);
                 var response = await client.GetStringAsync(url, cancellationToken).ConfigureAwait(false);
+                _logger.LogInformation("[Sightengine] Raw response for {ImageUrl}: {Response}", imageUrl, response);
+
                 using var doc = JsonDocument.Parse(response);
                 var root = doc.RootElement;
 
                 if (root.TryGetProperty("status", out var status) &&
                     status.GetString() != "success")
                 {
-                    _logger.LogWarning("Sightengine returned non-success status for {ImageUrl}: {Response}",
+                    _logger.LogWarning("[Sightengine] Non-success status for {ImageUrl}: {Response}",
                         imageUrl, response);
                     return null;
                 }
@@ -80,16 +86,17 @@ namespace ServerApi.Services
                     typeEl.TryGetProperty("ai_generated", out var aiGenScore))
                 {
                     var pct = aiGenScore.GetDouble() * 100.0;
+                    _logger.LogInformation("[Sightengine] ai_generated={Pct:F1}% for {ImageUrl}", pct, imageUrl);
                     return Math.Round(Math.Clamp(pct, 0, 100), 2);
                 }
 
-                _logger.LogWarning("Sightengine response missing type.ai_generated for {ImageUrl}: {Response}",
+                _logger.LogWarning("[Sightengine] Response missing type.ai_generated for {ImageUrl}: {Response}",
                     imageUrl, response);
                 return null;
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Sightengine AI detection failed for {ImageUrl}", imageUrl);
+                _logger.LogWarning(ex, "[Sightengine] API call FAILED for {ImageUrl} — falling back to heuristic", imageUrl);
                 return null;
             }
         }
