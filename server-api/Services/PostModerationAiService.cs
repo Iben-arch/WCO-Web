@@ -271,9 +271,9 @@ namespace ServerApi.Services
                 result.Reasons.Add("รูปมีแนวโน้มพบจากแหล่งภายนอกในระดับสูง");
             if (result.InternalDuplicateRiskPct >= 70)
                 result.Reasons.Add("รูปคล้ายโพสต์อื่นในระบบสูง อาจเป็นรูปซ้ำ");
-            if (result.ManipulationRiskPct >= 75)
+            if (result.ManipulationRiskPct >= 50)
                 result.Reasons.Add("รูปมีความเสี่ยงภาพตัดต่อสูง — ตรวจพบสัญญาณการแก้ไขภาพหลายจุดที่สอดคล้องกัน");
-            else if (result.ManipulationRiskPct >= 52)
+            else if (result.ManipulationRiskPct >= 35)
                 result.Reasons.Add("รูปมีสัญญาณบางส่วนที่อาจบ่งชี้การตัดต่อ — ควรพิจารณาเพิ่มเติม");
             if (result.AiGeneratedRiskPct >= 58)
                 result.Reasons.Add("รูปมีสัญญาณชัดเจนว่าอาจสร้างจาก AI — ควรตรวจสอบก่อนอนุมัติ");
@@ -718,8 +718,8 @@ namespace ServerApi.Services
 
         private static string ComputeManipulationWarningLevel(double manipulationRiskPct)
         {
-            if (manipulationRiskPct >= 75) return "danger";
-            if (manipulationRiskPct >= 52) return "warning";
+            if (manipulationRiskPct >= 38) return "danger";
+            if (manipulationRiskPct >= 22) return "warning";
             return "safe";
         }
 
