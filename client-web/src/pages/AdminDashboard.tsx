@@ -676,22 +676,7 @@ const AdminDashboard: React.FC = () => {
                         >
                           <i className="fas fa-external-link-alt me-1" aria-hidden />ดู
                         </Link>
-                        <Button
-                          size="sm"
-                          variant="success"
-                          className="btn-tcg-sm"
-                          onClick={() => handlePostAction(post, 'active')}
-                        >
-                          <i className="fas fa-check me-1" aria-hidden />อนุมัติ
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="warning"
-                          className="btn-tcg-sm"
-                          onClick={() => handlePostAction(post, 'rejected')}
-                        >
-                          <i className="fas fa-times me-1" aria-hidden />ปฏิเสธ
-                        </Button>
+
                         <Button
                           size="sm"
                           variant="outline-danger"
