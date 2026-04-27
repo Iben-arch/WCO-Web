@@ -88,7 +88,7 @@ namespace ServerApi.Services
                     return 1.0;
                 }
 
-                using var engine = new TesseractEngine(tessDataPath, "eng+jpn", EngineMode.Default);
+                using var engine = new TesseractEngine(tessDataPath, "eng+jpn+tha", EngineMode.Default);
                 using var img = Pix.LoadFromMemory(imageBytes);
                 using var page = engine.Process(img);
 
