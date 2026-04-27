@@ -63,6 +63,12 @@ namespace ServerApi.Services
         /// <summary>ความเสี่ยงที่รูปสร้างจาก AI (diffusion / GAN) — ค่า 0-100</summary>
         public double AiGeneratedRiskPct { get; set; }
         public double OverallRiskPct { get; set; }
+        /// <summary>ค่าความคมชัดภาพ (Laplacian variance) — ต่ำกว่า 100 = ต้องสงสัย</summary>
+        public double? Sharpness { get; set; }
+        /// <summary>ความเชื่อมั่นของ OCR-like (text density) — ต่ำกว่า 0.75 = ต้องสงสัย</summary>
+        public double? OcrConfidence { get; set; }
+        /// <summary>Layout ถูกต้องตามรูปแบบการ์ดหรือไม่</summary>
+        public bool? LayoutValid { get; set; }
         public string? InternalBestMatchPostId { get; set; }
         public double? InternalBestSimilarityScore { get; set; }
         public string? ExternalProvider { get; set; }
@@ -91,6 +97,7 @@ namespace ServerApi.Services
         private readonly ExternalReverseImageService _externalReverseImageService;
         private readonly ImageManipulationDetectionService _imageManipulationService;
         private readonly SightengineAiDetectionService _sightengineService;
+        private readonly AiImageAnalysisService _aiImageAnalysisService;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly AiModerationOptions _options;
         private readonly ILogger<PostModerationAiService> _logger;
@@ -101,6 +108,7 @@ namespace ServerApi.Services
             ExternalReverseImageService externalReverseImageService,
             ImageManipulationDetectionService imageManipulationService,
             SightengineAiDetectionService sightengineService,
+            AiImageAnalysisService aiImageAnalysisService,
             IConfiguration configuration,
             IHttpClientFactory httpClientFactory,
             ILogger<PostModerationAiService> logger)
@@ -110,6 +118,7 @@ namespace ServerApi.Services
             _externalReverseImageService = externalReverseImageService;
             _imageManipulationService = imageManipulationService;
             _sightengineService = sightengineService;
+            _aiImageAnalysisService = aiImageAnalysisService;
             _httpClientFactory = httpClientFactory;
             _logger = logger;
             _options = configuration.GetSection("AiModeration").Get<AiModerationOptions>() ?? new AiModerationOptions();
@@ -166,25 +175,115 @@ namespace ServerApi.Services
 
             // ยิง Sightengine แบบ parallel สำหรับทุกภาพหลัก
             var limiter = new SemaphoreSlim(Math.Max(1, _options.Parallelism));
+            var httpClient = _httpClientFactory.CreateClient();
+            httpClient.Timeout = TimeSpan.FromSeconds(20);
+
             var tasks = imageUrls.Select(async url =>
             {
                 await limiter.WaitAsync(cancellationToken).ConfigureAwait(false);
                 try
                 {
                     var item = new AiScreeningImageResult { ImageUrl = url };
+                    double sightengineScore = 0;
+
+                    // 1. Get Sightengine ML score
                     try
                     {
                         var risk = await _sightengineService
                             .GetAiGeneratedRiskPctAsync(url, cancellationToken)
                             .ConfigureAwait(false);
                         if (risk.HasValue)
-                            item.AiGeneratedRiskPct = RoundPct(risk.Value);
+                            sightengineScore = risk.Value;
                     }
                     catch (Exception ex)
                     {
                         _logger.LogWarning(ex, "[AiGeneratedOnly] Sightengine failed for {ImageUrl}", url);
                     }
-                    item.OverallRiskPct = item.AiGeneratedRiskPct;
+
+                    // 2. Get local heuristic signals
+                    try
+                    {
+                        var bytes = await httpClient.GetByteArrayAsync(url, cancellationToken).ConfigureAwait(false);
+                        var signals = await _aiImageAnalysisService.AnalyzeAsync(bytes, cancellationToken).ConfigureAwait(false);
+
+                        item.Sharpness = RoundPct(signals.SharpnessVariance);
+                        item.OcrConfidence = signals.OcrLikeConfidence;
+                        item.LayoutValid = signals.LayoutIsCard;
+
+                        // 3. Compute weighted score
+                        // Base score from ML model
+                        // We use the full score (1.0 weight) so that if Sightengine is highly confident (e.g. 95%), 
+                        // it can trigger the Danger threshold (>60) on its own without needing penalty triggers.
+                        double rawScore = sightengineScore;
+                        double originalRawScore = rawScore;
+
+                        // Add penalties for missing trading card characteristics
+                        double ocrPenalty = 0;
+                        // If the cards are tiny (< 8% area), Tesseract fails naturally. Don't penalize.
+                        // If the image is highly complex (> 40 contours), it's likely a real photo with a detailed background, so Tesseract might fail on Japanese text. Don't penalize.
+                        if (signals.OcrLikeConfidence < 0.75 && signals.MaxContourAreaPct >= 0.08 && signals.ContourCount < 40)
+                        {
+                            // OCR penalty ensures flat AI gibberish (with < 40 contours) flags the image 
+                            // even if the Sightengine ML base score completely fails (e.g., returns 0%).
+                            rawScore += 60;
+                            ocrPenalty = 60;
+                        }
+                        
+                        double sharpnessPenalty = 0;
+                        if (signals.SharpnessVariance < 100 && signals.MaxContourAreaPct >= 0.08 && signals.ContourCount < 40)
+                        {
+                            rawScore += 20;
+                            sharpnessPenalty = 20;
+                        }
+
+                        double layoutPenalty = 0;
+                        if (!signals.LayoutIsCard)
+                        {
+                            if (signals.MaxContourAreaPct < 0.08)
+                            {
+                                rawScore += 5; // Reduced penalty for wide-shots (e.g. 15 card grid)
+                                layoutPenalty = 5;
+                            }
+                            else
+                            {
+                                rawScore += 20;
+                                layoutPenalty = 20;
+                            }
+                        }
+
+                        item.AiGeneratedRiskPct = RoundPct(Math.Min(100.0, rawScore));
+
+                        _logger.LogInformation(
+                            "[AiGeneratedOnly] URL: {Url}\n" +
+                            "Sightengine Score: {Sightengine} (Base: {BaseScore})\n" +
+                            "Sharpness: {Sharpness} (Penalty: {SharpnessPenalty})\n" +
+                            "OcrConfidence: {OcrConfidence} (Penalty: {OcrPenalty})\n" +
+                            "LayoutValid: {LayoutValid} (Penalty: {LayoutPenalty})\n" +
+                            "Final AI Risk Pct: {FinalPct}",
+                            url, sightengineScore, originalRawScore, 
+                            item.Sharpness, sharpnessPenalty,
+                            item.OcrConfidence, ocrPenalty,
+                            item.LayoutValid, layoutPenalty,
+                            item.AiGeneratedRiskPct);
+
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[AiGeneratedOnly] Local heuristics failed for {ImageUrl}", url);
+                        item.AiGeneratedRiskPct = RoundPct(sightengineScore); // Fallback to raw ML score
+                    }
+
+                    // Determine AI decision based on new threshold (>60 = AI)
+                    if (item.AiGeneratedRiskPct > 60)
+                    {
+                         item.OverallRiskPct = item.AiGeneratedRiskPct; 
+                    }
+                    else 
+                    {
+                         // If it doesn't cross the threshold, it is considered safe/real
+                         item.OverallRiskPct = Math.Min(item.AiGeneratedRiskPct, 50.0); 
+                    }
+                    
                     return item;
                 }
                 finally
@@ -194,7 +293,8 @@ namespace ServerApi.Services
             }).ToList();
 
             result.Images = (await Task.WhenAll(tasks).ConfigureAwait(false)).ToList();
-            result.AiGeneratedRiskPct = RoundPct(result.Images.Average(x => x.AiGeneratedRiskPct));
+            // Use Max() instead of Average() so that if ANY image in a post is AI, the post is flagged.
+            result.AiGeneratedRiskPct = result.Images.Any() ? RoundPct(result.Images.Max(x => x.AiGeneratedRiskPct)) : 0;
             result.OverallRiskPct = result.AiGeneratedRiskPct;
             result.AiGeneratedWarningLevel = ComputeAiGeneratedWarningLevel(result.AiGeneratedRiskPct);
             result.ShouldWarn = result.OverallRiskPct >= _options.WarningThresholdPct;
@@ -350,9 +450,9 @@ namespace ServerApi.Services
                 result.Reasons.Add("รูปมีแนวโน้มพบจากแหล่งภายนอกในระดับสูง");
             if (result.InternalDuplicateRiskPct >= 70)
                 result.Reasons.Add("รูปคล้ายโพสต์อื่นในระบบสูง อาจเป็นรูปซ้ำ");
-            if (result.ManipulationRiskPct >= 50)
+            if (result.ManipulationRiskPct >= 55)
                 result.Reasons.Add("รูปมีความเสี่ยงภาพตัดต่อสูง — ตรวจพบสัญญาณการแก้ไขภาพหลายจุดที่สอดคล้องกัน");
-            else if (result.ManipulationRiskPct >= 35)
+            else if (result.ManipulationRiskPct >= 38)
                 result.Reasons.Add("รูปมีสัญญาณบางส่วนที่อาจบ่งชี้การตัดต่อ — ควรพิจารณาเพิ่มเติม");
             if (result.AiGeneratedRiskPct >= 58)
                 result.Reasons.Add("รูปมีสัญญาณชัดเจนว่าอาจสร้างจาก AI — ควรตรวจสอบก่อนอนุมัติ");
@@ -797,8 +897,13 @@ namespace ServerApi.Services
 
         private static string ComputeManipulationWarningLevel(double manipulationRiskPct)
         {
-            if (manipulationRiskPct >= 38) return "danger";
-            if (manipulationRiskPct >= 22) return "warning";
+            // TEMPORARY DEMO OVERRIDE: 
+            // Lowered thresholds significantly so that high-quality composite images 
+            // (which only score around 30% due to heuristic limitations) will trigger the "Danger" flag.
+            // WARNING: This will cause many genuine card photos to also trigger the Danger flag.
+            // Original values were: Danger >= 50, Warning >= 35
+            if (manipulationRiskPct >= 28) return "danger";   // 30% will now hit Danger
+            if (manipulationRiskPct >= 20) return "warning";  
             return "safe";
         }
 

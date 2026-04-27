@@ -179,6 +179,7 @@ try
     builder.Services.AddScoped<ExternalReverseImageService>();
     builder.Services.AddScoped<ImageManipulationDetectionService>();
     builder.Services.AddScoped<SightengineAiDetectionService>();
+    builder.Services.AddScoped<AiImageAnalysisService>();
     builder.Services.AddScoped<PostModerationAiService>();
     Console.WriteLine("✅ SupabaseService registered");
 }

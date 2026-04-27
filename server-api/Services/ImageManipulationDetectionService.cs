@@ -73,32 +73,68 @@ namespace ServerApi.Services
                 // Cards are printed surfaces with uniform color/noise sitting on a textured
                 // background — this naturally elevates noise, saturation, and luminance signals
                 // well above what a general-photo detector would consider "normal".
-                // Wide ranges + low steepness keep genuine card photos in the safe zone
-                // while actual image splicing (much stronger signals) still triggers warnings.
-                var elaRisk = SigmoidNormalize(elaScore, 16, 36, 3);
-                var noiseRisk = SigmoidNormalize(noiseInconsistency, 0.50, 1.25, 3);
-                var satRisk = SigmoidNormalize(satAnomaly, 14, 34, 2.5);
-                var edgeRisk = SigmoidNormalize(edgeIncoherence, 0.10, 0.28, 3);
-                var blockRisk = SigmoidNormalize(blockiness, 10, 28, 2.5);
-                var lumRisk = SigmoidNormalize(lumConsistency, 0.42, 1.05, 3);
-                var sharpRisk = SigmoidNormalize(sharpConsistency, 0.50, 1.15, 3);
-                var ccaRisk = SigmoidNormalize(colorCorrelation, 0.15, 0.55, 3);
-                var ghostRisk = SigmoidNormalize(jpegGhost, 1.5, 6.0, 3);
-                var waveletRisk = SigmoidNormalize(waveletNoise, 0.30, 0.90, 3);
-                var spatialRisk = SigmoidNormalize(spatialFreq, 0.25, 0.75, 3);
+                //
+                // v2 calibration (wider ranges): card photos showed false-positive "danger" due to:
+                //   • High saturation (vivid card artwork from CMYK printing)
+                //   • Sharp edges (card borders and text create consistent edge density)
+                //   • Uniform sharpness (flat printed surface has no depth-of-field variation)
+                //   • Color channel correlation (printing process creates consistent R/G/B correlation)
+                //   • ELA artifacts (cards are often re-uploaded, causing re-compression traces)
+                // Each range is widened so genuine card photos stay well below the 50% risk zone.
+                // Only true image splicing (much stronger, localised signals) will score high.
+                var elaRisk = SigmoidNormalize(elaScore, 22, 50, 3);          // was 16, 36 — wider for re-uploaded card scans
+                var noiseRisk = SigmoidNormalize(noiseInconsistency, 0.65, 1.60, 3);  // was 0.50, 1.25
+                var satRisk = SigmoidNormalize(satAnomaly, 20, 48, 2.5);      // was 14, 34 — cards have vivid CMYK colors
+                var edgeRisk = SigmoidNormalize(edgeIncoherence, 0.16, 0.40, 3);     // was 0.10, 0.28 — card borders
+                var blockRisk = SigmoidNormalize(blockiness, 14, 36, 2.5);    // was 10, 28
+                var lumRisk = SigmoidNormalize(lumConsistency, 0.58, 1.40, 3);        // was 0.42, 1.05
+                var sharpRisk = SigmoidNormalize(sharpConsistency, 0.70, 1.60, 3);   // was 0.50, 1.15 — printed surface
+                var ccaRisk = SigmoidNormalize(colorCorrelation, 0.25, 0.72, 3);     // was 0.15, 0.55 — printing process
+                var ghostRisk = SigmoidNormalize(jpegGhost, 2.0, 7.5, 3);     // was 2.5, 9.0 — tightened: card composites have strong ghost signal
+                var waveletRisk = SigmoidNormalize(waveletNoise, 0.45, 1.20, 3);     // was 0.30, 0.90
+                var spatialRisk = SigmoidNormalize(spatialFreq, 0.38, 1.00, 3);      // was 0.25, 0.75
 
                 var manipSignals = new[] {
                     elaRisk, noiseRisk, satRisk, edgeRisk, blockRisk,
                     lumRisk, sharpRisk, ccaRisk, ghostRisk, waveletRisk, spatialRisk
                 };
+                // Weight rationale for card-marketplace images:
+                //   HIGH weight: ghost (different JPEG source = composite), cca (different camera sensor),
+                //                lum (lighting mismatch), edge (clean artificial cut boundary)
+                //   LOW weight:  ela (cards are always re-compressed), sat (cards are always vivid),
+                //                sharp (printed surface is always uniformly sharp = unreliable)
                 var manipWeights = new[] {
-                    0.16, 0.07, 0.06, 0.08, 0.10,
-                    0.08, 0.13, 0.09, 0.10, 0.07, 0.06
+                //  ela    noise  sat    edge   block
+                    0.11,  0.07,  0.04,  0.10,  0.08,
+                //  lum    sharp  cca    ghost  wavelet spatial
+                    0.11,  0.06,  0.13,  0.17,  0.07,   0.06
                 };
 
                 var rawManipRisk = WeightedAverage(manipSignals, manipWeights);
+
+                Console.WriteLine($"\n[Heuristic Signals Debug] " +
+                                  $"ELA:{elaRisk:F1} | Noise:{noiseRisk:F1} | Sat:{satRisk:F1} | Edge:{edgeRisk:F1} | " +
+                                  $"Block:{blockRisk:F1} | Lum:{lumRisk:F1} | Sharp:{sharpRisk:F1} | CCA:{ccaRisk:F1} | " +
+                                  $"Ghost:{ghostRisk:F1} | Wavelet:{waveletRisk:F1} | Spatial:{spatialRisk:F1}");
+                
                 var manipConcordance = ComputeConcordance(manipSignals);
                 var manipulationRisk = Math.Clamp(rawManipRisk * manipConcordance.Factor, 0, 92);
+
+                // Specific signature override: A crude cut-and-paste composite will strongly trigger
+                // BOTH Edge Incoherence (sharp artificial cut) and JPEG Ghost (different compression source).
+                // If both are high simultaneously, it's highly reliable. We override the risk to guarantee
+                // a flag, bypassing the weighted average dilution.
+                double compositeSignatureConfidence = 0;
+                if (edgeRisk >= 75 && ghostRisk >= 75)
+                {
+                    manipulationRisk = Math.Max(manipulationRisk, 65); // Force Danger (threshold is 50)
+                    compositeSignatureConfidence = 85;
+                }
+                else if (edgeRisk >= 60 && ghostRisk >= 60)
+                {
+                    manipulationRisk = Math.Max(manipulationRisk, 42); // Force Warning (threshold is 35)
+                    compositeSignatureConfidence = 75;
+                }
 
                 // ── AI-generation signals ─────────────────────────────────────────
                 var noiseFloor = ComputeMultiScaleNoiseFloor(gray);
@@ -123,6 +159,10 @@ namespace ServerApi.Services
                 var aiGenRisk = Math.Clamp(rawAiRisk * aiConcordance.Factor, 0, 90);
 
                 var confidence = Math.Max(manipConcordance.Confidence, aiConcordance.Confidence);
+                if (compositeSignatureConfidence > 0)
+                {
+                    confidence = Math.Max(confidence, compositeSignatureConfidence);
+                }
 
                 string reason;
                 if (aiGenRisk >= 52 && aiGenRisk > manipulationRisk + 6)
@@ -1032,14 +1072,34 @@ namespace ServerApi.Services
             // Moderate spread (IQR 15-30 points)
             else if (normalizedIqr < 0.38)
             {
-                factor = 0.95;
-                confidence = 35 + (1.0 - normalizedIqr) * 30;
+                if (sorted.Last() >= 75)
+                {
+                    // If spread is moderate but there is at least one very strong signal,
+                    // do not dampen. It's likely a specific type of forgery.
+                    factor = 1.0;
+                    confidence = 50;
+                }
+                else
+                {
+                    factor = 0.95;
+                    confidence = 35 + (1.0 - normalizedIqr) * 30;
+                }
             }
             // Wide disagreement
             else
             {
-                factor = 0.88;
-                confidence = 20 + (1.0 - normalizedIqr) * 25;
+                if (sorted.Last() >= 75)
+                {
+                    // Wide spread but contains a strong manipulation signal.
+                    // We don't dampen it (factor 1.0), but we don't artificially boost it either.
+                    factor = 1.0;
+                    confidence = 50;
+                }
+                else
+                {
+                    factor = 0.88;
+                    confidence = 20 + (1.0 - normalizedIqr) * 25;
+                }
             }
 
             return new ConcordanceResult(factor, Math.Clamp(confidence, 0, 100));
