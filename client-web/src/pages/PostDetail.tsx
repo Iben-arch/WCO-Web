@@ -3,10 +3,12 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCart } from '../contexts/CartContext';
 import IndividualCardsGrid from '../components/common/IndividualCardsGrid';
+import AdminRejectModal from '../components/common/AdminRejectModal';
 import { postsAPI, authAPI, auctionAPI, chatAPI, adminAPI } from '../api/api';
 import axios from '../utils/axiosInterceptor';
 import { toast } from 'react-toastify';
 import '../styles/auction-bids.css';
+import '../styles/admin-dashboard.css';
 import { Post, Message, AuctionBid, DetectedCard, FirestoreTimestamp, IndividualCardItem, AiScreeningResult, AiSourceWarningLevel, AiManipulationWarningLevel, AiGeneratedWarningLevel } from '../types';
 import { recordCategoryInterest } from '../utils/categoryInterest';
 import { supabase } from '../config/supabase';
@@ -54,14 +56,38 @@ const Button: React.FC<any> = ({ as, to, variant, size, className, children, ...
   return <button className={base} {...props}>{children}</button>;
 };
 
-const Alert: React.FC<any> = ({ variant, className, children, ...props }) => (
-  <div className={cx('alert', variant === 'danger' ? 'alert-error' : '', variant === 'warning' ? 'alert-warning' : '', variant === 'info' ? 'alert-info' : '', variant === 'success' ? 'alert-success' : '', className)} {...props}>
-    <span>{children}</span>
-  </div>
-);
+const Alert: React.FC<any> = ({ variant, className, children, ...props }) => {
+  let icon = null;
+  if (variant === 'danger') {
+    icon = <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
+  } else if (variant === 'warning') {
+    icon = <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>;
+  } else if (variant === 'success') {
+    icon = <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
+  } else if (variant === 'info') {
+    icon = <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
+  }
+
+  return (
+    <div className={cx('alert', variant === 'danger' ? 'alert-error' : '', variant === 'warning' ? 'alert-warning' : '', variant === 'info' ? 'alert-info' : '', variant === 'success' ? 'alert-success' : '', className)} {...props}>
+      {icon}
+      <div className="w-full">{children}</div>
+    </div>
+  );
+};
 
 const Spinner: React.FC<any> = ({ className }) => <span className={cx('loading loading-spinner loading-sm', className)} />;
-const Badge: React.FC<any> = ({ className, children }) => <span className={cx('badge', className)}>{children}</span>;
+const Badge: React.FC<any> = ({ bg, text, className, children }) => {
+  const bgClass = bg === 'danger' || bg === 'error' ? 'badge-error' :
+                  bg === 'warning' ? 'badge-warning' :
+                  bg === 'success' ? 'badge-success' :
+                  bg === 'info' ? 'badge-info' :
+                  bg === 'primary' ? 'badge-primary' :
+                  bg === 'secondary' ? 'badge-secondary' :
+                  bg === 'light' ? 'bg-base-200 text-base-content border border-base-300' : '';
+  const textClass = text === 'dark' ? 'text-base-content' : '';
+  return <span className={cx('badge', bgClass, textClass, className)}>{children}</span>;
+};
 
 const PostDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -105,6 +131,9 @@ const PostDetail: React.FC = () => {
   const [loadingSimilar, setLoadingSimilar] = useState<boolean>(false);
   const [showResubmitModal, setShowResubmitModal] = useState<boolean>(false);
   const [resubmitLoading, setResubmitLoading] = useState<boolean>(false);
+  const [showRejectModal, setShowRejectModal] = useState<boolean>(false);
+  const [rejectReason, setRejectReason] = useState<string>('');
+  const [rejecting, setRejecting] = useState<boolean>(false);
   const [resubmitForm, setResubmitForm] = useState<{
     title: string;
     description: string;
@@ -646,14 +675,17 @@ const PostDetail: React.FC = () => {
 
   const handleRejectPost = async (): Promise<void> => {
     if (!post?.id) return;
-    const reason = window.prompt('กรุณาระบุเหตุผลที่ปฏิเสธโพสต์:');
-    if (reason === null) return;
+    setRejecting(true);
     try {
-      await adminAPI.rejectPost(post.id, reason);
+      await adminAPI.rejectPost(post.id, rejectReason);
       toast.success('ปฏิเสธโพสต์สำเร็จ');
+      setShowRejectModal(false);
+      setRejectReason('');
       fetchPost();
     } catch (err: any) {
       toast.error('เกิดข้อผิดพลาดในการปฏิเสธ: ' + (err?.response?.data?.message || err?.message || 'Unknown error'));
+    } finally {
+      setRejecting(false);
     }
   };
 
@@ -1302,7 +1334,7 @@ const PostDetail: React.FC = () => {
                         <button
                           type="button"
                           className="btn btn-danger flex-grow-1"
-                          onClick={handleRejectPost}
+                          onClick={() => setShowRejectModal(true)}
                         >
                           <i className="fas fa-times me-2" aria-hidden="true" /> ปฏิเสธโพสต์
                         </button>
@@ -2137,6 +2169,15 @@ const PostDetail: React.FC = () => {
             </div>
           </div>
         )}
+
+        <AdminRejectModal
+          show={showRejectModal}
+          onHide={() => { setShowRejectModal(false); setRejectReason(''); }}
+          reason={rejectReason}
+          onReasonChange={setRejectReason}
+          onConfirm={handleRejectPost}
+          loading={rejecting}
+        />
 
       </Container>
     </div>

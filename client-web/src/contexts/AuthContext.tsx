@@ -327,6 +327,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
     }, 5000);
 
+    // *** ตรวจสอบว่า redirect มาจากลิงก์ยืนยันอีเมลหรือเปล่า ***
+    // Supabase จะแนบ #access_token=...&type=signup หรือ type=email_confirmation ใน URL
+    const hashParams = new URLSearchParams(window.location.hash.replace('#', ''));
+    const tokenType = hashParams.get('type');
+    const isEmailConfirmRedirect = tokenType === 'signup' || tokenType === 'email_confirmation';
+
+    if (isEmailConfirmRedirect) {
+      // ลบ hash ออกจาก URL ให้ดูสะอาด
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      // Sign out ทันที — ไม่ให้ auto-login
+      supabase.auth.signOut().catch(() => {});
+      setCurrentUser(null);
+      setUserProfile(null);
+      setProfile(null);
+      setProfileReady(true);
+      clearTimeout(timeoutId);
+      setLoading(false);
+      return;
+    }
+
     // Get initial session
     supabase.auth.getSession().then(({ data: { session }, error }) => {
       if (!mounted) return;
@@ -366,6 +386,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         // Handle token refresh
         if (event === 'TOKEN_REFRESHED' && session?.user) {
           setCurrentUser(session.user);
+          setLoading(false);
+          return;
+        }
+
+        // *** กรณียืนยันอีเมล ***
+        // Supabase จะ fire EMAIL_CONFIRMED หรือ SIGNED_IN หลัง user กดลิงก์ยืนยันอีเมล
+        // เราไม่ต้องการให้ login อัตโนมัติ — ให้ sign out ทันที แล้วให้ user login เอง
+        if ((event as string) === 'EMAIL_CONFIRMED') {
+          supabase.auth.signOut().catch(() => {});
+          setCurrentUser(null);
+          setUserProfile(null);
+          setProfile(null);
+          setProfileReady(true);
           setLoading(false);
           return;
         }
