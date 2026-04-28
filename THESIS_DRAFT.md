@@ -421,17 +421,19 @@ $$\text{score} = \text{TextureScore} \times (0.40 + 0.35 \times \text{AspectFit}
 
 โมดูลนี้ทำงาน 2 ชั้นคู่ขนาน:
 
-**ชั้นที่ 1 — Local Heuristic Analysis (`ImageManipulationDetectionService.cs`):** วิเคราะห์ **17 สัญญาณสถิติ** โดยไม่ต้องใช้ GPU:
+**ชั้นที่ 1 — Local Heuristic Analysis (`ImageManipulationDetectionService.cs` และ `AiImageAnalysisService.cs`):** วิเคราะห์ **17 สัญญาณสถิติ** โดยไม่ต้องใช้ GPU:
 *   *สัญญาณตรวจภาพตัดต่อ (11 ชนิด):* Multi-level ELA, Color Channel Correlation (Pearson), JPEG Ghost, Wavelet Noise Inconsistency และอื่นๆ
-*   *สัญญาณตรวจภาพ AI (6 ชนิด):* Multi-scale Noise Floor, High-Frequency Ratio, Color Palette Uniformity และอื่นๆ
+*   *สัญญาณตรวจความสมจริงของการ์ด:* Tesseract OCR (ต้องมีตัวอักษรขั้นต่ำ 8 ตัวอักษร), Sharpness Variance, และตรวจสอบ Layout ของขอบภาพ (มีการประยุกต์ใช้ Morphological Close ตกแต่งรอยแตกของขอบรูปที่สร้างจาก AI และตั้งค่าเกณฑ์พื้นที่ขอบภาพขั้นต่ำ 8% เพื่อรองรับกรณีภาพถ่ายตารางการ์ด 15 ใบ หรือ 15-card grids)
 
-ค่าดิบแปลงเป็นเปอร์เซ็นต์ด้วย **Sigmoid Normalization** รวมด้วย **Weighted Average** และคูณ **Concordance Factor** (IQR-based) ปรับค่าตามระดับการเห็นตรงกันของสัญญาณ
+ค่าดิบของภาพตัดต่อแปลงเป็นเปอร์เซ็นต์ด้วย **Sigmoid Normalization** โดยใช้ค่าเทียบมาตรฐาน (v2 calibration) ที่ขยายขอบเขตการรองรับภาพการ์ดสีสันจัดจ้านเพื่อลด False Positive รวมด้วย **Weighted Average** และคูณ **Concordance Factor** (IQR-based) พร้อมระบบ **Composite Signature Override** (หากพบ Edge Incoherence ควบคู่กับ JPEG Ghost พุ่งสูง จะดันให้คะแนนเข้าขั้น Danger ทันที)
 
-**ชั้นที่ 2 — External Deep Learning (Sightengine API):** ยืนยันซ้ำด้วยโมเดล CNN เพื่อลด False Negative
+**ชั้นที่ 2 — External Deep Learning (Sightengine API):** ยืนยันความเสี่ยงของภาพที่สร้างจาก AI ด้วยโมเดล CNN ร่วมกับ Base Score 
 
-**Logic การตัดสินใจ:**
+**Logic การตัดสินใจ (Scoring System):**
+*   **AI-Generated Detection:** ใช้การหาค่าสูงสุด **Max()** จากทุกรูปภาพในโพสต์ (แทนการหาค่าเฉลี่ย) เพื่อให้มั่นใจว่าหากมีรูปปลอมแม้แต่รูปเดียว โพสต์ดังกล่าวจะถูกเพ่งเล็งทันที
+*   **เกณฑ์การจัดประเภท:**
 ```
-aiGenRisk >= 52 AND > manipRisk + 6   →  "ai-generated"
+aiGenRisk >= 60 AND > manipRisk + 6   →  "ai-generated"
 manipRisk >= 52 AND > aiGenRisk + 6   →  "manipulation"
 aiGenRisk >= 38 OR  manipRisk >= 38   →  "mixed-signals"
 ```

@@ -20,8 +20,9 @@
   * `Services/CardDetectionService.cs` (~1,119 บรรทัด): โค้ดสำคัญที่มีฟังก์ชันใช้ไลบรารี **Emgu.CV** ดำเนินการสแกนรูปภาพและใช้คณิตศาสตร์ตัดขอบรูปการ์ดเกมออกมาแบบอัตโนมัติ (6-step heuristic)
   * `Services/ClipEmbeddingService.cs`: HTTP Client เชื่อม Python CLIP Worker เพื่อรับเวกเตอร์ 512 มิติ
   * `Services/PostEmbeddingIndexingService.cs`: Background Task สำหรับ index เวกเตอร์เข้าฐานข้อมูลเมื่อสร้างโพสต์ใหม่
-  * `Services/PostModerationAiService.cs`: Orchestrator หลักของระบบ AI Moderation ที่รวม source check (SerpAPI + dHash + CLIP), manipulation check, และ AI-generated check
-  * `Services/ImageManipulationDetectionService.cs`: ระบบตรวจจับภาพตัดต่อและ AI ด้วย 17 สัญญาณ heuristic (ไม่ใช้ GPU)
+  * `Services/PostModerationAiService.cs`: Orchestrator หลักของระบบ AI Moderation ที่รวม source check (SerpAPI + dHash + CLIP), manipulation check, และ AI-generated check (ใช้การให้คะแนนแบบ Max() แทน Average() เพื่อดักจับภาพปลอมได้เด็ดขาดขึ้น)
+  * `Services/ImageManipulationDetectionService.cs`: ระบบตรวจจับภาพตัดต่อและ AI ด้วย 17 สัญญาณ heuristic (มีการทำ v2 calibration ปรับช่วง threshold ให้รองรับธรรมชาติของการ์ด และมี Composite Signature Override)
+  * `Services/AiImageAnalysisService.cs`: ตรวจความสมจริงของการ์ดด้วย Tesseract OCR (ขั้นต่ำ 8 ตัวอักษร), Sharpness, และ Card Layout (ใช้ Morphological Close เชื่อมขอบการ์ดที่ขาด และรองรับ 15-card grid ด้วยเกณฑ์ >8% area)
   * `Services/ExternalReverseImageService.cs`: ค้นหาภาพจาก Google Lens ผ่าน SerpAPI (exact_matches mode)
   * `Services/SightengineAiDetectionService.cs`: เรียก Sightengine ML API ตรวจจับภาพ AI-generated
   * `Services/RelatedPostsService.cs`: ค้นหาโพสต์ที่เกี่ยวข้องด้วย CLIP embedding (ใช้เกณฑ์ต่างจากการค้นหาด้วยรูป)
@@ -65,9 +66,12 @@
    - **(Output):** `ManipulationRiskPct` (0-100%) + `ManipulationWarningLevel` (danger ≥75% / warning ≥52% / safe)
 
 3. **AI-Generated Detection (ตรวจจับภาพ AI):**
-   - `ImageManipulationDetectionService` วิเคราะห์ **6 สัญญาณ** (noise floor, HF ratio, texture, etc.) เป็น fallback
-   - `SightengineAiDetectionService` เรียก ML API ภายนอก override ค่า heuristic เมื่อมี API key
-   - **(Output):** `AiGeneratedRiskPct` (0-100%) + `AiGeneratedWarningLevel` (danger ≥58% / warning ≥35% / safe)
+   - ระบบจะรันผ่านโหมดการให้คะแนนจาก `SightengineAiDetectionService` เป็นคะแนนตั้งต้น (Base Score)
+   - จากนั้นใช้ `AiImageAnalysisService` ตรวจสอบความสมจริง (Heuristic Penalties):
+     - **OCR Penalty:** ถ้า Tesseract สกัดตัวอักษรได้น้อยกว่า 8 ตัว (ตีเป็น AI gibberish) จะบวกคะแนนความเสี่ยงเพิ่ม
+     - **Layout & Edge Penalty:** ใช้ Morphological Close ปิดรอยแตกของขอบภาพ (ซึ่งพบบ่อยใน AI) และใช้เกณฑ์พื้นที่ขอบการ์ดขั้นต่ำ 8% เพื่ออนุโลมภาพถ่ายตาราง 15 ใบ (15-card grids) ให้ผ่านได้
+   - **(การคำนวณผล):** ระบบจะใช้ค่า **Max()** ของความเสี่ยง AI-generated จากรูปทุกรูปในโพสต์ (แทนการใช้ค่าเฉลี่ย Average) เพื่อให้มั่นใจว่าถ้ามีรูปปลอมแค่รูปเดียว โพสต์นั้นจะถูกตั้งข้อสงสัยทันที
+   - **(Output):** `AiGeneratedRiskPct` (0-100%) + `AiGeneratedWarningLevel` (danger ≥60% / warning ≥35% / safe)
 
 ### Process C: 🔍 Image Search (ผู้ใช้ค้นหาด้วยรูปภาพ)
 เมื่อผู้ใช้งานอัปโหลดรูปภาพเพื่อ **"ค้นหาสินค้าด้วยภาพ"** ระบบจะมีการรับส่งข้อมูลแบบสายพาน (Pipeline Data Flow) ดังนี้:
@@ -358,7 +362,8 @@ CREATE INDEX IF NOT EXISTS idx_post_image_embeddings_embedding
 - **AI-Generation Signals (6 ชนิด - จับภาพโคลนเทียม Diffusion/GAN):**
   - **Multi-scale noise floor / High-Freq Ratio:** ภาพ AI ทั่วไปจะเนียนเรียบผิดปกติ เมื่อวัดเรโซแนนซ์ความถี่สูง (High-Freq) แล้วไร้ Noise เม็ดเล็กๆ ซึ่งภาพถ่ายกล้องจริงต้องมีสะสมอยู่
   - **Color Palette Uniformity:** ภาพสุ่ม AI มีการกระจายตัวของสีที่เป็นระเบียบ (Uniform) มากกว่าภาพถ่ายออร์แกนิค
-- **สมการหาความเสี่ยง:** ใช้ **Sigmoid Normalization** บีบสเกลช่วงค่าคะแนนเปิด (Unbounded) ลงมายัง 0-100% จากนั้นรวมด้วย Weighted Average พร้อมตัวคูณความสอดคล้อง (Concordance Analysis)
+- **สมการหาความเสี่ยง:** ใช้ **Sigmoid Normalization** บีบสเกลช่วงค่าคะแนน โดยมีการปรับเทียบใหม่ (v2 calibration) ให้สเกลกว้างขึ้นสำหรับรูปการ์ด เพื่อลด False Positive (เนื่องจากการ์ดมีการพิมพ์สีจัดจ้านและขอบชัดเจน) จากนั้นรวมด้วย Weighted Average พร้อมตัวคูณความสอดคล้อง (Concordance Analysis)
+- **Composite Signature Override:** หากระบบเจอค่า Edge Incoherence และ JPEG Ghost พุ่งสูงพร้อมกัน (พฤติกรรมของการตัดต่อแบบ Cut-and-Paste อย่างหยาบ) ระบบจะบังคับดันค่าความเสี่ยงขึ้นระดับ Danger ทันทีโดยไม่ต้องสน Weighted Average
 
 **2. Deep Learning Service (Sightengine):**
 แพลตฟอร์มนอกใช้วิเคราะห์ทบทวนภาพ AI อีกชั้นด้วยสถาปัตยกรรม **CNNs (Convolutional Neural Networks)** เช่น ResNet ในการหารอยต่อลายน้ำ (Artifacts) ที่ซ่อนอยู่แบบที่สูตร Local Matrix ด้านบนอาจตกหล่น

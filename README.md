@@ -6,8 +6,9 @@
 
 *   **ระบบซื้อขายและประมูลสินค้าออนไลน์** - จัดการโพสต์, ตระกร้าสินค้า, ระบบแจ้งเตือน และอื่นๆ
 *   **AI Image Search (Lens-like Search)** - ค้นหาสินค้าด้วยภาพถ่าย โดยใช้โมเดล CLIP (Contrastive Language-Image Pretraining) และ `pgvector` ใน Supabase
-*   **AI-Generated Image Detection** - ตรวจจับภาพที่สร้างจาก AI ด้วยเทคโนโลยี Sightengine
-*   **Reverse Image Search** - ทำงานร่วมกับ Google Lens API 
+*   **AI-Generated Image Detection** - ตรวจจับภาพที่สร้างจาก AI ด้วยเทคโนโลยี Sightengine ผสานกับการคำนวณ Heuristic Penalties (Tesseract OCR ขั้นต่ำ 8 ตัวอักษร, Sharpness, Card Layout + Morphological Close) และใช้ระบบ Max() Scoring เพื่อดักจับรูปปลอมอย่างเด็ดขาด
+*   **Image Manipulation Detection** - ตรวจจับสัญญาณภาพตัดต่อหรือสวมรอย ด้วยสถิติ 17 Heuristics (v2 calibration) พร้อม Composite Signature Override
+*   **Reverse Image Search** - ทำงานร่วมกับ Google Lens API และใช้ dHash (Perceptual Hash) ยืนยันความคล้ายคลึงของพิกเซลภาพ
 *   **Authentication & Role Management** - ยืนยันตัวตนและจัดการสิทธิ์การใช้งาน (Admin/User) ควบคู่กับ Supabase JWT tokens
 
 ---

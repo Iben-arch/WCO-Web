@@ -262,9 +262,9 @@ $$\text{score} = \text{TextureScore} \times (0.40 + 0.35 \times \text{AspectFit}
 
 โมดูลนี้ทำงาน 2 ชั้นคู่ขนาน:
 
-**ชั้นที่ 1 — Local Heuristic Analysis (`ImageManipulationDetectionService.cs`):**
+**ชั้นที่ 1 — Local Heuristic Analysis (`ImageManipulationDetectionService.cs` และ `AiImageAnalysisService.cs`):**
 
-วิเคราะห์ **17 สัญญาณสถิติ** แบ่งเป็นสัญญาณตรวจภาพตัดต่อ (Splicing) 11 ชนิด และสัญญาณตรวจภาพ AI 6 ชนิด โดยไม่ต้องใช้ GPU:
+วิเคราะห์สัญญาณแบ่งเป็นสัญญาณตรวจภาพตัดต่อ (Splicing) 11 ชนิด และสัญญาณตรวจภาพ AI 6 ชนิด พร้อมเช็คความสมจริงของการ์ด:
 
 *กลุ่มสัญญาณตรวจภาพตัดต่อ (Manipulation Signals):*
 - **Multi-level ELA (Error Level Analysis):** บีบอัด JPEG ซ้ำที่ 4 ระดับ Quality (60, 70, 80, 92) แล้วหาผลต่างกับต้นฉบับ บริเวณที่ถูกแปะมาจากภาพอื่นจะมี Error Level แตกต่างจากรอบข้าง
@@ -273,13 +273,13 @@ $$\text{score} = \text{TextureScore} \times (0.40 + 0.35 \times \text{AspectFit}
 - **Wavelet Noise Inconsistency:** วิเคราะห์ Sub-band HH (High-High) ของ Haar Wavelet Transform วัด Coefficient of Variation
 - *และสัญญาณอื่นๆ อีก 7 ชนิด*
 
-*กลุ่มสัญญาณตรวจภาพ AI (AI-Generation Signals):*
+*กลุ่มสัญญาณตรวจความสมจริงและภาพ AI (AI-Generation & Realism Signals):*
+- **Tesseract OCR & Sharpness Penalties:** ใช้การสกัดอักขระขั้นต่ำ 8 ตัวอักษร และวัดค่า Laplacian Variance ภาพ AI มักจะสร้างตัวหนังสือที่อ่านไม่ออก (Gibberish) หากมีข้อความน้อยกว่า 8 ตัว จะถูกบวกความเสี่ยงเพิ่ม
+- **Layout & Morphological Close:** ตรวจสอบพื้นที่หน้าการ์ด มีการใช้ Kernel ปิดรอยแตก (Morphological Close) ของขอบภาพที่พบบ่อยในรูปวาดจาก AI พร้อมอนุโลมเกณฑ์ให้ผ่านได้หากภาพใหญ่กว่า 8% รองรับภาพถ่ายแบบ 15-card grids
 - **Multi-scale Noise Floor:** วัด Residual Noise ที่ 3 Kernel Size (3×3, 5×5, 9×9) ภาพ AI จาก Stable Diffusion / Midjourney จะ "เรียบ" ผิดธรรมชาติ (ค่าต่ำ)
 - **High-Frequency Ratio:** เปรียบอัตราส่วน High-Frequency Energy ต่อ Mid-Frequency Energy ภาพถ่ายจริงมี Sensor Noise ที่ความถี่สูง ภาพ AI ไม่มี
-- **Color Palette Uniformity:** ภาพ AI มีการกระจายสีเป็นระเบียบกว่าภาพถ่ายธรรมชาติ
-- *และสัญญาณอีก 3 ชนิด*
 
-ค่าดิบของแต่ละสัญญาณแปลงเป็นเปอร์เซ็นต์ความเสี่ยง 0–85% ด้วย **Sigmoid Normalization** จากนั้นรวมด้วย **Weighted Average** และคูณด้วย **Concordance Factor** (IQR-based) เพื่อปรับค่าขึ้น-ลงตามระดับการเห็นตรงกันของสัญญาณ
+ค่าดิบของแต่ละสัญญาณแปลงเป็นเปอร์เซ็นต์ความเสี่ยง 0–85% ด้วย **Sigmoid Normalization** โดยมีการปรับจูนเทียบมาตรฐานใหม่ (v2 calibration) เพื่อรองรับสีสันจัดจ้านบนตัวการ์ด จากนั้นรวมด้วย **Weighted Average** และคูณด้วย **Concordance Factor** (IQR-based) เพื่อปรับค่าขึ้น-ลงตามระดับการเห็นตรงกันของสัญญาณ นอกจากนี้ยังมีระบบ **Composite Signature Override** หากพบค่า Edge Incoherence รุนแรงควบคู่กับ JPEG Ghost ระบบจะบังคับให้ค่าความเสี่ยงพุ่งสูงระดับ Danger ทันที
 
 **ชั้นที่ 2 — External Deep Learning (Sightengine API):**
 
@@ -287,15 +287,17 @@ $$\text{score} = \text{TextureScore} \times (0.40 + 0.35 \times \text{AspectFit}
 
 **การตัดสินใจ (Decision Logic):**
 
+ระบบใช้ค่าคะแนนสูงสุด **Max()** แทนค่าเฉลี่ยสำหรับการประเมินระดับภาพ AI เพื่อให้มั่นใจว่าไม่ถูกกลืนค่าลงหากมีรูปปลอมแค่รูปเดียวในโพสต์:
+
 ```
-if   aiGenRisk >= 52  AND aiGenRisk > manipRisk + 6  →  "ai-generated"  
+if   aiGenRisk >= 60  AND aiGenRisk > manipRisk + 6  →  "ai-generated"  
 elif manipRisk >= 52  AND manipRisk > aiGenRisk + 6  →  "manipulation"
 elif aiGenRisk >= 38  OR  manipRisk >= 38            →  "mixed-signals"
 else                                                 →  "heuristic"
 
 Warning Level:
   manipulation >= 75 → "danger" | >= 52 → "warning" | else → "safe"
-  ai-generated >= 58 → "danger" | >= 35 → "warning" | else → "safe"
+  ai-generated >= 60 → "danger" | >= 35 → "warning" | else → "safe"
 ```
 
 ### 3.5.3 โมดูลที่ 3: ระบบค้นหาด้วยรูปภาพ (Visual Search via CLIP + pgvector)
