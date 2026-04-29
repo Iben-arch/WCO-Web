@@ -43,7 +43,7 @@ namespace ServerApi.Services
         private const int MaxProcessWidth = 1800;
 
         /// <summary>Padding added around each crop so card edges are not clipped.</summary>
-        private const double CropPaddingFraction = 0.012;
+        private const double CropPaddingFraction = 0.025;
         private const double MinInnerToOuterAreaRatio = 0.12;
 
         // ──────────────────────────────────────────────────────────────────────────────────────────
@@ -592,7 +592,6 @@ namespace ServerApi.Services
 
         private List<Rectangle> ContourDetection(Mat working, Mat gray, Mat? bgMask, int minArea)
         {
-            using var grayEq = new Mat();
             using var blur = new Mat();
             using var canny = new Mat();
             using var thresh = new Mat();
@@ -601,18 +600,40 @@ namespace ServerApi.Services
             using var otsuMorph = new Mat();
             using var edges = new Mat();
 
-            CvInvoke.EqualizeHist(gray, grayEq);
-            CvInvoke.GaussianBlur(grayEq, blur, new Size(5, 5), 0);
+            // ── CLAHE: local contrast enhancement (better than global EqualizeHist) ──
+            using var claheOut = new Mat();
+            using var clahe = new Mat();
+            CvInvoke.CLAHE(gray, 3.0, new Size(8, 8), claheOut);
+
+            // ── Bilateral filter: denoise while preserving card edges ──
+            CvInvoke.BilateralFilter(claheOut, blur, 9, 75, 75);
+
             CvInvoke.AdaptiveThreshold(blur, thresh, 255, AdaptiveThresholdType.GaussianC, ThresholdType.Binary, 31, 7);
             CvInvoke.Threshold(blur, otsu, 0, 255, ThresholdType.BinaryInv | ThresholdType.Otsu);
 
-            // ── Adaptive Canny: compute thresholds from Otsu's threshold ──────────
-            // Otsu gives us the optimal binarization level; use it to derive Canny
-            // thresholds that adapt to the image's actual contrast.
+            // ── Adaptive Canny from Otsu threshold ──
             double otsuThreshold = CvInvoke.Threshold(blur, new Mat(), 0, 255, ThresholdType.Otsu);
             double cannyLow = Math.Max(10, otsuThreshold * 0.33);
             double cannyHigh = Math.Min(255, otsuThreshold * 1.1);
             CvInvoke.Canny(blur, canny, cannyLow, cannyHigh);
+
+            // ── LAB color edges: catches boundaries invisible in grayscale ──
+            using var labEdges = new Mat();
+            try
+            {
+                using var lab = new Mat();
+                CvInvoke.CvtColor(working, lab, ColorConversion.Bgr2Lab);
+                using var labChannels = new VectorOfMat();
+                CvInvoke.Split(lab, labChannels);
+                using var labA = labChannels[1];
+                using var labB = labChannels[2];
+                using var edgeA = new Mat();
+                using var edgeB = new Mat();
+                CvInvoke.Canny(labA, edgeA, 30, 90);
+                CvInvoke.Canny(labB, edgeB, 30, 90);
+                CvInvoke.BitwiseOr(edgeA, edgeB, labEdges);
+            }
+            catch { labEdges.SetTo(new MCvScalar(0)); }
 
             using var kernelSmall = CvInvoke.GetStructuringElement(ElementShape.Rectangle, new Size(3, 3), new Point(-1, -1));
             using var kernelBig = CvInvoke.GetStructuringElement(ElementShape.Rectangle, new Size(7, 7), new Point(-1, -1));
@@ -621,6 +642,8 @@ namespace ServerApi.Services
             CvInvoke.MorphologyEx(otsu, otsuMorph, MorphOp.Close, kernelBig, new Point(-1, -1), 2, BorderType.Default, new MCvScalar());
             CvInvoke.Dilate(canny, canny, kernelSmall, new Point(-1, -1), 1, BorderType.Default, new MCvScalar());
             CvInvoke.BitwiseOr(morph, canny, edges);
+            // Merge LAB color edges into combined edge map
+            CvInvoke.BitwiseOr(edges, labEdges, edges);
 
             var candidates = new List<(Rectangle Rect, double Area, PointF[]? QuadPts)>();
             Mat[] sources = bgMask != null
@@ -638,20 +661,26 @@ namespace ServerApi.Services
                     using var approx = new VectorOfPoint();
                     double arcLen = CvInvoke.ArcLength(contour, true);
                     if (arcLen < 1) continue;
-                    CvInvoke.ApproxPolyDP(contour, approx, arcLen * 0.05, true);
+                    // Tighter epsilon for better quad approximation on real cards
+                    CvInvoke.ApproxPolyDP(contour, approx, arcLen * 0.035, true);
 
                     if (approx.Size == 4 && CvInvoke.IsContourConvex(approx))
                     {
                         double area = CvInvoke.ContourArea(approx, false);
                         if (area < minArea) continue;
+
+                        // Solidity check: reject irregular shapes
+                        using var hull = new VectorOfPoint();
+                        CvInvoke.ConvexHull(contour, hull);
+                        double hullArea = CvInvoke.ContourArea(hull, false);
+                        if (hullArea > 0 && area / hullArea < 0.85) continue;
+
                         Rectangle rect = CvInvoke.BoundingRectangle(approx);
                         if (rect.Width < 20 || rect.Height < 20) continue;
                         double aspect = (double)rect.Width / rect.Height;
                         if (aspect < MinAspectRatio || aspect > MaxAspectRatio) continue;
-                        // Relaxed deviation to allow slightly rotated full contours
                         if (Math.Abs(aspect - CardAspect) > MaxAspectDeviationStrict * 1.5) continue;
 
-                        // Store the quad points for potential perspective correction
                         var pts = approx.ToArray().Select(p => new PointF(p.X, p.Y)).ToArray();
                         candidates.Add((rect, area, pts));
                         continue;
@@ -659,18 +688,23 @@ namespace ServerApi.Services
 
                     double contArea = CvInvoke.ContourArea(contour, false);
                     if (contArea < minArea) continue;
+
+                    // Solidity check for non-quad contours
+                    using var hull2 = new VectorOfPoint();
+                    CvInvoke.ConvexHull(contour, hull2);
+                    double hullArea2 = CvInvoke.ContourArea(hull2, false);
+                    if (hullArea2 > 0 && contArea / hullArea2 < 0.80) continue;
+
                     RotatedRect rr = CvInvoke.MinAreaRect(contour);
                     double w = rr.Size.Width, h = rr.Size.Height;
                     if (w < 1 || h < 1) continue;
                     double ratio = Math.Min(w, h) / Math.Max(w, h);
                     if (ratio < 0.45 || ratio > 0.90) continue;
                     double rrArea = w * h;
-                    if (rrArea <= 1 || contArea / rrArea < 0.50) continue;
+                    if (rrArea <= 1 || contArea / rrArea < 0.55) continue;
                     PointF[] verts = rr.GetVertices();
                     Rectangle rectR = BoundingRect(verts);
                     if (rectR.Width < 20 || rectR.Height < 20) continue;
-                    // We REMOVED the strict aspectR check on the bounding box here 
-                    // because naturally rotated cards generate wider bounding boxes that fail it.
                     candidates.Add((rectR, contArea, verts));
                 }
             }
@@ -856,8 +890,8 @@ namespace ServerApi.Services
         }
 
         /// <summary>
-        /// Efficient card cropping using Mat ROI directly instead of creating
-        /// full Image&lt;Bgr,byte&gt; copies on every iteration.
+        /// Crops detected cards with automatic orientation correction.
+        /// Uses simple ROI crop for axis-aligned cards.
         /// </summary>
         private static List<DetectedCardDto> CropCards(Mat working, IEnumerable<Rectangle> rects)
         {
@@ -870,17 +904,124 @@ namespace ServerApi.Services
                 int w = Math.Max(1, Math.Min(padded.Width, working.Width - x));
                 int h = Math.Max(1, Math.Min(padded.Height, working.Height - y));
 
-                // Direct Mat ROI crop — no full-image copy needed
                 var roi = new Rectangle(x, y, w, h);
                 using var cropped = new Mat(working, roi);
-                using var croppedCopy = cropped.Clone();
+                using var finalCrop = OrientCard(cropped);
                 using var buf = new VectorOfByte();
-                CvInvoke.Imencode(".jpg", croppedCopy, buf);
+                CvInvoke.Imencode(".jpg", finalCrop, buf);
                 string dataUrl = "data:image/jpeg;base64," + Convert.ToBase64String(buf.ToArray());
                 result.Add(new DetectedCardDto { ImageUrl = dataUrl });
             }
             return result;
         }
+
+        /// <summary>
+        /// Applies perspective correction ONLY when the card is genuinely skewed.
+        /// Conservative guards prevent warping axis-aligned crops or multi-card regions.
+        /// </summary>
+        private static Mat OrientCard(Mat crop)
+        {
+            if (crop.Width < 60 || crop.Height < 60) return crop.Clone();
+
+            try
+            {
+                using var gray = new Mat();
+                CvInvoke.CvtColor(crop, gray, ColorConversion.Bgr2Gray);
+                using var blurred = new Mat();
+                CvInvoke.GaussianBlur(gray, blurred, new Size(5, 5), 1);
+
+                double otsu = CvInvoke.Threshold(blurred, new Mat(), 0, 255, ThresholdType.Otsu);
+                using var edgeMap = new Mat();
+                CvInvoke.Canny(blurred, edgeMap, otsu * 0.4, otsu * 1.2);
+                using var kernel = CvInvoke.GetStructuringElement(ElementShape.Rectangle, new Size(3, 3), new Point(-1, -1));
+                CvInvoke.Dilate(edgeMap, edgeMap, kernel, new Point(-1, -1), 1, BorderType.Default, new MCvScalar());
+
+                using var contours = new VectorOfVectorOfPoint();
+                CvInvoke.FindContours(edgeMap, contours, null!, RetrType.List, ChainApproxMethod.ChainApproxSimple);
+
+                double cropArea = crop.Width * (double)crop.Height;
+                PointF[]? bestQuad = null;
+                double bestArea = 0;
+
+                for (int i = 0; i < contours.Size; i++)
+                {
+                    using var cnt = contours[i];
+                    double cArea = CvInvoke.ContourArea(cnt, false);
+                    // Quad must cover 50–95% of crop (>95% = already axis-aligned, <50% = sub-region)
+                    if (cArea < cropArea * 0.50 || cArea > cropArea * 0.95 || cArea <= bestArea) continue;
+
+                    using var approx = new VectorOfPoint();
+                    double peri = CvInvoke.ArcLength(cnt, true);
+                    CvInvoke.ApproxPolyDP(cnt, approx, peri * 0.03, true);
+
+                    if (approx.Size == 4 && CvInvoke.IsContourConvex(approx))
+                    {
+                        bestArea = cArea;
+                        bestQuad = approx.ToArray().Select(p => new PointF(p.X, p.Y)).ToArray();
+                    }
+                }
+
+                if (bestQuad == null) return crop.Clone();
+
+                var ordered = OrderQuadPoints(bestQuad);
+
+                float wTop = Dist(ordered[0], ordered[1]);
+                float wBot = Dist(ordered[3], ordered[2]);
+                float hLeft = Dist(ordered[0], ordered[3]);
+                float hRight = Dist(ordered[1], ordered[2]);
+                int dstW = (int)Math.Max(wTop, wBot);
+                int dstH = (int)Math.Max(hLeft, hRight);
+                if (dstW < 30 || dstH < 30) return crop.Clone();
+
+                // Ensure portrait
+                if (dstW > dstH)
+                {
+                    (dstW, dstH) = (dstH, dstW);
+                    ordered = [ordered[1], ordered[2], ordered[3], ordered[0]];
+                }
+
+                // Guard: quad aspect ratio must be card-like (0.55 – 0.85)
+                double quadAspect = (double)dstW / dstH;
+                if (quadAspect < 0.55 || quadAspect > 0.85) return crop.Clone();
+
+                // Guard: skip if card is barely skewed (< 3°) — no correction needed
+                double skewAngle = Math.Abs(Math.Atan2(
+                    ordered[1].Y - ordered[0].Y,
+                    ordered[1].X - ordered[0].X) * 180.0 / Math.PI);
+                if (skewAngle < 3.0) return crop.Clone();
+
+                PointF[] dst = [
+                    new(0, 0), new(dstW - 1, 0),
+                    new(dstW - 1, dstH - 1), new(0, dstH - 1)
+                ];
+
+                using var matrix = CvInvoke.GetPerspectiveTransform(ordered, dst);
+                var warped = new Mat();
+                CvInvoke.WarpPerspective(crop, warped, matrix, new Size(dstW, dstH),
+                    Inter.Cubic, Warp.Default, BorderType.Constant, new MCvScalar(0, 0, 0));
+                return warped;
+            }
+            catch
+            {
+                return crop.Clone();
+            }
+        }
+
+        /// <summary>Orders 4 points as: top-left, top-right, bottom-right, bottom-left.</summary>
+        private static PointF[] OrderQuadPoints(PointF[] pts)
+        {
+            // Sort by sum (x+y): smallest = TL, largest = BR
+            // Sort by diff (y-x): smallest = TR, largest = BL
+            var sorted = pts.OrderBy(p => p.X + p.Y).ToArray();
+            PointF tl = sorted[0], br = sorted[3];
+            var mid = new[] { sorted[1], sorted[2] };
+            PointF tr = mid.OrderBy(p => p.Y - p.X).First();
+            PointF bl = mid.OrderByDescending(p => p.Y - p.X).First();
+            return [tl, tr, br, bl];
+        }
+
+        private static float Dist(PointF a, PointF b) =>
+            (float)Math.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y));
 
         private static List<(Rectangle Rect, double Area)> RemoveOuterWhenContainsInnerCard(
             List<(Rectangle Rect, double Area)> candidates, int minAreaPixels)
