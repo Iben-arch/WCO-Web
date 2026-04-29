@@ -630,8 +630,6 @@ namespace ServerApi.Services
                         // Local heuristic: photo-editing manipulation (ELA, noise inconsistency, etc.)
                         var manipulation = await _imageManipulationService.AnalyzeAsync(bytes, cancellationToken).ConfigureAwait(false);
                         item.ManipulationRiskPct = RoundPct(manipulation.ManipulationRiskPct);
-                        // Start with heuristic AI-gen estimate as fallback.
-                        item.AiGeneratedRiskPct = RoundPct(manipulation.AiGeneratedRiskPct);
                     }
                     catch (Exception ex)
                     {
@@ -897,13 +895,10 @@ namespace ServerApi.Services
 
         private static string ComputeManipulationWarningLevel(double manipulationRiskPct)
         {
-            // TEMPORARY DEMO OVERRIDE: 
-            // Lowered thresholds significantly so that high-quality composite images 
-            // (which only score around 30% due to heuristic limitations) will trigger the "Danger" flag.
-            // WARNING: This will cause many genuine card photos to also trigger the Danger flag.
-            // Original values were: Danger >= 50, Warning >= 35
-            if (manipulationRiskPct >= 28) return "danger";   // 30% will now hit Danger
-            if (manipulationRiskPct >= 20) return "warning";  
+            // v4 Detection Service ใช้ Global Forensics ที่แม่นยำขึ้น
+            // Score >= 55 = ตัดต่อชัดเจน, >= 35 = สัญญาณน่าสงสัย
+            if (manipulationRiskPct >= 55) return "danger";
+            if (manipulationRiskPct >= 35) return "warning";
             return "safe";
         }
 
