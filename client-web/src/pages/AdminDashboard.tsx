@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import axios from '../utils/axiosInterceptor';
 import { toast } from 'react-toastify';
@@ -108,12 +108,22 @@ Object.assign(Modal, { Header: ModalHeader, Title: ModalTitle, Body: ModalBody, 
 
 const AdminDashboard: React.FC = () => {
   const { userProfile } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [posts, setPosts] = useState<AdminPost[]>([]);
   const [pendingPosts, setPendingPosts] = useState<AdminPost[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'posts' | 'pending' | 'users'>('dashboard');
+
+  const rawTab = searchParams.get('tab');
+  const activeTab: 'dashboard' | 'posts' | 'pending' | 'users' =
+    rawTab === 'posts' || rawTab === 'pending' || rawTab === 'users'
+      ? rawTab
+      : 'dashboard';
+
+  const setActiveTab = (tab: 'dashboard' | 'posts' | 'pending' | 'users') => {
+    setSearchParams((prev) => { prev.set('tab', tab); return prev; }, { replace: true });
+  };
 
   // Posts filters (จัดการโพสต์)
   const [postsStatusFilter, setPostsStatusFilter] = useState<'all' | 'pending' | 'active' | 'rejected'>('all');
