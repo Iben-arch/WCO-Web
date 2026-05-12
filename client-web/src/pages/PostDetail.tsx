@@ -1105,218 +1105,138 @@ const PostDetail: React.FC = () => {
                 <div className="mercari-actions-block">
                   {isAdminViewer && (
                     <div className="pd-admin-tools mb-3">
-                      <div className="pd-admin-tools-header">
-                        <i className="fas fa-shield-alt me-2" aria-hidden />เครื่องมือแอดมิน (AI)
+                      <div className="pd-admin-tools-header-plain">
+                        <i className="fas fa-shield-alt" aria-hidden />
+                        <span>เครื่องมือแอดมิน (AI)</span>
                       </div>
-                      <div className="d-flex flex-wrap gap-2 mb-2" style={{ padding: '0.75rem 0.9rem 0' }}>
-                        <Button size="sm" variant="outline-secondary" onClick={analyzeSource} disabled={sourceAnalyzing}>
-                          {sourceAnalyzing ? 'กำลังวิเคราะห์...' : 'วิเคราะห์ภาพจากแหล่งอื่น'}
-                        </Button>
-                        <Button size="sm" variant="outline-secondary" onClick={analyzeManipulation} disabled={manipulationAnalyzing}>
-                          {manipulationAnalyzing ? 'กำลังวิเคราะห์...' : 'ตรวจภาพตัดต่อ'}
-                        </Button>
-                        <Button size="sm" variant="outline-secondary" onClick={analyzeAi} disabled={aiAnalyzing}>
-                          {aiAnalyzing ? 'กำลังวิเคราะห์...' : 'ตรวจภาพ AI'}
-                        </Button>
-                      </div>
-                      {sourceScreening && (
-                        <div className="small mb-2">
-                          {(() => {
+                      <div className="pd-admin-tools-actions">
+                      <div className="pd-admin-tools-actions">
+                        {/* Card 1: วิเคราะห์แหล่งที่มา */}
+                        <div className={`pd-ai-card${sourceScreening ? ' pd-ai-card--' + ((() => { const lv = sourceLevelLabel(sourceScreening.sourceWarningLevel); const getDomain = (url) => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } }; const hasDHashConfirmed = (sourceScreening.dHashConfirmedLinks ?? []).length > 0; const hasMarketplaceHits = (sourceScreening.allExternalMatchLinks ?? []).length > 0; return hasDHashConfirmed ? lv.variant : hasMarketplaceHits ? 'warning' : 'success'; })()) : ''}`}>
+                          <button
+                            type="button"
+                            id="btn-analyze-source"
+                            className={`pd-ai-btn pd-ai-btn--source${sourceAnalyzing ? ' pd-ai-btn--loading' : ''}${sourceScreening ? ' pd-ai-btn--done' : ''}`}
+                            onClick={analyzeSource}
+                            disabled={sourceAnalyzing}
+                            aria-busy={sourceAnalyzing}
+                            title="ตรวจสอบว่าภาพนี้ถูกนำมาจากเว็บอื่นหรือไม่ โดยใช้ Google Lens + dHash"
+                          >
+                            <span className="pd-ai-btn-icon">
+                              {sourceAnalyzing ? <span className="pd-ai-spinner" /> : sourceScreening ? <i className="fas fa-check-circle" aria-hidden /> : <i className="fas fa-search" aria-hidden />}
+                            </span>
+                            <span className="pd-ai-btn-label">{sourceAnalyzing ? 'กำลังวิเคราะห์...' : 'วิเคราะห์ภาพจากแหล่งอื่น'}</span>
+                          </button>
+                          {sourceScreening && (() => {
                             const lv = sourceLevelLabel(sourceScreening.sourceWarningLevel);
-                            const totalMatches = sourceScreening.images.reduce((sum, img) => sum + (img.externalMatchCount || 0), 0);
-
-                            const getDomain = (url: string) => {
-                              try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
-                            };
-
-                            // dHash-confirmed = most reliable: thumbnail pixel comparison directly
-                            const rawDHashLinks = sourceScreening.dHashConfirmedLinks ?? [];
-                            // Sort specifically to prefer item URLs over search URLs
-                            const getUrlScore = (u: string) => {
-                              const low = u.toLowerCase();
-                              if (low.includes('/search/') || low.includes('search?')) return -1;
-                              if (low.includes('/item/') || low.includes('/itm/') || low.includes('/auction/')) return 1;
-                              return 0;
-                            };
-                            const sortedDHashLinks = [...rawDHashLinks].sort((a, b) => {
-                              const sA = getUrlScore(a), sB = getUrlScore(b);
-                              if (sA !== sB) return sB - sA;
-                              return b.length - a.length;
-                            });
-                            const dHashLinks = sortedDHashLinks.filter((link, i, self) => 
-                              i === self.findIndex((l) => getDomain(l) === getDomain(link))
-                            );
-                            const dHashPct = sourceScreening.maxDHashSimilarityPct;
+                            const getDomain = (url: string) => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } };
+                            const getUrlScore = (u: string) => { const low = u.toLowerCase(); if (low.includes('/search/') || low.includes('search?')) return -1; if (low.includes('/item/') || low.includes('/itm/') || low.includes('/auction/')) return 1; return 0; };
+                            const dHashLinks = [...(sourceScreening.dHashConfirmedLinks ?? [])].sort((a,b) => getUrlScore(b)-getUrlScore(a) || b.length-a.length).filter((l,i,s) => i===s.findIndex(x=>getDomain(x)===getDomain(l)));
                             const hasDHashConfirmed = dHashLinks.length > 0;
-
-                            // All marketplace links found by Lens (less precise, for reference)
-                            const rawMarketplaceLinks = sourceScreening.allExternalMatchLinks ?? [];
-                            const sortedMarketplaceLinks = [...rawMarketplaceLinks].sort((a, b) => {
-                              const sA = getUrlScore(a), sB = getUrlScore(b);
-                              if (sA !== sB) return sB - sA;
-                              return b.length - a.length;
-                            });
-                            const allMarketplaceLinks = sortedMarketplaceLinks.filter((link, i, self) => 
-                              i === self.findIndex((l) => getDomain(l) === getDomain(link))
-                            );
+                            const allMarketplaceLinks = [...(sourceScreening.allExternalMatchLinks ?? [])].sort((a,b) => getUrlScore(b)-getUrlScore(a) || b.length-a.length).filter((l,i,s) => i===s.findIndex(x=>getDomain(x)===getDomain(l)));
                             const hasMarketplaceHits = allMarketplaceLinks.length > 0;
-
-                            // CLIP (semantic) as supplementary
+                            const dHashPct = sourceScreening.maxDHashSimilarityPct;
                             const clipPct = sourceScreening.maxCompositionSimilarityPct;
-
-                            const alertVariant = hasDHashConfirmed ? lv.variant
-                              : hasMarketplaceHits ? 'secondary'
-                              : 'success';
-
+                            const rv = hasDHashConfirmed ? lv.variant : hasMarketplaceHits ? 'warning' : 'success';
                             return (
-                              <Alert variant={alertVariant} className="py-2 mb-2">
-                                <div className="fw-semibold mb-2" style={{ fontSize: '0.9rem' }}>
-                                  ภาพที่โพสต์ — มีอยู่ในเว็บอื่นไหม?
+                              <div className="pd-ai-card-result">
+                                <div className="pd-ai-result-header">
+                                  <span className="pd-ai-result-icon">{rv==='danger'?'🚨':rv==='warning'?'⚠️':'✅'}</span>
+                                  <span className="pd-ai-result-title">
+                                    <span className="pd-ai-result-subtitle">
+                                      {sourceScreening.sourceAnalysisAvailable===false ? 'วิเคราะห์ไม่ได้' : hasDHashConfirmed ? 'พบภาพนี้ในเว็บอื่น' : hasMarketplaceHits ? 'พบการ์ดชนิดเดียวกัน แต่ภาพต่างกัน' : 'ไม่พบภาพนี้ในเว็บอื่น'}
+                                    </span>
+                                  </span>
+                                  {/* removed risk badge for source analysis */}
                                 </div>
-
-                                {sourceScreening.sourceAnalysisAvailable === false ? (
-                                  <div className="text-danger mb-2">
-                                    วิเคราะห์ไม่ได้: {mapSourceUnavailableReason(sourceScreening.sourceUnavailableReason)}
-                                  </div>
-                                ) : hasDHashConfirmed ? (
-                                  /* dHash confirmed: thumbnail pixels actually match → stolen image */
-                                  <div className="mb-2">
-                                    <div className="fw-semibold text-danger mb-1">
-                                      ✗ พบภาพนี้ในเว็บอื่น
-                                      {dHashPct != null && ` (ความคล้าย ${dHashPct.toFixed(0)}%)`}
-                                    </div>
-                                    <div className="text-muted small mb-2">
-                                      เปรียบเทียบรูปจริงโดยตรง (dHash) ยืนยันว่าภาพตรงกับหน้าเหล่านี้:
-                                    </div>
-                                    <ul className="mb-0" style={{ listStyle: 'none', padding: 0 }}>
-                                      {dHashLinks.map((link, i) => {
-                                        const domain = getDomain(link);
-                                        const isMarketplace = /mercari|auctions\.yahoo\.co\.jp|magi\.care|magi\.jp/i.test(domain);
-                                        return (
-                                          <li key={i} className="mb-1">
-                                            <a href={link} target="_blank" rel="noopener noreferrer"
-                                              className="text-primary" style={{ wordBreak: 'break-all', fontSize: '0.8rem' }}>
-                                              🔗 {link}
-                                            </a>
-                                            {isMarketplace && (
-                                              <span className="badge bg-danger ms-1" style={{ fontSize: '0.65rem' }}>marketplace</span>
-                                            )}
-                                          </li>
-                                        );
-                                      })}
-                                    </ul>
-                                  </div>
-                                ) : hasMarketplaceHits ? (
-                                  /* Lens found pages but dHash didn't confirm → same card, different photo */
-                                  <div className="mb-2">
-                                    <div className="fw-semibold mb-1" style={{ color: '#6c757d' }}>
-                                      ℹ️ พบการ์ดชนิดนี้ในเว็บอื่น แต่ภาพไม่ตรงกัน
-                                    </div>
-                                    <div className="text-muted small">
-                                      Google Lens พบหน้าที่มีภาพคล้ายกัน ({allMarketplaceLinks.length} แหล่ง)
-                                      แต่เมื่อเปรียบเทียบรูป (dHash) พบว่าเป็นภาพคนละภาพ
-                                      — น่าจะถ่ายคนละมุม/พื้นหลัง ไม่ใช่ภาพที่นำมาจากเว็บเหล่านั้น
-                                    </div>
-                                    <details className="mt-2">
-                                      <summary className="text-muted small" style={{ cursor: 'pointer' }}>
-                                        ดูรายการเว็บที่พบ ({allMarketplaceLinks.length} แหล่ง)
-                                      </summary>
-                                      <ul className="mt-1 mb-0" style={{ listStyle: 'none', padding: 0 }}>
-                                        {allMarketplaceLinks.map((link, i) => (
-                                          <li key={i}>
-                                            <a href={link} target="_blank" rel="noopener noreferrer"
-                                              className="text-muted" style={{ wordBreak: 'break-all', fontSize: '0.75rem' }}>
-                                              🔗 {link}
-                                            </a>
+                                {sourceScreening.sourceAnalysisAvailable===false ? (
+                                  <p className="pd-ai-result-detail pd-ai-result-detail--error"><i className="fas fa-exclamation-circle me-1" aria-hidden /> {mapSourceUnavailableReason(sourceScreening.sourceUnavailableReason)}</p>
+                                ) : (hasDHashConfirmed||hasMarketplaceHits) && (
+                                  <details className="pd-ai-result-details">
+                                    <summary>ดูรายละเอียด ({hasDHashConfirmed?`${dHashLinks.length} แหล่งที่ยืนยัน`:`${allMarketplaceLinks.length} แหล่งอ้างอิง`})</summary>
+                                    <div className="pd-ai-result-detail">
+                                      <ul style={{listStyle:'none',padding:0,margin:0}}>
+                                        {(hasDHashConfirmed?dHashLinks:allMarketplaceLinks).map((link,i)=>(
+                                          <li key={i} className="mb-1"><a href={link} target="_blank" rel="noopener noreferrer" style={{wordBreak:'break-all',fontSize:'0.78rem'}}>🔗 {link}</a>
+                                          {hasDHashConfirmed && /mercari|auctions\.yahoo\.co\.jp|magi/i.test(getDomain(link)) && <span className="badge bg-danger ms-1" style={{fontSize:'0.6rem'}}>marketplace</span>}
                                           </li>
                                         ))}
                                       </ul>
-                                    </details>
-                                  </div>
-                                ) : (
-                                  <div className="mb-2">
-                                    <span className="fw-semibold text-success">✓ ไม่พบภาพนี้ในเว็บอื่น</span>
-                                  </div>
+                                      <div className="pd-ai-score-row">
+                                        {dHashPct!=null && <span>dHash: <strong>{dHashPct.toFixed(0)}%</strong> {dHashPct>=88?'✓':dHashPct>=75?'~':'✗'}</span>}
+                                        {clipPct!=null && <span>CLIP: <strong>{clipPct.toFixed(0)}%</strong></span>}
+                                      </div>
+                                    </div>
+                                  </details>
                                 )}
-
-                                {/* Scores row */}
-                                <div className="text-muted small mt-1 d-flex flex-wrap gap-2">
-                                  {dHashPct != null && (
-                                    <span>dHash: <strong>{dHashPct.toFixed(0)}%</strong>
-                                      {dHashPct >= 88 ? ' ✓ ตรงกันมาก' : dHashPct >= 75 ? ' ~ คล้ายกัน' : ' ✗ ต่างกัน'}
-                                    </span>
-                                  )}
-                                  {clipPct != null && (
-                                    <span>CLIP: <strong>{clipPct.toFixed(0)}%</strong></span>
-                                  )}
-                                </div>
-
-                                {/* Risk badge */}
-                                <div className="mt-2 d-flex align-items-center gap-2 flex-wrap">
-                                  <Badge bg={getRiskVariant(sourceScreening.overallRiskPct)}>
-                                    ความเสี่ยง {sourceScreening.overallRiskPct.toFixed(0)}%
-                                  </Badge>
-                                  <Badge bg={lv.variant} text={lv.variant === 'warning' ? 'dark' : undefined}>
-                                    {lv.text}
-                                  </Badge>
-                                </div>
-
-                              </Alert>
+                              </div>
                             );
                           })()}
                         </div>
-                      )}
-                      {manipulationScreening && (
-                        <div className="small mb-2">
-                          {(() => {
+
+                        {/* Card 2: ตรวจภาพตัดต่อ */}
+                        <div className={`pd-ai-card${manipulationScreening ? ' pd-ai-card--' + manipulationLevelLabel(manipulationScreening.manipulationWarningLevel).variant : ''}`}>
+                          <button
+                            type="button"
+                            id="btn-analyze-manipulation"
+                            className={`pd-ai-btn pd-ai-btn--manipulation${manipulationAnalyzing ? ' pd-ai-btn--loading' : ''}${manipulationScreening ? ' pd-ai-btn--done' : ''}`}
+                            onClick={analyzeManipulation}
+                            disabled={manipulationAnalyzing}
+                            aria-busy={manipulationAnalyzing}
+                            title="วิเคราะห์ว่าภาพถูกแต่งหรือตัดต่อมาหรือไม่ โดยใช้ ELA / Chroma / FFT"
+                          >
+                            <span className="pd-ai-btn-icon">
+                              {manipulationAnalyzing ? <span className="pd-ai-spinner" /> : manipulationScreening ? <i className="fas fa-check-circle" aria-hidden /> : <i className="fas fa-cut" aria-hidden />}
+                            </span>
+                            <span className="pd-ai-btn-label">{manipulationAnalyzing ? 'กำลังตรวจสอบ...' : 'ตรวจภาพตัดต่อ'}</span>
+                          </button>
+                          {manipulationScreening && (() => {
                             const ml = manipulationLevelLabel(manipulationScreening.manipulationWarningLevel);
                             return (
-                              <Alert variant={ml.variant} className="py-2 mb-0">
-                                <div className="fw-semibold mb-1">ภาพตัดต่อ — ระดับเตือน</div>
-                                <Badge
-                                  bg={ml.variant}
-                                  text={ml.variant === 'warning' ? 'dark' : undefined}
-                                  className="me-2 text-wrap text-start"
-                                  style={{ maxWidth: '100%', whiteSpace: 'normal' }}
-                                >
-                                  {ml.text}
-                                </Badge>
-                                <div className="mt-2">
-                                  <Badge bg={getRiskVariant(manipulationScreening.manipulationRiskPct)} className="me-2">
-                                    ความเสี่ยงตัดต่อ {manipulationScreening.manipulationRiskPct.toFixed(0)}%
-                                  </Badge>
+                              <div className="pd-ai-card-result">
+                                <div className="pd-ai-result-header">
+                                  <span className="pd-ai-result-icon">{ml.variant==='danger'?'🚨':ml.variant==='warning'?'⚠️':'✅'}</span>
+                                  <span className="pd-ai-result-title"><span className="pd-ai-result-subtitle">{ml.text}</span></span>
+                                  <span className={`pd-ai-risk-badge pd-ai-risk-badge--${getRiskVariant(manipulationScreening.manipulationRiskPct)}`}>{manipulationScreening.manipulationRiskPct.toFixed(0)}%</span>
                                 </div>
-                              </Alert>
+                              </div>
                             );
                           })()}
                         </div>
-                      )}
-                      {aiScreening && (
-                        <div className="small mb-2">
-                          {(() => {
+
+                        {/* Card 3: ตรวจภาพ AI */}
+                        <div className={`pd-ai-card${aiScreening ? ' pd-ai-card--' + aiGeneratedLevelLabel(aiScreening.aiGeneratedWarningLevel).variant : ''}`}>
+                          <button
+                            type="button"
+                            id="btn-analyze-ai"
+                            className={`pd-ai-btn pd-ai-btn--ai${aiAnalyzing ? ' pd-ai-btn--loading' : ''}${aiScreening ? ' pd-ai-btn--done' : ''}`}
+                            onClick={analyzeAi}
+                            disabled={aiAnalyzing}
+                            aria-busy={aiAnalyzing}
+                            title="ตรวจสอบว่าภาพสร้างจาก AI (เช่น Midjourney, DALL-E) หรือไม่"
+                          >
+                            <span className="pd-ai-btn-icon">
+                              {aiAnalyzing ? <span className="pd-ai-spinner" /> : aiScreening ? <i className="fas fa-check-circle" aria-hidden /> : <i className="fas fa-robot" aria-hidden />}
+                            </span>
+                            <span className="pd-ai-btn-label">{aiAnalyzing ? 'กำลังตรวจสอบ...' : 'ตรวจภาพ AI'}</span>
+                          </button>
+                          {aiScreening && (() => {
                             const al = aiGeneratedLevelLabel(aiScreening.aiGeneratedWarningLevel);
                             return (
-                              <Alert variant={al.variant} className="py-2 mb-0">
-                                <div className="fw-semibold mb-1">ภาพ AI — ระดับเตือน</div>
-                                <Badge
-                                  bg={al.variant}
-                                  text={al.variant === 'warning' ? 'dark' : undefined}
-                                  className="me-2 text-wrap text-start"
-                                  style={{ maxWidth: '100%', whiteSpace: 'normal' }}
-                                >
-                                  {al.text}
-                                </Badge>
-                                <div className="mt-2">
-                                  <Badge bg={getRiskVariant(aiScreening.aiGeneratedRiskPct)} className="me-2">
-                                    ความเสี่ยง AI {aiScreening.aiGeneratedRiskPct.toFixed(0)}%
-                                  </Badge>
-                                  <span className="text-muted small">วิเคราะห์จากความเรียบของภาพ / การขาดสัญญาณ noise</span>
+                              <div className="pd-ai-card-result">
+                                <div className="pd-ai-result-header">
+                                  <span className="pd-ai-result-icon">{al.variant==='danger'?'🚨':al.variant==='warning'?'⚠️':'✅'}</span>
+                                  <span className="pd-ai-result-title"><span className="pd-ai-result-subtitle">{al.text}</span></span>
+                                  <span className={`pd-ai-risk-badge pd-ai-risk-badge--${getRiskVariant(aiScreening.aiGeneratedRiskPct)}`}>{aiScreening.aiGeneratedRiskPct.toFixed(0)}%</span>
                                 </div>
-                              </Alert>
+                                <p className="pd-ai-result-detail" style={{fontSize:'0.72rem',color:'#64748b'}}>วิเคราะห์จากความเรียบของภาพ / การขาดสัญญาณ noise</p>
+                              </div>
                             );
                           })()}
                         </div>
-                      )}
+                      </div>
+                      </div>
+
                     </div>
                   )}
 
